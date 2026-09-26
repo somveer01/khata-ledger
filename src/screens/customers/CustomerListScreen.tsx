@@ -20,7 +20,7 @@ import { useApp } from '../../context/AppContext';
 import { t } from '../../i18n';
 import { formatCurrency } from '../../utils/money';
 import { DataRepository } from '../../services/db';
-import { Customer, Village } from '../../types';
+import { Customer } from '../../types';
 import { confirmAction, showAlert } from '../../utils/dialog';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -31,22 +31,16 @@ export const CustomerListScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const { business, language, guardAction, refreshAllData } = useApp();
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [villages, setVillages] = useState<Village[]>([]);
   const [search, setSearch] = useState('');
   const [filterTab, setFilterTab] = useState<FilterTab>('ALL');
-  const [selectedVillageId, setSelectedVillageId] = useState<string>('ALL');
   const [sortBy, setSortBy] = useState<SortOption>('HIGHEST_DUE');
   const [refreshing, setRefreshing] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!business) return;
-    const [cList, vList] = await Promise.all([
-      DataRepository.getCustomers(business.id),
-      DataRepository.getVillages(business.id),
-    ]);
+    const cList = await DataRepository.getCustomers(business.id);
     setCustomers(cList);
-    setVillages(vList);
   }, [business]);
 
   useEffect(() => {
@@ -130,10 +124,6 @@ export const CustomerListScreen: React.FC = () => {
       list = list.filter((c) => (c.currentBalancePaise || 0) <= 0);
     }
 
-    if (selectedVillageId !== 'ALL') {
-      list = list.filter((c) => c.villageId === selectedVillageId);
-    }
-
     list.sort((a, b) => {
       if (sortBy === 'HIGHEST_DUE') {
         return (b.currentBalancePaise || 0) - (a.currentBalancePaise || 0);
@@ -143,7 +133,7 @@ export const CustomerListScreen: React.FC = () => {
     });
 
     return list;
-  }, [customers, search, filterTab, selectedVillageId, sortBy]);
+  }, [customers, search, filterTab, sortBy]);
 
   const renderCustomerItem = useCallback(
     ({ item }: { item: Customer }) => {
@@ -320,36 +310,6 @@ export const CustomerListScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Village quick selector chips */}
-        {villages.length > 0 && (
-          <View style={styles.villageChipsContainer}>
-            <FlatList
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              data={[{ id: 'ALL', name: language === 'hi' ? 'सभी गाँव' : 'All Villages' } as Village, ...villages]}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[
-                    styles.villageChip,
-                    selectedVillageId === item.id && styles.activeVillageChip,
-                  ]}
-                  onPress={() => setSelectedVillageId(item.id)}
-                >
-                  <Text
-                    style={[
-                      styles.villageChipText,
-                      selectedVillageId === item.id && styles.activeVillageChipText,
-                    ]}
-                  >
-                    {item.name}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            />
-          </View>
-        )}
-
         {/* Customer List */}
         <FlatList
           data={filteredCustomers}
@@ -456,31 +416,6 @@ const styles = StyleSheet.create({
   sortText: {
     fontSize: 11,
     fontWeight: '700',
-    color: Colors.primary,
-  },
-  villageChipsContainer: {
-    paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.xs,
-  },
-  villageChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: BorderRadius.sm,
-    backgroundColor: Colors.surfaceSubtle,
-    marginRight: 6,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  activeVillageChip: {
-    backgroundColor: '#DBEAFE',
-    borderColor: Colors.primary,
-  },
-  villageChipText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: Colors.textSecondary,
-  },
-  activeVillageChipText: {
     color: Colors.primary,
   },
   listContent: {
