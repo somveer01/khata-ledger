@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   View, 
   Text, 
@@ -6,7 +6,8 @@ import {
   StyleSheet, 
   TextInputProps, 
   StyleProp, 
-  ViewStyle 
+  ViewStyle,
+  Platform,
 } from 'react-native';
 import { Colors, BorderRadius, Spacing, Typography } from '../constants/theme';
 
@@ -27,16 +28,38 @@ export const Input: React.FC<InputProps> = ({
   containerStyle,
   helperText,
   style,
+  onFocus,
+  onBlur,
   ...props
 }) => {
+  const [isFocused, setIsFocused] = useState(false);
+
   return (
     <View style={[styles.container, containerStyle]}>
       {label && <Text style={styles.label}>{label}</Text>}
-      <View style={[styles.inputWrapper, error ? styles.inputError : null]}>
+      <View
+        style={[
+          styles.inputWrapper,
+          isFocused ? styles.inputFocused : null,
+          error ? styles.inputError : null,
+        ]}
+      >
         {prefix && <Text style={styles.prefix}>{prefix}</Text>}
         <TextInput
           placeholderTextColor={Colors.textMuted}
-          style={[styles.input, style]}
+          style={[
+            styles.input,
+            Platform.OS === 'web' ? ({ outlineStyle: 'none', outline: 'none' } as any) : null,
+            style,
+          ]}
+          onFocus={(e) => {
+            setIsFocused(true);
+            onFocus?.(e);
+          }}
+          onBlur={(e) => {
+            setIsFocused(false);
+            onBlur?.(e);
+          }}
           {...props}
         />
         {suffix && <Text style={styles.suffix}>{suffix}</Text>}
@@ -68,6 +91,10 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     backgroundColor: Colors.surface,
     paddingHorizontal: Spacing.md,
+  },
+  inputFocused: {
+    borderColor: Colors.primary,
+    backgroundColor: '#FFFFFF',
   },
   inputError: {
     borderColor: Colors.creditSale,

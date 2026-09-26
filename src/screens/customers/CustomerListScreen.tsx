@@ -37,6 +37,7 @@ export const CustomerListScreen: React.FC = () => {
   const [selectedVillageId, setSelectedVillageId] = useState<string>('ALL');
   const [sortBy, setSortBy] = useState<SortOption>('HIGHEST_DUE');
   const [refreshing, setRefreshing] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!business) return;
@@ -278,14 +279,19 @@ export const CustomerListScreen: React.FC = () => {
 
       <View style={styles.container}>
         {/* Search Bar */}
-        <View style={styles.searchBar}>
-          <Ionicons name="search" size={18} color={Colors.textSecondary} />
+        <View style={[styles.searchBar, searchFocused && styles.searchBarFocused]}>
+          <Ionicons name="search" size={18} color={searchFocused ? Colors.primary : Colors.textSecondary} />
           <TextInput
             placeholder={t('searchCustomerPlaceholder', language)}
             placeholderTextColor={Colors.textMuted}
             value={search}
             onChangeText={setSearch}
-            style={styles.searchInput}
+            style={[
+              styles.searchInput,
+              Platform.OS === 'web' ? ({ outlineStyle: 'none', outline: 'none' } as any) : null,
+            ]}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setSearchFocused(false)}
           />
           {search ? (
             <TouchableOpacity onPress={() => setSearch('')}>
@@ -420,6 +426,10 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: Colors.border,
     height: 44,
+  },
+  searchBarFocused: {
+    borderColor: Colors.primary,
+    backgroundColor: '#FFFFFF',
   },
   searchInput: {
     flex: 1,

@@ -43,6 +43,7 @@ export const CustomerLedgerScreen: React.FC = () => {
   const [exportingPdf, setExportingPdf] = useState(false);
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [txModalVisible, setTxModalVisible] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
 
   const loadLedger = useCallback(async () => {
     if (!business || !customerParam) return;
@@ -410,14 +411,19 @@ export const CustomerLedgerScreen: React.FC = () => {
       </View>
 
       {/* Particulars Search Input */}
-      <View style={styles.searchBar}>
-        <Ionicons name="search" size={16} color={Colors.textSecondary} />
+      <View style={[styles.searchBar, searchFocused && styles.searchBarFocused]}>
+        <Ionicons name="search" size={16} color={searchFocused ? Colors.primary : Colors.textSecondary} />
         <TextInput
           placeholder={t('searchLedgerPlaceholder', language)}
           placeholderTextColor={Colors.textMuted}
           value={searchItem}
           onChangeText={setSearchItem}
-          style={styles.searchInput}
+          style={[
+            styles.searchInput,
+            Platform.OS === 'web' ? ({ outlineStyle: 'none', outline: 'none' } as any) : null,
+          ]}
+          onFocus={() => setSearchFocused(true)}
+          onBlur={() => setSearchFocused(false)}
         />
         {searchItem ? (
           <TouchableOpacity onPress={() => setSearchItem('')}>
@@ -770,6 +776,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
     height: 38,
+  },
+  searchBarFocused: {
+    borderColor: Colors.primary,
+    backgroundColor: '#FFFFFF',
   },
   searchInput: {
     flex: 1,
