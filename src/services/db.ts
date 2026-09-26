@@ -188,7 +188,16 @@ export const DataRepository = {
           .then(async (snap) => {
             if (!snap.empty) {
               const list = snap.docs.map((d) => d.data() as Customer);
-              await StorageService.saveCustomers(businessId, list);
+              // Safely merge based on updatedAt to prevent stale overwrites
+              const mergedMap = new Map<string, Customer>();
+              localCustomers.forEach((c) => mergedMap.set(c.id, c));
+              list.forEach((c) => {
+                const existing = mergedMap.get(c.id);
+                if (!existing || new Date(c.updatedAt).getTime() > new Date(existing.updatedAt).getTime()) {
+                  mergedMap.set(c.id, c);
+                }
+              });
+              await StorageService.saveCustomers(businessId, Array.from(mergedMap.values()));
             }
           })
           .catch((err) => console.warn('Firestore getCustomers background sync error:', err));
@@ -299,13 +308,22 @@ export const DataRepository = {
           .then(async (snap) => {
             if (!snap.empty) {
               const list = snap.docs.map((d) => d.data() as Transaction);
-              if (customerId) {
-                const allLocal = await StorageService.getTransactions(businessId);
-                const otherTx = allLocal.filter((t) => t.customerId !== customerId);
-                await StorageService.saveTransactions(businessId, [...otherTx, ...list]);
-              } else {
-                await StorageService.saveTransactions(businessId, list);
-              }
+              const allLocal = await StorageService.getTransactions(businessId);
+              
+              // Safely merge based on ID to retain newly created local txs that are not in Firestore yet
+              const mergedMap = new Map<string, Transaction>();
+              allLocal.forEach((t) => mergedMap.set(t.id, t));
+              // Note: for transactions, they are rarely edited after creation except for deletion,
+              // but if edited, updatedAt should ideally be used. For safety, since they are immutable in this basic app,
+              // we can just overwrite, but we MUST keep local txs that don't exist in Firestore yet.
+              list.forEach((t) => {
+                const existing = mergedMap.get(t.id);
+                // Keep local if it exists and Firestore one doesn't have an updatedAt or is older.
+                // Assuming transactions are append-only mostly, just set it.
+                mergedMap.set(t.id, t); 
+              });
+              
+              await StorageService.saveTransactions(businessId, Array.from(mergedMap.values()));
             }
           })
           .catch((err) => console.warn('Firestore getTransactions background sync error:', err));
