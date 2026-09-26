@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Header } from '../../components/Header';
@@ -79,6 +80,29 @@ export const SettingsScreen: React.FC = () => {
   };
 
   const handleSeedReferenceData = () => {
+    const doSeed = async () => {
+      try {
+        await seedDemoData();
+        if (Platform.OS === 'web') {
+          window.alert(t('seedSampleDataSuccess', language));
+        } else {
+          Alert.alert(t('success', language), t('seedSampleDataSuccess', language));
+        }
+      } catch (err) {
+        console.error('seedDemoData error:', err);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const ok = window.confirm(
+        `${t('seedSampleDataConfirmTitle', language)}\n\n${t('seedSampleDataConfirmDesc', language)}`
+      );
+      if (ok) {
+        doSeed();
+      }
+      return;
+    }
+
     Alert.alert(
       t('seedSampleDataConfirmTitle', language),
       t('seedSampleDataConfirmDesc', language),
@@ -86,16 +110,36 @@ export const SettingsScreen: React.FC = () => {
         { text: t('cancel', language), style: 'cancel' },
         {
           text: t('confirm', language),
-          onPress: async () => {
-            await seedDemoData();
-            Alert.alert(t('success', language), t('seedSampleDataSuccess', language));
-          },
+          onPress: doSeed,
         },
       ]
     );
   };
 
   const handleClearAll = () => {
+    const doClear = async () => {
+      try {
+        await clearData();
+        if (Platform.OS === 'web') {
+          window.alert(t('clearAllDataSuccess', language));
+        } else {
+          Alert.alert(t('success', language), t('clearAllDataSuccess', language));
+        }
+      } catch (err) {
+        console.error('clearData error:', err);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const ok = window.confirm(
+        `${t('clearAllDataConfirmTitle', language)}\n\n${t('clearAllDataConfirmDesc', language)}`
+      );
+      if (ok) {
+        doClear();
+      }
+      return;
+    }
+
     Alert.alert(
       t('clearAllDataConfirmTitle', language),
       t('clearAllDataConfirmDesc', language),
@@ -104,10 +148,7 @@ export const SettingsScreen: React.FC = () => {
         {
           text: t('delete', language),
           style: 'destructive',
-          onPress: async () => {
-            await clearData();
-            Alert.alert(t('success', language), t('clearAllDataSuccess', language));
-          },
+          onPress: doClear,
         },
       ]
     );

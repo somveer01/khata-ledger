@@ -844,4 +844,29 @@ export const DataRepository = {
     await StorageService.saveTransactions(businessId, txRecords);
     await StorageService.saveCustomers(businessId, [c1, c2, c3]);
   },
+
+  // -------------------------------------------------------------
+  // CLEAR ALL DATA (Reset)
+  // -------------------------------------------------------------
+  async clearAllData(businessId: string): Promise<void> {
+    // 1. Clear local storage and memory cache
+    await StorageService.clearBusinessData(businessId);
+    await StorageService.saveCustomers(businessId, []);
+    await StorageService.saveVillages(businessId, []);
+    await StorageService.saveTransactions(businessId, []);
+
+    // 2. If Firebase is active, delete records from Firestore
+    if (isFirebaseConfigured() && db) {
+      try {
+        const collections = ['customers', 'villages', 'transactions'];
+        for (const colName of collections) {
+          const snap = await getDocs(query(collection(db, colName), where('businessId', '==', businessId)));
+          const deletes = snap.docs.map((docSnap) => deleteDoc(docSnap.ref));
+          await Promise.all(deletes);
+        }
+      } catch (err) {
+        console.warn('Firestore clearAllData error:', err);
+      }
+    }
+  },
 };

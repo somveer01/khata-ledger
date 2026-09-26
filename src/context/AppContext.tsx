@@ -118,8 +118,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const clearData = async () => {
     if (business) {
-      await StorageService.clearBusinessData(business.id);
+      setIsSyncing(true);
+      await DataRepository.clearAllData(business.id);
       await refreshAllData();
+      setIsSyncing(false);
     }
   };
 
