@@ -27,6 +27,7 @@ import { computeLedgerWithRunningBalances, calculateCustomerDueDate } from '../.
 import { PdfService } from '../../services/pdfService';
 import { ReminderService } from '../../services/reminderService';
 import { Customer, Transaction } from '../../types';
+import { confirmAction } from '../../utils/dialog';
 import { Ionicons } from '@expo/vector-icons';
 
 export const CustomerLedgerScreen: React.FC = () => {
@@ -163,28 +164,32 @@ export const CustomerLedgerScreen: React.FC = () => {
     if (!selectedTx || !business) return;
     const txToDelete = selectedTx;
     guardAction(() => {
-      Alert.alert(
+      confirmAction(
         t('deleteEntry', language),
         `${txToDelete.description} (${formatCurrency(txToDelete.amountPaise)})\n\n${t('deleteEntryConfirm', language)}`,
-        [
-          { text: t('cancel', language), style: 'cancel' },
-          {
-            text: t('delete', language),
-            style: 'destructive',
-            onPress: async () => {
-              const res = await DataRepository.deleteTransaction(business.id, txToDelete.id);
-              if (res.success) {
-                setTxModalVisible(false);
-                setSelectedTx(null);
-                await refreshAllData();
-                await loadLedger();
-                Alert.alert(t('success', language), t('entryDeletedSuccess', language));
-              } else {
-                Alert.alert(t('error', language), res.error || 'Failed to delete transaction');
-              }
-            },
-          },
-        ]
+        async () => {
+          const res = await DataRepository.deleteTransaction(business.id, txToDelete.id);
+          if (res.success) {
+            setTxModalVisible(false);
+            setSelectedTx(null);
+            await refreshAllData();
+            await loadLedger();
+            if (Platform.OS === 'web') {
+              window.alert(t('entryDeletedSuccess', language));
+            } else {
+              Alert.alert(t('success', language), t('entryDeletedSuccess', language));
+            }
+          } else {
+            const errMsg = res.error || 'Failed to delete transaction';
+            if (Platform.OS === 'web') {
+              window.alert(errMsg);
+            } else {
+              Alert.alert(t('error', language), errMsg);
+            }
+          }
+        },
+        t('delete', language),
+        t('cancel', language)
       );
     });
   };

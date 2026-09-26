@@ -8,6 +8,7 @@ import {
   Modal,
   Alert,
   RefreshControl,
+  Platform,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Header } from '../../components/Header';
@@ -23,6 +24,7 @@ import { formatCurrency } from '../../utils/money';
 import { DataRepository } from '../../services/db';
 import { PdfService } from '../../services/pdfService';
 import { Village, VillageSummary } from '../../types';
+import { confirmAction } from '../../utils/dialog';
 import { Ionicons } from '@expo/vector-icons';
 
 export const VillageListScreen: React.FC = () => {
@@ -125,39 +127,47 @@ export const VillageListScreen: React.FC = () => {
           ? `क्या आप सचमुच गाँव "${item.villageName}" को हटाना चाहते हैं?`
           : `Are you sure you want to delete village "${item.villageName}"?`;
 
-      Alert.alert(
+      confirmAction(
         t('deleteVillage', language),
         confirmMsg,
-        [
-          { text: t('cancel', language), style: 'cancel' },
-          {
-            text: t('delete', language),
-            style: 'destructive',
-            onPress: async () => {
-              if (!business) return;
-              const res = await DataRepository.deleteVillage(business.id, item.villageId);
-              if (res.success) {
-                setModalVisible(false);
-                setEditingVillage(null);
-                setVillageName('');
-                await refreshAllData();
-                await loadData();
-                const successMsg =
-                  language === 'hi'
-                    ? `गाँव "${item.villageName}" सफलतापूर्वक हटा दिया गया।`
-                    : `Village "${item.villageName}" deleted successfully.`;
-                Alert.alert(t('success', language), successMsg);
-              } else if (res.error === 'HAS_TRANSACTIONS') {
-                Alert.alert(
-                  t('cannotDeleteVillageTitle', language),
-                  t('cannotDeleteVillageHasTx', language)
-                );
-              } else {
-                Alert.alert(t('error', language), res.error || 'Failed to delete village');
-              }
-            },
-          },
-        ]
+        async () => {
+          if (!business) return;
+          const res = await DataRepository.deleteVillage(business.id, item.villageId);
+          if (res.success) {
+            setModalVisible(false);
+            setEditingVillage(null);
+            setVillageName('');
+            await refreshAllData();
+            await loadData();
+            const successMsg =
+              language === 'hi'
+                ? `गाँव "${item.villageName}" सफलतापूर्वक हटा दिया गया।`
+                : `Village "${item.villageName}" deleted successfully.`;
+            if (Platform.OS === 'web') {
+              window.alert(successMsg);
+            } else {
+              Alert.alert(t('success', language), successMsg);
+            }
+          } else if (res.error === 'HAS_TRANSACTIONS') {
+            if (Platform.OS === 'web') {
+              window.alert(`${t('cannotDeleteVillageTitle', language)}\n\n${t('cannotDeleteVillageHasTx', language)}`);
+            } else {
+              Alert.alert(
+                t('cannotDeleteVillageTitle', language),
+                t('cannotDeleteVillageHasTx', language)
+              );
+            }
+          } else {
+            const errMsg = res.error || 'Failed to delete village';
+            if (Platform.OS === 'web') {
+              window.alert(errMsg);
+            } else {
+              Alert.alert(t('error', language), errMsg);
+            }
+          }
+        },
+        t('delete', language),
+        t('cancel', language)
       );
     });
   };

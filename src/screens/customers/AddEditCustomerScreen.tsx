@@ -8,6 +8,7 @@ import {
   Alert,
   Modal,
   FlatList,
+  Platform,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Header } from '../../components/Header';
@@ -21,6 +22,7 @@ import { toPaise, toRupees } from '../../utils/money';
 import { DataRepository } from '../../services/db';
 import { Customer, Village } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
+import { confirmAction } from '../../utils/dialog';
 
 export const AddEditCustomerScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -124,43 +126,52 @@ export const AddEditCustomerScreen: React.FC = () => {
         ? `क्या आप सचमुच ग्राहक "${existingCustomer.name}" को हटाना चाहते हैं?`
         : `Are you sure you want to delete customer "${existingCustomer.name}"?`;
 
-    Alert.alert(
+    confirmAction(
       t('deleteCustomer', language),
       confirmMsg,
-      [
-        { text: t('cancel', language), style: 'cancel' },
-        {
-          text: t('delete', language),
-          style: 'destructive',
-          onPress: async () => {
-            setLoading(true);
-            const res = await DataRepository.deleteCustomer(business.id, existingCustomer.id);
-            await refreshAllData();
-            setLoading(false);
-            if (res.success) {
-              const successMsg =
-                language === 'hi'
-                  ? `ग्राहक "${existingCustomer.name}" सफलतापूर्वक हटा दिया गया।`
-                  : `Customer "${existingCustomer.name}" deleted successfully.`;
-              Alert.alert(t('success', language), successMsg, [
-                {
-                  text: t('ok', language),
-                  onPress: () => {
-                    navigation.navigate('MainTabs', { screen: 'CustomersTab' });
-                  },
+      async () => {
+        setLoading(true);
+        const res = await DataRepository.deleteCustomer(business.id, existingCustomer.id);
+        await refreshAllData();
+        setLoading(false);
+        if (res.success) {
+          const successMsg =
+            language === 'hi'
+              ? `ग्राहक "${existingCustomer.name}" सफलतापूर्वक हटा दिया गया।`
+              : `Customer "${existingCustomer.name}" deleted successfully.`;
+          if (Platform.OS === 'web') {
+            window.alert(successMsg);
+            navigation.navigate('MainTabs', { screen: 'CustomersTab' });
+          } else {
+            Alert.alert(t('success', language), successMsg, [
+              {
+                text: t('ok', language),
+                onPress: () => {
+                  navigation.navigate('MainTabs', { screen: 'CustomersTab' });
                 },
-              ]);
-            } else if (res.error === 'HAS_TRANSACTIONS') {
-              Alert.alert(
-                t('cannotDeleteCustomerTitle', language),
-                t('cannotDeleteCustomerHasTx', language)
-              );
-            } else {
-              Alert.alert(t('error', language), res.error || 'Failed to delete customer');
-            }
-          },
-        },
-      ]
+              },
+            ]);
+          }
+        } else if (res.error === 'HAS_TRANSACTIONS') {
+          if (Platform.OS === 'web') {
+            window.alert(`${t('cannotDeleteCustomerTitle', language)}\n\n${t('cannotDeleteCustomerHasTx', language)}`);
+          } else {
+            Alert.alert(
+              t('cannotDeleteCustomerTitle', language),
+              t('cannotDeleteCustomerHasTx', language)
+            );
+          }
+        } else {
+          const errMsg = res.error || 'Failed to delete customer';
+          if (Platform.OS === 'web') {
+            window.alert(errMsg);
+          } else {
+            Alert.alert(t('error', language), errMsg);
+          }
+        }
+      },
+      t('delete', language),
+      t('cancel', language)
     );
   };
 
@@ -203,22 +214,29 @@ export const AddEditCustomerScreen: React.FC = () => {
       setLoading(false);
 
       if (result.success) {
-        Alert.alert(
-          t('success', language),
-          t('customerSavedSuccess', language),
-          [
-            {
-              text: t('ok', language),
-              onPress: () => {
-                if (isEditing) {
-                  navigation.goBack();
-                } else {
-                  navigation.replace('CustomerLedger', { customer: result.customer });
-                }
+        const onDone = () => {
+          if (isEditing) {
+            navigation.goBack();
+          } else {
+            navigation.replace('CustomerLedger', { customer: result.customer });
+          }
+        };
+
+        if (Platform.OS === 'web') {
+          window.alert(t('customerSavedSuccess', language));
+          onDone();
+        } else {
+          Alert.alert(
+            t('success', language),
+            t('customerSavedSuccess', language),
+            [
+              {
+                text: t('ok', language),
+                onPress: onDone,
               },
-            },
-          ]
-        );
+            ]
+          );
+        }
       }
     } catch (err: any) {
       setLoading(false);

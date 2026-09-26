@@ -18,6 +18,7 @@ import { useApp } from '../../context/AppContext';
 import { t } from '../../i18n';
 import { Business, SupportedLanguage } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
+import { confirmAction } from '../../utils/dialog';
 
 export const SettingsScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -190,13 +191,12 @@ export const SettingsScreen: React.FC = () => {
               variant="outline"
               size="sm"
               onPress={() => {
-                Alert.alert(
+                confirmAction(
                   t('logoutConfirmTitle', language),
                   t('logoutConfirmDesc', language),
-                  [
-                    { text: t('cancel', language), style: 'cancel' },
-                    { text: t('logout', language), style: 'destructive', onPress: () => logout() },
-                  ]
+                  () => logout(),
+                  t('logout', language),
+                  t('cancel', language)
                 );
               }}
               style={{ marginTop: Spacing.sm }}

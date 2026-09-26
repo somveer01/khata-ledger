@@ -428,14 +428,18 @@ export const DataRepository = {
             ...finalizedTx,
             serverTimestamp: serverTimestamp(),
           });
-          fTx.update(custRef, {
-            currentBalancePaise: newBalance,
-            totalCreditPaise: customer.totalCreditPaise,
-            totalPaymentPaise: customer.totalPaymentPaise,
-            transactionCount: customer.transactionCount,
-            dueDate: customer.dueDate || null,
-            updatedAt: new Date().toISOString(),
-          });
+          fTx.set(
+            custRef,
+            {
+              currentBalancePaise: newBalance,
+              totalCreditPaise: customer.totalCreditPaise,
+              totalPaymentPaise: customer.totalPaymentPaise,
+              transactionCount: customer.transactionCount,
+              dueDate: customer.dueDate || null,
+              updatedAt: new Date().toISOString(),
+            },
+            { merge: true }
+          );
         });
       } catch (err) {
         console.warn('Firestore transaction sync error (queued locally):', err);
@@ -504,14 +508,18 @@ export const DataRepository = {
             ...updatedTx,
             serverTimestamp: serverTimestamp(),
           });
-          fTx.update(custRef, {
-            currentBalancePaise: netOutstandingPaise,
-            totalCreditPaise: customer.totalCreditPaise,
-            totalPaymentPaise: customer.totalPaymentPaise,
-            transactionCount: customer.transactionCount,
-            dueDate: customer.dueDate || null,
-            updatedAt: new Date().toISOString(),
-          });
+          fTx.set(
+            custRef,
+            {
+              currentBalancePaise: netOutstandingPaise,
+              totalCreditPaise: customer.totalCreditPaise,
+              totalPaymentPaise: customer.totalPaymentPaise,
+              transactionCount: customer.transactionCount,
+              dueDate: customer.dueDate || null,
+              updatedAt: new Date().toISOString(),
+            },
+            { merge: true }
+          );
         });
       } catch (err) {
         console.warn('Firestore updateTransaction error:', err);

@@ -6,6 +6,7 @@ import { Colors, Spacing, Typography, BorderRadius } from '../constants/theme';
 import { useApp } from '../context/AppContext';
 import { t } from '../i18n';
 import { Ionicons } from '@expo/vector-icons';
+import { confirmAction } from '../utils/dialog';
 
 interface HeaderProps {
   title?: string;
@@ -27,13 +28,12 @@ export const Header: React.FC<HeaderProps> = ({
   const { business, language, isFirebaseActive, user, isAuthenticated, showAuthModal, logout } = useApp();
 
   const handleUserPress = () => {
-    Alert.alert(
+    confirmAction(
       user?.displayName || user?.email || t('account', language),
       `${t('loggedInAs', language)}: ${user?.email || ''}\n\n${t('logoutConfirmDesc', language)}`,
-      [
-        { text: t('cancel', language), style: 'cancel' },
-        { text: t('logout', language), style: 'destructive', onPress: () => logout() },
-      ]
+      () => logout(),
+      t('logout', language),
+      t('cancel', language)
     );
   };
 
