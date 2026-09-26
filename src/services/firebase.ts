@@ -8,21 +8,18 @@ import {
   Firestore 
 } from 'firebase/firestore';
 
-// Default / fallback Firebase credentials (can be overridden via environment or runtime settings)
+// Firebase credentials (overridable via environment variables)
 const firebaseConfig = {
-  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || 'AIzaSyDemoKhataBookApiKeyPlaceholder12345',
-  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || 'khatabook-retailer.firebaseapp.com',
-  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || 'khatabook-retailer',
-  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || 'khatabook-retailer.appspot.com',
-  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '123456789012',
-  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || '1:123456789012:android:abcdef1234567890',
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || 'AIzaSyA2isAsEPj2go-KseGbjvVLEQIPDhNGspE',
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || 'khata-ledger-ebb57.firebaseapp.com',
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || 'khata-ledger-ebb57',
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || 'khata-ledger-ebb57.firebasestorage.app',
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '1026719118798',
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || '1:1026719118798:web:3b2300dfdc5be8afaf279f',
 };
 
 export const isFirebaseConfigured = (): boolean => {
-  return (
-    !!process.env.EXPO_PUBLIC_FIREBASE_API_KEY &&
-    process.env.EXPO_PUBLIC_FIREBASE_API_KEY !== 'AIzaSyDemoKhataBookApiKeyPlaceholder12345'
-  );
+  return true;
 };
 
 let app: FirebaseApp;
