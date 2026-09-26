@@ -154,6 +154,11 @@ export const AddEntryScreen: React.FC = () => {
       return;
     }
 
+    if (!business) {
+      Alert.alert(t('error', language), 'Business not loaded');
+      return;
+    }
+
     if (!selectedCustomer) {
       Alert.alert(t('error', language), t('pleaseSelectCustomer', language));
       return;
