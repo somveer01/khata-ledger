@@ -302,66 +302,6 @@ export const AddEditCustomerScreen: React.FC = () => {
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <Card>
-          {!isEditing && (
-            <View style={styles.importBanner}>
-              <View style={styles.importBannerLeft}>
-                <View style={styles.importIconBadge}>
-                  <Ionicons name="people" size={20} color={Colors.primary} />
-                </View>
-                <View style={styles.importTextWrap}>
-                  <Text style={styles.importTitle}>{t('importContact', language)}</Text>
-                  <Text style={styles.importSubtitle}>
-                    {language === 'hi'
-                      ? 'फ़ोन संपर्कों या WhatsApp से सीधा भरें'
-                      : 'Auto-fill from Phone or WhatsApp'}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.importBtnRow}>
-                {isContactPickerSupported() ? (
-                  <TouchableOpacity
-                    style={styles.actionPillPrimary}
-                    onPress={handleImportFromDevice}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="call" size={14} color="#FFFFFF" />
-                    <Text style={styles.actionPillTextPrimary}>
-                      {language === 'hi' ? 'फ़ोन संपर्क' : 'Phonebook'}
-                    </Text>
-                  </TouchableOpacity>
-                ) : null}
-
-                <TouchableOpacity
-                  style={[
-                    styles.actionPillSecondary,
-                    !isContactPickerSupported() && styles.actionPillPrimary,
-                  ]}
-                  onPress={() => {
-                    setRawContactText('');
-                    setParsedPreview({ name: '', mobile: '' });
-                    setPasteModalVisible(true);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons
-                    name="clipboard-outline"
-                    size={14}
-                    color={!isContactPickerSupported() ? '#FFFFFF' : Colors.primary}
-                  />
-                  <Text
-                    style={[
-                      styles.actionPillTextSecondary,
-                      !isContactPickerSupported() && styles.actionPillTextPrimary,
-                    ]}
-                  >
-                    {language === 'hi' ? 'पेस्ट करें' : 'Paste Text'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-
           {/* Customer Name */}
           <Input
             label={`${t('customerName', language)} *`}
@@ -598,77 +538,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: Spacing.lg,
   },
-  importBanner: {
-    backgroundColor: 'rgba(30, 58, 138, 0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(30, 58, 138, 0.15)',
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
-    marginBottom: Spacing.lg,
-    gap: Spacing.sm,
-  },
-  importBannerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  importIconBadge: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: 'rgba(30, 58, 138, 0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  importTextWrap: {
-    flex: 1,
-  },
-  importTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.primary,
-  },
-  importSubtitle: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginTop: 1,
-  },
-  importBtnRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    marginTop: 2,
-  },
-  actionPillPrimary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.primary,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 7,
-    borderRadius: BorderRadius.full,
-    gap: 6,
-  },
-  actionPillTextPrimary: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  actionPillSecondary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: Colors.border,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 7,
-    borderRadius: BorderRadius.full,
-    gap: 6,
-  },
-  actionPillTextSecondary: {
-    color: Colors.primary,
-    fontSize: 12,
-    fontWeight: '600',
-  },
   fieldHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -678,15 +547,15 @@ const styles = StyleSheet.create({
   inlineImportBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 5,
     backgroundColor: 'rgba(30, 58, 138, 0.08)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: BorderRadius.sm,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.full,
   },
   inlineImportText: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
     color: Colors.primary,
   },
   fieldContainer: {
