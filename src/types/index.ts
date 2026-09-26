@@ -56,6 +56,7 @@ export interface Transaction {
   type: TransactionType;
   amountPaise: CurrencyPaise; // Always positive integer paise
   discountPaise?: CurrencyPaise; // Discount / Concession given upon payment (in paise)
+  receivedAmountPaise?: CurrencyPaise; // Amount paid by customer at time of sale (in paise)
   dueDate?: string; // Payment Due Date (YYYY-MM-DD) for credit sales / udhaar
   description: string; // Item / Particulars (e.g. धान, डिसेस इमामेक्टीन)
   quantity?: number;

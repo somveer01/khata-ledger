@@ -62,12 +62,12 @@ export const AddEntryScreen: React.FC = () => {
   const [notes, setNotes] = useState(editingTransaction?.notes || '');
   const [loading, setLoading] = useState(false);
 
-  // Credit (Udhaar) specific fields
+  // Credit (Udhaar / Sale) specific fields
   const [description, setDescription] = useState(
     editingTransaction?.type === 'CREDIT_SALE' ? editingTransaction.description : ''
   );
   const [quantity, setQuantity] = useState(
-    editingTransaction?.quantity ? String(editingTransaction.quantity) : ''
+    editingTransaction?.quantity ? String(editingTransaction.quantity) : '1'
   );
   const [unit, setUnit] = useState(editingTransaction?.unit || 'kg');
   const [rate, setRate] = useState(
@@ -78,6 +78,12 @@ export const AddEntryScreen: React.FC = () => {
       ? (editingTransaction.amountPaise / 100).toString()
       : ''
   );
+  const [receivedAmount, setReceivedAmount] = useState(
+    editingTransaction?.receivedAmountPaise
+      ? (editingTransaction.receivedAmountPaise / 100).toString()
+      : ''
+  );
+  const [salePaymentMethod, setSalePaymentMethod] = useState<PaymentMethod>('CASH');
 
   // Payment specific fields
   const [paymentAmount, setPaymentAmount] = useState(
@@ -164,6 +170,10 @@ export const AddEntryScreen: React.FC = () => {
         return;
       }
 
+      const receivedNum = parseFloat(receivedAmount);
+      const hasReceived = !isNaN(receivedNum) && receivedNum > 0;
+      const receivedPaise = hasReceived ? toPaise(receivedNum) : 0;
+
       setLoading(true);
       try {
         const amountPaise = toPaise(amountNum);
@@ -175,12 +185,12 @@ export const AddEntryScreen: React.FC = () => {
             ...editingTransaction,
             customerId: selectedCustomer.id,
             amountPaise,
+            receivedAmountPaise: hasReceived ? receivedPaise : undefined,
             dueDate: dueDate || undefined,
             description: description.trim(),
             quantity: qtyNum,
             unit: qtyNum ? unit : undefined,
             ratePaise,
-            referenceNumber: refNumber.trim() || undefined,
             notes: notes.trim() || undefined,
             date,
           };
@@ -206,12 +216,12 @@ export const AddEntryScreen: React.FC = () => {
           customerId: selectedCustomer.id,
           type: 'CREDIT_SALE',
           amountPaise,
+          receivedAmountPaise: hasReceived ? receivedPaise : undefined,
           dueDate: dueDate || undefined,
           description: description.trim(),
           quantity: qtyNum,
           unit: qtyNum ? unit : undefined,
           ratePaise,
-          referenceNumber: refNumber.trim() || undefined,
           notes: notes.trim() || undefined,
           date,
           createdAt: new Date().toISOString(),
@@ -219,24 +229,67 @@ export const AddEntryScreen: React.FC = () => {
         };
 
         const result = await DataRepository.recordTransaction(tx);
+        let finalBalancePaise = result.newBalancePaise;
+
+        // If customer paid an amount at the time of sale, record corresponding PAYMENT
+        if (result.success && hasReceived) {
+          const payTx: Transaction = {
+            id: `tx_pay_${Date.now() + 1}`,
+            businessId: business!.id,
+            customerId: selectedCustomer.id,
+            type: 'PAYMENT',
+            amountPaise: receivedPaise,
+            paymentMethod: salePaymentMethod,
+            description:
+              language === 'hi'
+                ? `बिक्री के समय भुगतान प्राप्त (${description.trim()})`
+                : `Payment at sale (${description.trim()})`,
+            referenceNumber: tx.id,
+            notes: notes.trim() || undefined,
+            date,
+            createdAt: new Date(Date.now() + 500).toISOString(),
+            idempotencyKey: `idemp_pay_sale_${tx.id}`,
+          };
+          const payResult = await DataRepository.recordTransaction(payTx);
+          if (payResult.success) {
+            finalBalancePaise = payResult.newBalancePaise;
+          }
+        }
+
         await refreshAllData();
         setLoading(false);
 
         if (result.success) {
+          let summaryDetails = `${selectedCustomer.name}\n${t('totalAmount', language)}: ${formatCurrency(amountPaise)}`;
+          if (hasReceived) {
+            summaryDetails += `\n${t('receivedPaymentAtSale', language)}: ${formatCurrency(receivedPaise)}`;
+            summaryDetails += `\n${t('netBalanceAddedToLedger', language)}: ${formatCurrency(amountPaise - receivedPaise)}`;
+          }
+          summaryDetails += `\n${t('currentOutstanding', language)}: ${formatCurrency(finalBalancePaise)}`;
+
           confirmAction(
-            t('udhaarRecordedSuccess', language),
-            `${selectedCustomer.name}: ${formatCurrency(amountPaise)}\n${t('currentOutstanding', language)}: ${formatCurrency(result.newBalancePaise)}`,
+            language === 'hi' ? 'बिक्री प्रविष्टि दर्ज की गई' : 'Sale Entry Recorded Successfully',
+            summaryDetails,
             () => {
               navigation.replace('CustomerLedger', {
                 customer: {
                   ...selectedCustomer,
-                  currentBalancePaise: result.newBalancePaise,
+                  currentBalancePaise: finalBalancePaise,
                 },
               });
             },
             t('viewLedgerBtn', language),
             t('addNewBtn', language),
-            'success'
+            'success',
+            () => {
+              // Reset form for next entry
+              setDescription('');
+              setQuantity('1');
+              setRate('');
+              setManualAmount('');
+              setReceivedAmount('');
+              setNotes('');
+            }
           );
         } else {
           Alert.alert(t('error', language), result.error || 'Error saving credit transaction');
@@ -374,8 +427,8 @@ export const AddEntryScreen: React.FC = () => {
       <Header
         title={
           isEditing
-            ? (mode === 'CREDIT' ? t('editUdhaar', language) : t('editPayment', language))
-            : t('addEntry', language)
+            ? (mode === 'CREDIT' ? t('editSaleEntry', language) : t('editPayment', language))
+            : (mode === 'CREDIT' ? t('addSaleEntry', language) : t('receivePayment', language))
         }
         subtitle={mode === 'CREDIT' ? t('giveCreditDesc', language) : t('receivePaymentDesc', language)}
         showBack
@@ -383,7 +436,7 @@ export const AddEntryScreen: React.FC = () => {
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        {/* Top Segmented Mode Selector: Udhaar (+) vs Payment (-) */}
+        {/* Top Segmented Mode Selector: Sale / Udhaar (+) vs Payment (-) */}
         <View style={styles.segmentedContainer}>
           <TouchableOpacity
             activeOpacity={0.8}
@@ -401,7 +454,7 @@ export const AddEntryScreen: React.FC = () => {
                 mode === 'CREDIT' && styles.activeCreditText,
               ]}
             >
-              {t('creditEntryTab', language)}
+              {t('addSaleEntryTab', language)}
             </Text>
           </TouchableOpacity>
 
@@ -718,13 +771,101 @@ export const AddEntryScreen: React.FC = () => {
             </>
           )}
 
-          {/* Common fields: Reference / Bill No. */}
-          <Input
-            label={t('referenceNumber', language)}
-            placeholder={t('invoiceReceiptOptional', language)}
-            value={refNumber}
-            onChangeText={setRefNumber}
-          />
+          {/* In CREDIT mode: Receive payment amount in place of Invoice/Ref No */}
+          {mode === 'CREDIT' ? (
+            <View style={styles.receivedPaymentSection}>
+              <Input
+                label={t('receivedPaymentAtSale', language)}
+                placeholder="0.00"
+                prefix="₹"
+                value={receivedAmount}
+                onChangeText={setReceivedAmount}
+                keyboardType="numeric"
+                style={{ fontSize: 20, fontWeight: '700', color: Colors.paymentReceived }}
+                helperText={t('receivedPaymentAtSaleHelper', language)}
+              />
+
+              {/* Quick Payment Method Selector (when customer pays at sale) */}
+              {parseFloat(receivedAmount) > 0 && (
+                <View style={styles.saleMethodSelector}>
+                  <Text style={styles.saleMethodLabel}>{t('paymentMethod', language)}:</Text>
+                  <View style={styles.saleMethodRow}>
+                    {(['CASH', 'UPI', 'BANK_TRANSFER'] as PaymentMethod[]).map((pm) => (
+                      <TouchableOpacity
+                        key={pm}
+                        style={[styles.saleMethodChip, salePaymentMethod === pm && styles.activeSaleMethodChip]}
+                        onPress={() => setSalePaymentMethod(pm)}
+                      >
+                        <Ionicons
+                          name={pm === 'CASH' ? 'cash-outline' : pm === 'UPI' ? 'qr-code-outline' : 'business-outline'}
+                          size={14}
+                          color={salePaymentMethod === pm ? Colors.primaryForeground : Colors.textSecondary}
+                        />
+                        <Text
+                          style={[
+                            styles.saleMethodText,
+                            salePaymentMethod === pm && styles.activeSaleMethodText,
+                          ]}
+                        >
+                          {pm === 'CASH' ? t('cash', language) : pm === 'UPI' ? t('upi', language) : t('bankTransfer', language)}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* Live Net Calculation Preview (Total Sale vs Received Payment) */}
+              {parseFloat(finalCreditAmount) > 0 && parseFloat(receivedAmount) > 0 && (
+                <View style={styles.saleCalculationPreview}>
+                  <View style={styles.calcRow}>
+                    <Text style={styles.calcLabel}>{t('totalAmount', language)}:</Text>
+                    <Text style={[styles.calcValue, { color: Colors.creditSale, fontWeight: '700' }]}>
+                      {formatCurrency(toPaise(parseFloat(finalCreditAmount)))}
+                    </Text>
+                  </View>
+                  <View style={styles.calcRow}>
+                    <Text style={styles.calcLabel}>{t('receivedPaymentAtSale', language)}:</Text>
+                    <Text style={[styles.calcValue, { color: Colors.paymentReceived, fontWeight: '700' }]}>
+                      - {formatCurrency(toPaise(parseFloat(receivedAmount)))}
+                    </Text>
+                  </View>
+                  <View style={[styles.calcRow, styles.calcBorderTop]}>
+                    <Text style={[styles.calcLabel, { fontWeight: '700' }]}>{t('netBalanceAddedToLedger', language)}:</Text>
+                    <Text
+                      style={[
+                        styles.calcValue,
+                        {
+                          fontWeight: '800',
+                          color:
+                            parseFloat(finalCreditAmount) - parseFloat(receivedAmount) > 0
+                              ? Colors.creditSale
+                              : parseFloat(finalCreditAmount) - parseFloat(receivedAmount) < 0
+                              ? Colors.advanceBalance
+                              : Colors.paymentReceived,
+                        },
+                      ]}
+                    >
+                      {formatCurrency(toPaise(Math.max(0, parseFloat(finalCreditAmount) - parseFloat(receivedAmount))))}
+                      {parseFloat(finalCreditAmount) === parseFloat(receivedAmount)
+                        ? ` (${t('settledZeroTag', language)})`
+                        : parseFloat(finalCreditAmount) < parseFloat(receivedAmount)
+                        ? ` (${t('advanceBalanceTag', language)})`
+                        : ''}
+                    </Text>
+                  </View>
+                </View>
+              )}
+            </View>
+          ) : (
+            /* In Payment mode: Reference / Bill No. */
+            <Input
+              label={t('referenceNumber', language)}
+              placeholder={t('invoiceReceiptOptional', language)}
+              value={refNumber}
+              onChangeText={setRefNumber}
+            />
+          )}
 
           {/* Common fields: Notes / Remarks */}
           <Input
@@ -743,8 +884,8 @@ export const AddEntryScreen: React.FC = () => {
                   : `${t('updateEntryBtn', language)} (₹${paymentAmount})`
                 : mode === 'CREDIT'
                 ? finalCreditAmount && parseFloat(finalCreditAmount) > 0
-                  ? `${t('giveCredit', language)} (₹${finalCreditAmount})`
-                  : t('giveCredit', language)
+                  ? `${t('addSaleEntry', language)} (₹${finalCreditAmount})`
+                  : t('addSaleEntry', language)
                 : paymentAmount && parseFloat(paymentAmount) > 0
                 ? `${t('recordPaymentBtn', language)} (₹${paymentAmount})`
                 : t('recordPaymentBtn', language)
@@ -1188,5 +1329,57 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     marginTop: 2,
     marginBottom: Spacing.sm,
+  },
+  receivedPaymentSection: {
+    marginBottom: Spacing.sm,
+  },
+  saleMethodSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+    marginTop: -4,
+  },
+  saleMethodLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  saleMethodRow: {
+    flexDirection: 'row',
+    gap: Spacing.xs,
+  },
+  saleMethodChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+    gap: 4,
+  },
+  activeSaleMethodChip: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  saleMethodText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  activeSaleMethodText: {
+    color: Colors.textInverse,
+  },
+  saleCalculationPreview: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.creditSale,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
 });

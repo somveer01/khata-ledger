@@ -432,7 +432,7 @@ export const CustomerLedgerScreen: React.FC = () => {
           onPress={() => guardAction(() => navigation.navigate('AddEntry', { customer, initialMode: 'CREDIT' }))}
         >
           <Ionicons name="add-circle-outline" size={20} color={Colors.textInverse} />
-          <Text style={styles.bottomBtnText}>Add Entry</Text>
+          <Text style={styles.bottomBtnText}>{t('addSaleEntry', language)}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity

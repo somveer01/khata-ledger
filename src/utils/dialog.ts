@@ -81,7 +81,8 @@ export const confirmAction = (
   onConfirm: () => void | Promise<void>,
   confirmText: string = 'OK',
   cancelText: string = 'Cancel',
-  type?: DialogType
+  type?: DialogType,
+  onCancel?: () => void
 ): void => {
   let deducedType: DialogType = type || 'warning';
   const lower = (title + ' ' + message + ' ' + confirmText).toLowerCase();
@@ -105,6 +106,7 @@ export const confirmAction = (
     confirmText,
     cancelText,
     onConfirm,
+    onCancel,
   });
 };
 
