@@ -9,6 +9,8 @@ export const Colors = {
   creditSale: '#DC2626', // Red: Udhaar / Given to customer / Customer Due
   creditSaleLight: '#FEE2E2',
   creditSaleText: '#991B1B',
+  danger: '#DC2626',
+  dangerLight: '#FEE2E2',
 
   paymentReceived: '#16A34A', // Green: Jama / Received from customer
   paymentReceivedLight: '#DCFCE7',

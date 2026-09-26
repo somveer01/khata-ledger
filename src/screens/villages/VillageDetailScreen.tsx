@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
   Modal,
+  Platform,
 } from 'react-native';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { Header } from '../../components/Header';
@@ -22,12 +23,13 @@ import { formatCurrency } from '../../utils/money';
 import { DataRepository } from '../../services/db';
 import { PdfService } from '../../services/pdfService';
 import { Customer, Village, VillageSummary } from '../../types';
+import { confirmAction } from '../../utils/dialog';
 import { Ionicons } from '@expo/vector-icons';
 
 export const VillageDetailScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const { business, language, refreshAllData } = useApp();
+  const { business, language, refreshAllData, guardAction } = useApp();
 
   const villageSummary: VillageSummary = route.params?.villageSummary;
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -54,6 +56,73 @@ export const VillageDetailScreen: React.FC = () => {
       loadCustomers();
     }, [loadCustomers])
   );
+
+  const handleDeleteCustomer = async (cust: Customer) => {
+    if (!business) return;
+    try {
+      const txs = await DataRepository.getTransactions(business.id, cust.id);
+      if (txs.length > 0) {
+        const msg =
+          language === 'hi'
+            ? `"${cust.name}" के खाते में ${txs.length} लेन-देन दर्ज हैं।\n\nखाता-बही की सुरक्षा के लिए, जब तक लेन-देन मौजूद हैं ग्राहक को हटाया नहीं जा सकता।\n\nकृपया पहले खाता-बही से सभी लेन-देन हटाएं।`
+            : `"${cust.name}" has ${txs.length} recorded transaction(s).\n\nTo preserve accounting accuracy, customers with transaction history cannot be deleted.\n\nPlease delete all transactions from the customer ledger first.`;
+        if (Platform.OS === 'web') {
+          window.alert(`${t('cannotDeleteCustomerTitle', language)}\n\n${msg}`);
+        } else {
+          Alert.alert(t('cannotDeleteCustomerTitle', language), msg);
+        }
+        return;
+      }
+
+      const confirmMsg =
+        language === 'hi'
+          ? `क्या आप सचमुच ग्राहक "${cust.name}" को हटाना चाहते हैं?`
+          : `Are you sure you want to delete customer "${cust.name}"?`;
+
+      confirmAction(
+        t('deleteCustomer', language),
+        confirmMsg,
+        async () => {
+          const res = await DataRepository.deleteCustomer(business.id, cust.id);
+          await refreshAllData();
+          await loadCustomers();
+          if (res.success) {
+            const successMsg =
+              language === 'hi'
+                ? `ग्राहक "${cust.name}" सफलतापूर्वक हटा दिया गया।`
+                : `Customer "${cust.name}" deleted successfully.`;
+            if (Platform.OS === 'web') {
+              window.alert(successMsg);
+            } else {
+              Alert.alert(t('success', language), successMsg);
+            }
+          } else if (res.error === 'HAS_TRANSACTIONS') {
+            const hasTxMsg = `${t('cannotDeleteCustomerTitle', language)}\n\n${t('cannotDeleteCustomerHasTx', language)}`;
+            if (Platform.OS === 'web') {
+              window.alert(hasTxMsg);
+            } else {
+              Alert.alert(t('cannotDeleteCustomerTitle', language), t('cannotDeleteCustomerHasTx', language));
+            }
+          } else {
+            const errMsg = res.error || 'Failed to delete customer';
+            if (Platform.OS === 'web') {
+              window.alert(errMsg);
+            } else {
+              Alert.alert(t('error', language), errMsg);
+            }
+          }
+        },
+        t('delete', language),
+        t('cancel', language)
+      );
+    } catch (err: any) {
+      if (Platform.OS === 'web') {
+        window.alert(err.message || 'Error checking customer transactions');
+      } else {
+        Alert.alert(t('error', language), err.message || 'Error checking customer transactions');
+      }
+    }
+  };
 
   const displayedCustomers = useMemo(() => {
     let list = [...customers];
@@ -278,13 +347,24 @@ export const VillageDetailScreen: React.FC = () => {
                     <TouchableOpacity
                       onPress={(e) => {
                         e.stopPropagation();
-                        navigation.navigate('EditCustomer', { customer: item });
+                        guardAction(() => navigation.navigate('EditCustomer', { customer: item }));
                       }}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       style={styles.customerEditIconBtn}
                       accessibilityLabel={t('editCustomer', language)}
                     >
                       <Ionicons name="pencil" size={12} color={Colors.primary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        guardAction(() => handleDeleteCustomer(item));
+                      }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      style={styles.customerDeleteIconBtn}
+                      accessibilityLabel={t('deleteCustomer', language)}
+                    >
+                      <Ionicons name="trash-outline" size={12} color={Colors.danger} />
                     </TouchableOpacity>
                   </View>
                   <Text style={styles.customerMobile}>{item.mobile}</Text>
@@ -522,6 +602,11 @@ const styles = StyleSheet.create({
     padding: 3,
     borderRadius: BorderRadius.full,
     backgroundColor: Colors.primaryLight,
+  },
+  customerDeleteIconBtn: {
+    padding: 3,
+    borderRadius: BorderRadius.full,
+    backgroundColor: '#FEE2E2',
   },
   customerName: {
     fontSize: 15,

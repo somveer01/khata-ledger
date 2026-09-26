@@ -194,6 +194,77 @@ export const CustomerLedgerScreen: React.FC = () => {
     });
   };
 
+  const handleDeleteCustomer = async () => {
+    if (!customer || !business) return;
+    try {
+      if (transactions.length > 0) {
+        const msg =
+          language === 'hi'
+            ? `"${customer.name}" के खाते में ${transactions.length} लेन-देन दर्ज हैं।\n\nखाता-बही की सुरक्षा के लिए, जब तक लेन-देन मौजूद हैं ग्राहक को हटाया नहीं जा सकता।\n\nकृपया पहले खाता-बही से सभी लेन-देन हटाएं।`
+            : `"${customer.name}" has ${transactions.length} recorded transaction(s).\n\nTo preserve accounting accuracy, customers with transaction history cannot be deleted.\n\nPlease delete all transactions from the customer ledger first.`;
+        if (Platform.OS === 'web') {
+          window.alert(`${t('cannotDeleteCustomerTitle', language)}\n\n${msg}`);
+        } else {
+          Alert.alert(t('cannotDeleteCustomerTitle', language), msg);
+        }
+        return;
+      }
+
+      const confirmMsg =
+        language === 'hi'
+          ? `क्या आप सचमुच ग्राहक "${customer.name}" को हटाना चाहते हैं?`
+          : `Are you sure you want to delete customer "${customer.name}"?`;
+
+      confirmAction(
+        t('deleteCustomer', language),
+        confirmMsg,
+        async () => {
+          const res = await DataRepository.deleteCustomer(business.id, customer.id);
+          await refreshAllData();
+          if (res.success) {
+            const successMsg =
+              language === 'hi'
+                ? `ग्राहक "${customer.name}" सफलतापूर्वक हटा दिया गया।`
+                : `Customer "${customer.name}" deleted successfully.`;
+            if (Platform.OS === 'web') {
+              window.alert(successMsg);
+              navigation.goBack();
+            } else {
+              Alert.alert(t('success', language), successMsg, [
+                {
+                  text: t('ok', language),
+                  onPress: () => navigation.goBack(),
+                },
+              ]);
+            }
+          } else if (res.error === 'HAS_TRANSACTIONS') {
+            const hasTxMsg = `${t('cannotDeleteCustomerTitle', language)}\n\n${t('cannotDeleteCustomerHasTx', language)}`;
+            if (Platform.OS === 'web') {
+              window.alert(hasTxMsg);
+            } else {
+              Alert.alert(t('cannotDeleteCustomerTitle', language), t('cannotDeleteCustomerHasTx', language));
+            }
+          } else {
+            const errMsg = res.error || 'Failed to delete customer';
+            if (Platform.OS === 'web') {
+              window.alert(errMsg);
+            } else {
+              Alert.alert(t('error', language), errMsg);
+            }
+          }
+        },
+        t('delete', language),
+        t('cancel', language)
+      );
+    } catch (err: any) {
+      if (Platform.OS === 'web') {
+        window.alert(err.message || 'Error deleting customer');
+      } else {
+        Alert.alert(t('error', language), err.message || 'Error deleting customer');
+      }
+    }
+  };
+
   const isDue = (customer.currentBalancePaise || 0) > 0;
   const isAdvance = (customer.currentBalancePaise || 0) < 0;
 
@@ -212,6 +283,13 @@ export const CustomerLedgerScreen: React.FC = () => {
               accessibilityLabel={t('editCustomer', language)}
             >
               <Ionicons name="pencil" size={18} color={Colors.textInverse} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => guardAction(handleDeleteCustomer)}
+              style={styles.iconBtn}
+              accessibilityLabel={t('deleteCustomer', language)}
+            >
+              <Ionicons name="trash-outline" size={18} color={Colors.textInverse} />
             </TouchableOpacity>
             <TouchableOpacity onPress={handleExportPdf} style={styles.iconBtn} disabled={exportingPdf}>
               <Ionicons name="document-text-outline" size={20} color={Colors.textInverse} />
@@ -245,13 +323,22 @@ export const CustomerLedgerScreen: React.FC = () => {
                 variant={isDue ? 'danger' : isAdvance ? 'info' : 'success'}
                 size="md"
               />
-              <TouchableOpacity
-                style={styles.editCustomerBadgeBtn}
-                onPress={() => guardAction(() => navigation.navigate('EditCustomer', { customer }))}
-              >
-                <Ionicons name="pencil" size={12} color={Colors.primary} />
-                <Text style={styles.editCustomerBadgeText}>{t('editCustomerDetails', language)}</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                <TouchableOpacity
+                  style={styles.editCustomerBadgeBtn}
+                  onPress={() => guardAction(() => navigation.navigate('EditCustomer', { customer }))}
+                >
+                  <Ionicons name="pencil" size={12} color={Colors.primary} />
+                  <Text style={styles.editCustomerBadgeText}>{t('editCustomerDetails', language)}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.deleteCustomerBadgeBtn}
+                  onPress={() => guardAction(handleDeleteCustomer)}
+                >
+                  <Ionicons name="trash-outline" size={12} color={Colors.danger} />
+                  <Text style={styles.deleteCustomerBadgeText}>{t('delete', language)}</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
 
@@ -576,6 +663,20 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: Colors.primary,
+  },
+  deleteCustomerBadgeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.full,
+  },
+  deleteCustomerBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.danger,
   },
   summaryGrid: {
     flexDirection: 'row',

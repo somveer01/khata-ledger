@@ -117,7 +117,11 @@ export const AddEditCustomerScreen: React.FC = () => {
         language === 'hi'
           ? `"${existingCustomer.name}" के खाते में ${txs.length} लेन-देन दर्ज हैं।\n\nखाता-बही की सुरक्षा के लिए, जब तक लेन-देन मौजूद हैं ग्राहक को हटाया नहीं जा सकता।\n\nकृपया पहले खाता-बही से सभी लेन-देन हटाएं।`
           : `"${existingCustomer.name}" has ${txs.length} recorded transaction(s).\n\nTo preserve accounting accuracy, customers with transaction history cannot be deleted.\n\nPlease delete all transactions from the customer ledger first.`;
-      Alert.alert(t('cannotDeleteCustomerTitle', language), msg);
+      if (Platform.OS === 'web') {
+        window.alert(`${t('cannotDeleteCustomerTitle', language)}\n\n${msg}`);
+      } else {
+        Alert.alert(t('cannotDeleteCustomerTitle', language), msg);
+      }
       return;
     }
 
