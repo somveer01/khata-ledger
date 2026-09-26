@@ -1,0 +1,45 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: is user authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Business profile
+    match /businesses/{businessId} {
+      allow read: if true; // Guests can see shop profile & screens
+      allow write: if isAuthenticated(); // Only logged-in users can modify business
+    }
+
+    // Villages collection
+    match /villages/{villageId} {
+      allow read: if true; // Guests can view villages
+      allow create, update: if isAuthenticated(); // Only logged-in users can add/edit
+      allow delete: if isAuthenticated();
+    }
+
+    // Customers collection
+    match /customers/{customerId} {
+      allow read: if true; // Guests can view customer lists and balances
+      allow create, update: if isAuthenticated(); // Only logged-in users can add/edit customers
+      allow delete: if isAuthenticated();
+    }
+
+    // Financial Transactions collection
+    match /transactions/{transactionId} {
+      allow read: if true; // Guests can view ledger transactions & reports
+      allow create: if isAuthenticated() 
+        && request.resource.data.amountPaise is int
+        && request.resource.data.amountPaise > 0;
+      allow update, delete: if isAuthenticated();
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if isAuthenticated() && request.auth.uid == userId;
+    }
+  }
+}
