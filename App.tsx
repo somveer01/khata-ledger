@@ -26,6 +26,22 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
     `;
     document.head.appendChild(style);
   }
+
+  // Register PWA service worker and capture install prompt
+  if (typeof window !== 'undefined') {
+    window.addEventListener('beforeinstallprompt', (e: any) => {
+      e.preventDefault();
+      (window as any).__pwaInstallPrompt = e;
+    });
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker
+          .register('/khata-ledger/sw.js', { scope: '/khata-ledger/' })
+          .catch(() => {});
+      });
+    }
+  }
 }
 
 export default function App() {

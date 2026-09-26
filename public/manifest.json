@@ -1,0 +1,25 @@
+{
+  "name": "Khata Book - डिजिटल बहीखाता",
+  "short_name": "KhataBook",
+  "description": "Smart Digital Ledger for Retailers and Small Businesses",
+  "start_url": "/khata-ledger/",
+  "scope": "/khata-ledger/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1E3A8A",
+  "theme_color": "#1E3A8A",
+  "icons": [
+    {
+      "src": "/khata-ledger/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/khata-ledger/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

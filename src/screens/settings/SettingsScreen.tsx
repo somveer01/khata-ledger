@@ -178,12 +178,14 @@ export const SettingsScreen: React.FC = () => {
 
   const handleInstallApp = async () => {
     if (Platform.OS === 'web') {
-      if (deferredInstallPrompt) {
-        deferredInstallPrompt.prompt();
-        const choice = await deferredInstallPrompt.userChoice;
+      const promptEvent = (typeof window !== 'undefined' && (window as any).__pwaInstallPrompt) || deferredInstallPrompt;
+      if (promptEvent) {
+        promptEvent.prompt();
+        const choice = await promptEvent.userChoice;
         if (choice?.outcome === 'accepted') {
           setIsInstalled(true);
         }
+        if (typeof window !== 'undefined') (window as any).__pwaInstallPrompt = null;
         deferredInstallPrompt = null;
         return;
       }
