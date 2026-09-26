@@ -9,6 +9,17 @@ import { auth, isFirebaseConfigured } from './firebase';
 import { StorageService } from './storage';
 import { AppUser } from '../types';
 
+const normalizeDisplayName = (email: string | null | undefined, currentName: string | null | undefined): string | null | undefined => {
+  if (!email) return currentName;
+  if (email.toLowerCase().includes('somveerkushwaha')) {
+    return 'Somveer Kushwaha';
+  }
+  if (currentName && currentName.toLowerCase() === 'shiv') {
+    return email.split('@')[0];
+  }
+  return currentName;
+};
+
 export const AuthService = {
   /**
    * Register a new user with Email and Password
@@ -38,7 +49,7 @@ export const AuthService = {
         const appUser: AppUser = {
           uid: userCredential.user.uid,
           email: userCredential.user.email,
-          displayName: displayName || userCredential.user.displayName,
+          displayName: normalizeDisplayName(userCredential.user.email, displayName || userCredential.user.displayName),
           isGuest: false,
         };
 
@@ -76,7 +87,7 @@ export const AuthService = {
     const appUser: AppUser = {
       uid: newUid,
       email: trimmedEmail,
-      displayName: displayName || trimmedEmail.split('@')[0],
+      displayName: normalizeDisplayName(trimmedEmail, displayName || trimmedEmail.split('@')[0]),
       isGuest: false,
     };
 
@@ -104,7 +115,7 @@ export const AuthService = {
         const appUser: AppUser = {
           uid: userCredential.user.uid,
           email: userCredential.user.email,
-          displayName: userCredential.user.displayName,
+          displayName: normalizeDisplayName(userCredential.user.email, userCredential.user.displayName),
           isGuest: false,
         };
 
@@ -144,7 +155,7 @@ export const AuthService = {
         const appUser: AppUser = {
           uid: newUid,
           email: trimmedEmail,
-          displayName: trimmedEmail.split('@')[0],
+          displayName: normalizeDisplayName(trimmedEmail, trimmedEmail.split('@')[0]),
           isGuest: false,
         };
         await StorageService.setCurrentUser(appUser);
@@ -157,7 +168,7 @@ export const AuthService = {
     const appUser: AppUser = {
       uid: existing.uid,
       email: existing.email,
-      displayName: existing.name || existing.email.split('@')[0],
+      displayName: normalizeDisplayName(existing.email, existing.name || existing.email.split('@')[0]),
       isGuest: false,
     };
 
@@ -203,7 +214,7 @@ export const AuthService = {
           const appUser: AppUser = {
             uid: fbUser.uid,
             email: fbUser.email,
-            displayName: fbUser.displayName,
+            displayName: normalizeDisplayName(fbUser.email, fbUser.displayName),
             isGuest: false,
           };
           await StorageService.setCurrentUser(appUser);
@@ -212,9 +223,18 @@ export const AuthService = {
       });
     }
 
+    let resolvedUser = currentUser;
+    if (resolvedUser) {
+      const normalizedName = normalizeDisplayName(resolvedUser.email, resolvedUser.displayName);
+      if (normalizedName !== resolvedUser.displayName) {
+        resolvedUser = { ...resolvedUser, displayName: normalizedName };
+        await StorageService.setCurrentUser(resolvedUser);
+      }
+    }
+
     return {
-      user: currentUser,
-      isGuest: currentUser ? false : isGuest,
+      user: resolvedUser,
+      isGuest: resolvedUser ? false : isGuest,
     };
   },
 };

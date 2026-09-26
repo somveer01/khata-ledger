@@ -27,7 +27,7 @@ import { computeLedgerWithRunningBalances, calculateCustomerDueDate } from '../.
 import { PdfService } from '../../services/pdfService';
 import { ReminderService } from '../../services/reminderService';
 import { Customer, Transaction } from '../../types';
-import { confirmAction } from '../../utils/dialog';
+import { confirmAction, showAlert } from '../../utils/dialog';
 import { Ionicons } from '@expo/vector-icons';
 
 export const CustomerLedgerScreen: React.FC = () => {
@@ -175,22 +175,14 @@ export const CustomerLedgerScreen: React.FC = () => {
             setSelectedTx(null);
             await refreshAllData();
             await loadLedger();
-            if (Platform.OS === 'web') {
-              window.alert(t('entryDeletedSuccess', language));
-            } else {
-              Alert.alert(t('success', language), t('entryDeletedSuccess', language));
-            }
+            showAlert(t('success', language), t('entryDeletedSuccess', language), undefined, 'success');
           } else {
-            const errMsg = res.error || 'Failed to delete transaction';
-            if (Platform.OS === 'web') {
-              window.alert(errMsg);
-            } else {
-              Alert.alert(t('error', language), errMsg);
-            }
+            showAlert(t('error', language), res.error || 'Failed to delete transaction', undefined, 'danger');
           }
         },
         t('delete', language),
-        t('cancel', language)
+        t('cancel', language),
+        'danger'
       );
     });
   };
@@ -203,11 +195,7 @@ export const CustomerLedgerScreen: React.FC = () => {
           language === 'hi'
             ? `"${customer.name}" के खाते में ${transactions.length} लेन-देन दर्ज हैं।\n\nखाता-बही की सुरक्षा के लिए, जब तक लेन-देन मौजूद हैं ग्राहक को हटाया नहीं जा सकता।\n\nकृपया पहले खाता-बही से सभी लेन-देन हटाएं।`
             : `"${customer.name}" has ${transactions.length} recorded transaction(s).\n\nTo preserve accounting accuracy, customers with transaction history cannot be deleted.\n\nPlease delete all transactions from the customer ledger first.`;
-        if (Platform.OS === 'web') {
-          window.alert(`${t('cannotDeleteCustomerTitle', language)}\n\n${msg}`);
-        } else {
-          Alert.alert(t('cannotDeleteCustomerTitle', language), msg);
-        }
+        showAlert(t('cannotDeleteCustomerTitle', language), msg, undefined, 'danger');
         return;
       }
 
@@ -227,42 +215,19 @@ export const CustomerLedgerScreen: React.FC = () => {
               language === 'hi'
                 ? `ग्राहक "${customer.name}" सफलतापूर्वक हटा दिया गया।`
                 : `Customer "${customer.name}" deleted successfully.`;
-            if (Platform.OS === 'web') {
-              window.alert(successMsg);
-              navigation.goBack();
-            } else {
-              Alert.alert(t('success', language), successMsg, [
-                {
-                  text: t('ok', language),
-                  onPress: () => navigation.goBack(),
-                },
-              ]);
-            }
+            showAlert(t('success', language), successMsg, () => navigation.goBack(), 'success');
           } else if (res.error === 'HAS_TRANSACTIONS') {
-            const hasTxMsg = `${t('cannotDeleteCustomerTitle', language)}\n\n${t('cannotDeleteCustomerHasTx', language)}`;
-            if (Platform.OS === 'web') {
-              window.alert(hasTxMsg);
-            } else {
-              Alert.alert(t('cannotDeleteCustomerTitle', language), t('cannotDeleteCustomerHasTx', language));
-            }
+            showAlert(t('cannotDeleteCustomerTitle', language), t('cannotDeleteCustomerHasTx', language), undefined, 'danger');
           } else {
-            const errMsg = res.error || 'Failed to delete customer';
-            if (Platform.OS === 'web') {
-              window.alert(errMsg);
-            } else {
-              Alert.alert(t('error', language), errMsg);
-            }
+            showAlert(t('error', language), res.error || 'Failed to delete customer', undefined, 'danger');
           }
         },
         t('delete', language),
-        t('cancel', language)
+        t('cancel', language),
+        'danger'
       );
     } catch (err: any) {
-      if (Platform.OS === 'web') {
-        window.alert(err.message || 'Error deleting customer');
-      } else {
-        Alert.alert(t('error', language), err.message || 'Error deleting customer');
-      }
+      showAlert(t('error', language), err.message || 'Error deleting customer', undefined, 'danger');
     }
   };
 

@@ -19,7 +19,7 @@ import { useApp } from '../../context/AppContext';
 import { t } from '../../i18n';
 import { Business, SupportedLanguage } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
-import { confirmAction } from '../../utils/dialog';
+import { confirmAction, showAlert } from '../../utils/dialog';
 
 let deferredInstallPrompt: any = null;
 
@@ -82,7 +82,7 @@ export const SettingsScreen: React.FC = () => {
   const handleSaveBusiness = async () => {
     if (!business) return;
     if (!name.trim()) {
-      Alert.alert(t('error', language), t('enterShopNameError', language));
+      showAlert(t('error', language), t('enterShopNameError', language), undefined, 'danger');
       return;
     }
 
@@ -98,81 +98,42 @@ export const SettingsScreen: React.FC = () => {
     };
     await updateBusiness(updated);
     setSaving(false);
-    Alert.alert(t('success', language), t('businessSavedSuccess', language));
+    showAlert(t('success', language), t('businessSavedSuccess', language), undefined, 'success');
   };
 
   const handleSeedReferenceData = () => {
-    const doSeed = async () => {
-      try {
-        await seedDemoData();
-        if (Platform.OS === 'web') {
-          window.alert(t('seedSampleDataSuccess', language));
-        } else {
-          Alert.alert(t('success', language), t('seedSampleDataSuccess', language));
-        }
-      } catch (err) {
-        console.error('seedDemoData error:', err);
-      }
-    };
-
-    if (Platform.OS === 'web') {
-      const ok = window.confirm(
-        `${t('seedSampleDataConfirmTitle', language)}\n\n${t('seedSampleDataConfirmDesc', language)}`
-      );
-      if (ok) {
-        doSeed();
-      }
-      return;
-    }
-
-    Alert.alert(
+    confirmAction(
       t('seedSampleDataConfirmTitle', language),
       t('seedSampleDataConfirmDesc', language),
-      [
-        { text: t('cancel', language), style: 'cancel' },
-        {
-          text: t('confirm', language),
-          onPress: doSeed,
-        },
-      ]
+      async () => {
+        try {
+          await seedDemoData();
+          showAlert(t('success', language), t('seedSampleDataSuccess', language), undefined, 'success');
+        } catch (err: any) {
+          showAlert(t('error', language), err.message || 'Error seeding demo data', undefined, 'danger');
+        }
+      },
+      t('confirm', language),
+      t('cancel', language),
+      'warning'
     );
   };
 
   const handleClearAll = () => {
-    const doClear = async () => {
-      try {
-        await clearData();
-        if (Platform.OS === 'web') {
-          window.alert(t('clearAllDataSuccess', language));
-        } else {
-          Alert.alert(t('success', language), t('clearAllDataSuccess', language));
-        }
-      } catch (err) {
-        console.error('clearData error:', err);
-      }
-    };
-
-    if (Platform.OS === 'web') {
-      const ok = window.confirm(
-        `${t('clearAllDataConfirmTitle', language)}\n\n${t('clearAllDataConfirmDesc', language)}`
-      );
-      if (ok) {
-        doClear();
-      }
-      return;
-    }
-
-    Alert.alert(
+    confirmAction(
       t('clearAllDataConfirmTitle', language),
       t('clearAllDataConfirmDesc', language),
-      [
-        { text: t('cancel', language), style: 'cancel' },
-        {
-          text: t('delete', language),
-          style: 'destructive',
-          onPress: doClear,
-        },
-      ]
+      async () => {
+        try {
+          await clearData();
+          showAlert(t('success', language), t('clearAllDataSuccess', language), undefined, 'success');
+        } catch (err: any) {
+          showAlert(t('error', language), err.message || 'Error clearing data', undefined, 'danger');
+        }
+      },
+      t('delete', language),
+      t('cancel', language),
+      'danger'
     );
   };
 
@@ -191,18 +152,18 @@ export const SettingsScreen: React.FC = () => {
       }
 
       if (isInstalled) {
-        window.alert(t('installAppAlreadyInstalled', language));
+        showAlert(t('installApp', language), t('installAppAlreadyInstalled', language), undefined, 'info');
         return;
       }
 
       const isIos = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
       if (isIos) {
-        window.alert(`${t('installApp', language)}\n\n${t('installAppIosGuide', language)}`);
+        showAlert(t('installApp', language), t('installAppIosGuide', language), undefined, 'info');
       } else {
-        window.alert(`${t('installApp', language)}\n\n${t('installAppAndroidGuide', language)}`);
+        showAlert(t('installApp', language), t('installAppAndroidGuide', language), undefined, 'info');
       }
     } else {
-      Alert.alert(t('installApp', language), t('installAppAlreadyInstalled', language));
+      showAlert(t('installApp', language), t('installAppAlreadyInstalled', language), undefined, 'info');
     }
   };
 
@@ -224,14 +185,20 @@ export const SettingsScreen: React.FC = () => {
     setTimeout(() => {
       setCheckingUpdate(false);
       if (Platform.OS === 'web') {
-        const wantsReload = window.confirm(
-          `${t('appUpToDate', language)}\n\n${language === 'hi' ? 'क्या आप नए कैश के साथ ऐप रीलोड करना चाहते हैं?' : 'Would you like to reload the app with fresh cache?'}`
+        confirmAction(
+          t('appUpToDate', language),
+          language === 'hi'
+            ? 'क्या आप नए कैश के साथ ऐप रीलोड करना चाहते हैं?'
+            : 'Would you like to reload the app with fresh cache?',
+          () => {
+            window.location.reload();
+          },
+          language === 'hi' ? 'रीलोड करें' : 'Reload',
+          t('cancel', language),
+          'info'
         );
-        if (wantsReload) {
-          window.location.reload();
-        }
       } else {
-        Alert.alert(t('updateApp', language), t('appUpToDate', language));
+        showAlert(t('updateApp', language), t('appUpToDate', language), undefined, 'success');
       }
     }, 700);
   };
@@ -260,7 +227,7 @@ export const SettingsScreen: React.FC = () => {
               <Text style={styles.sectionTitle}>{t('account', language)}</Text>
               <Text style={styles.accountSubText}>
                 {isAuthenticated
-                  ? `${t('loggedInAs', language)}: ${user?.email}`
+                  ? `${user?.email?.toLowerCase().includes('somveerkushwaha') ? 'Somveer Kushwaha • ' : (user?.displayName && !user.displayName.toLowerCase().includes('shiv') ? `${user.displayName} • ` : '')}${t('loggedInAs', language)}: ${user?.email}`
                   : t('guestModeNotice', language)}
               </Text>
             </View>
@@ -272,12 +239,19 @@ export const SettingsScreen: React.FC = () => {
               variant="outline"
               size="sm"
               onPress={() => {
+                const isSomveer = user?.email?.toLowerCase().includes('somveerkushwaha');
+                const accountName = isSomveer
+                  ? 'Somveer Kushwaha'
+                  : (user?.displayName && !user.displayName.toLowerCase().includes('shiv')
+                      ? user.displayName
+                      : user?.email?.split('@')[0] || t('account', language));
                 confirmAction(
                   t('logoutConfirmTitle', language),
-                  t('logoutConfirmDesc', language),
+                  `${t('account', language)}: ${accountName}\n${t('loggedInAs', language)}: ${user?.email || ''}\n\n${t('logoutConfirmDesc', language)}`,
                   () => logout(),
                   t('logout', language),
-                  t('cancel', language)
+                  t('cancel', language),
+                  'logout'
                 );
               }}
               style={{ marginTop: Spacing.sm }}

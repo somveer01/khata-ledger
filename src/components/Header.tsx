@@ -28,13 +28,31 @@ export const Header: React.FC<HeaderProps> = ({
   const { business, language, isFirebaseActive, user, isAuthenticated, showAuthModal, logout } = useApp();
 
   const handleUserPress = () => {
+    const isSomveer = user?.email?.toLowerCase().includes('somveerkushwaha') || false;
+    const accountName = isSomveer
+      ? 'Somveer Kushwaha'
+      : (user?.displayName && !user.displayName.toLowerCase().includes('shiv')
+          ? user.displayName
+          : user?.email?.split('@')[0] || t('account', language));
+    const userEmail = user?.email || (isSomveer ? 'somveerkushwaha@gmail.com' : '');
+
     confirmAction(
-      user?.displayName || user?.email || t('account', language),
-      `${t('loggedInAs', language)}: ${user?.email || ''}\n\n${t('logoutConfirmDesc', language)}`,
+      t('logoutConfirmTitle', language),
+      `${t('account', language)}: ${accountName}\n${t('loggedInAs', language)}: ${userEmail}\n\n${t('logoutConfirmDesc', language)}`,
       () => logout(),
       t('logout', language),
-      t('cancel', language)
+      t('cancel', language),
+      'logout'
     );
+  };
+
+  const getHeaderAccountText = () => {
+    if (!user) return t('account', language);
+    if (user.email?.toLowerCase().includes('somveerkushwaha')) return 'Somveer';
+    if (user.displayName && !user.displayName.toLowerCase().includes('shiv')) {
+      return user.displayName;
+    }
+    return user.email ? user.email.split('@')[0] : t('account', language);
   };
 
   const handleBack = () => {
@@ -102,7 +120,7 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Ionicons name="person-circle" size={13} color="#DCFCE7" />
             <Text numberOfLines={1} style={styles.authPillText}>
-              {user?.displayName || user?.email?.split('@')[0] || t('account', language)}
+              {getHeaderAccountText()}
             </Text>
           </TouchableOpacity>
         ) : (

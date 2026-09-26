@@ -24,7 +24,7 @@ import { formatCurrency } from '../../utils/money';
 import { DataRepository } from '../../services/db';
 import { PdfService } from '../../services/pdfService';
 import { Village, VillageSummary } from '../../types';
-import { confirmAction } from '../../utils/dialog';
+import { confirmAction, showAlert } from '../../utils/dialog';
 import { Ionicons } from '@expo/vector-icons';
 
 export const VillageListScreen: React.FC = () => {
@@ -143,31 +143,16 @@ export const VillageListScreen: React.FC = () => {
               language === 'hi'
                 ? `गाँव "${item.villageName}" सफलतापूर्वक हटा दिया गया।`
                 : `Village "${item.villageName}" deleted successfully.`;
-            if (Platform.OS === 'web') {
-              window.alert(successMsg);
-            } else {
-              Alert.alert(t('success', language), successMsg);
-            }
+            showAlert(t('success', language), successMsg, undefined, 'success');
           } else if (res.error === 'HAS_TRANSACTIONS') {
-            if (Platform.OS === 'web') {
-              window.alert(`${t('cannotDeleteVillageTitle', language)}\n\n${t('cannotDeleteVillageHasTx', language)}`);
-            } else {
-              Alert.alert(
-                t('cannotDeleteVillageTitle', language),
-                t('cannotDeleteVillageHasTx', language)
-              );
-            }
+            showAlert(t('cannotDeleteVillageTitle', language), t('cannotDeleteVillageHasTx', language), undefined, 'danger');
           } else {
-            const errMsg = res.error || 'Failed to delete village';
-            if (Platform.OS === 'web') {
-              window.alert(errMsg);
-            } else {
-              Alert.alert(t('error', language), errMsg);
-            }
+            showAlert(t('error', language), res.error || 'Failed to delete village', undefined, 'danger');
           }
         },
         t('delete', language),
-        t('cancel', language)
+        t('cancel', language),
+        'danger'
       );
     });
   };

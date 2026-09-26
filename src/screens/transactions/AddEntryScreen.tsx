@@ -24,7 +24,7 @@ import { toPaise, toRupees, formatCurrency } from '../../utils/money';
 import { getTodayIST, formatDisplayDate, addDaysToDate } from '../../utils/date';
 import { DataRepository } from '../../services/db';
 import { Customer, Transaction, PaymentMethod } from '../../types';
-import { confirmAction } from '../../utils/dialog';
+import { confirmAction, showAlert } from '../../utils/dialog';
 import { Ionicons } from '@expo/vector-icons';
 
 type EntryMode = 'CREDIT' | 'PAYMENT';
@@ -188,18 +188,14 @@ export const AddEntryScreen: React.FC = () => {
           await refreshAllData();
           setLoading(false);
           if (result.success) {
-            if (Platform.OS === 'web') {
-              window.alert(t('entryUpdatedSuccess', language));
-              navigation.goBack();
-            } else {
-              Alert.alert(
-                t('entryUpdatedSuccess', language),
-                `${selectedCustomer.name}: ${formatCurrency(amountPaise)}\n${t('currentOutstanding', language)}: ${formatCurrency(result.newBalancePaise)}`,
-                [{ text: t('ok', language), onPress: () => navigation.goBack() }]
-              );
-            }
+            showAlert(
+              t('entryUpdatedSuccess', language),
+              `${selectedCustomer.name}: ${formatCurrency(amountPaise)}\n${t('currentOutstanding', language)}: ${formatCurrency(result.newBalancePaise)}`,
+              () => navigation.goBack(),
+              'success'
+            );
           } else {
-            Alert.alert(t('error', language), result.error || 'Error updating credit transaction');
+            showAlert(t('error', language), result.error || 'Error updating credit transaction', undefined, 'danger');
           }
           return;
         }
@@ -227,47 +223,21 @@ export const AddEntryScreen: React.FC = () => {
         setLoading(false);
 
         if (result.success) {
-          if (Platform.OS === 'web') {
-            window.alert(
-              `${t('udhaarRecordedSuccess', language)}\n\n${selectedCustomer.name}: ${formatCurrency(amountPaise)}\n${t('currentOutstanding', language)}: ${formatCurrency(result.newBalancePaise)}`
-            );
-            navigation.replace('CustomerLedger', {
-              customer: {
-                ...selectedCustomer,
-                currentBalancePaise: result.newBalancePaise,
-              },
-            });
-          } else {
-            Alert.alert(
-              t('udhaarRecordedSuccess', language),
-              `${selectedCustomer.name}: ${formatCurrency(amountPaise)}\n${t('currentOutstanding', language)}: ${formatCurrency(result.newBalancePaise)}`,
-              [
-                {
-                  text: t('viewLedgerBtn', language),
-                  onPress: () => {
-                    navigation.replace('CustomerLedger', {
-                      customer: {
-                        ...selectedCustomer,
-                        currentBalancePaise: result.newBalancePaise,
-                      },
-                    });
-                  },
+          confirmAction(
+            t('udhaarRecordedSuccess', language),
+            `${selectedCustomer.name}: ${formatCurrency(amountPaise)}\n${t('currentOutstanding', language)}: ${formatCurrency(result.newBalancePaise)}`,
+            () => {
+              navigation.replace('CustomerLedger', {
+                customer: {
+                  ...selectedCustomer,
+                  currentBalancePaise: result.newBalancePaise,
                 },
-                {
-                  text: t('addNewBtn', language),
-                  onPress: () => {
-                    setDescription('');
-                    setQuantity('');
-                    setRate('');
-                    setManualAmount('');
-                    setDiscountAmount('');
-                    setRefNumber('');
-                    setNotes('');
-                  },
-                },
-              ]
-            );
-          }
+              });
+            },
+            t('viewLedgerBtn', language),
+            t('addNewBtn', language),
+            'success'
+          );
         } else {
           Alert.alert(t('error', language), result.error || 'Error saving credit transaction');
         }
@@ -303,18 +273,14 @@ export const AddEntryScreen: React.FC = () => {
           await refreshAllData();
           setLoading(false);
           if (result.success) {
-            if (Platform.OS === 'web') {
-              window.alert(t('entryUpdatedSuccess', language));
-              navigation.goBack();
-            } else {
-              Alert.alert(
-                t('entryUpdatedSuccess', language),
-                `${selectedCustomer.name}: ${formatCurrency(paymentAmountPaise)}\n${t('currentOutstanding', language)}: ${formatCurrency(result.newBalancePaise)}`,
-                [{ text: t('ok', language), onPress: () => navigation.goBack() }]
-              );
-            }
+            showAlert(
+              t('entryUpdatedSuccess', language),
+              `${selectedCustomer.name}: ${formatCurrency(paymentAmountPaise)}\n${t('currentOutstanding', language)}: ${formatCurrency(result.newBalancePaise)}`,
+              () => navigation.goBack(),
+              'success'
+            );
           } else {
-            Alert.alert(t('error', language), result.error || 'Error updating payment');
+            showAlert(t('error', language), result.error || 'Error updating payment', undefined, 'danger');
           }
           return;
         }
@@ -371,19 +337,14 @@ export const AddEntryScreen: React.FC = () => {
         await refreshAllData();
         setLoading(false);
         if (res.success) {
-          if (Platform.OS === 'web') {
-            window.alert(t('entryDeletedSuccess', language));
-          } else {
-            Alert.alert(t('success', language), t('entryDeletedSuccess', language));
-          }
-          navigation.goBack();
+          showAlert(
+            t('success', language),
+            t('entryDeletedSuccess', language),
+            () => navigation.goBack(),
+            'success'
+          );
         } else {
-          const errMsg = res.error || 'Failed to delete transaction';
-          if (Platform.OS === 'web') {
-            window.alert(errMsg);
-          } else {
-            Alert.alert(t('error', language), errMsg);
-          }
+          showAlert(t('error', language), res.error || 'Failed to delete transaction', undefined, 'danger');
         }
       },
       t('delete', language),

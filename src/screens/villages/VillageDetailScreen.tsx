@@ -23,7 +23,7 @@ import { formatCurrency } from '../../utils/money';
 import { DataRepository } from '../../services/db';
 import { PdfService } from '../../services/pdfService';
 import { Customer, Village, VillageSummary } from '../../types';
-import { confirmAction } from '../../utils/dialog';
+import { confirmAction, showAlert } from '../../utils/dialog';
 import { Ionicons } from '@expo/vector-icons';
 
 export const VillageDetailScreen: React.FC = () => {
@@ -66,11 +66,7 @@ export const VillageDetailScreen: React.FC = () => {
           language === 'hi'
             ? `"${cust.name}" के खाते में ${txs.length} लेन-देन दर्ज हैं।\n\nखाता-बही की सुरक्षा के लिए, जब तक लेन-देन मौजूद हैं ग्राहक को हटाया नहीं जा सकता।\n\nकृपया पहले खाता-बही से सभी लेन-देन हटाएं।`
             : `"${cust.name}" has ${txs.length} recorded transaction(s).\n\nTo preserve accounting accuracy, customers with transaction history cannot be deleted.\n\nPlease delete all transactions from the customer ledger first.`;
-        if (Platform.OS === 'web') {
-          window.alert(`${t('cannotDeleteCustomerTitle', language)}\n\n${msg}`);
-        } else {
-          Alert.alert(t('cannotDeleteCustomerTitle', language), msg);
-        }
+        showAlert(t('cannotDeleteCustomerTitle', language), msg, undefined, 'danger');
         return;
       }
 
@@ -91,36 +87,19 @@ export const VillageDetailScreen: React.FC = () => {
               language === 'hi'
                 ? `ग्राहक "${cust.name}" सफलतापूर्वक हटा दिया गया।`
                 : `Customer "${cust.name}" deleted successfully.`;
-            if (Platform.OS === 'web') {
-              window.alert(successMsg);
-            } else {
-              Alert.alert(t('success', language), successMsg);
-            }
+            showAlert(t('success', language), successMsg, undefined, 'success');
           } else if (res.error === 'HAS_TRANSACTIONS') {
-            const hasTxMsg = `${t('cannotDeleteCustomerTitle', language)}\n\n${t('cannotDeleteCustomerHasTx', language)}`;
-            if (Platform.OS === 'web') {
-              window.alert(hasTxMsg);
-            } else {
-              Alert.alert(t('cannotDeleteCustomerTitle', language), t('cannotDeleteCustomerHasTx', language));
-            }
+            showAlert(t('cannotDeleteCustomerTitle', language), t('cannotDeleteCustomerHasTx', language), undefined, 'danger');
           } else {
-            const errMsg = res.error || 'Failed to delete customer';
-            if (Platform.OS === 'web') {
-              window.alert(errMsg);
-            } else {
-              Alert.alert(t('error', language), errMsg);
-            }
+            showAlert(t('error', language), res.error || 'Failed to delete customer', undefined, 'danger');
           }
         },
         t('delete', language),
-        t('cancel', language)
+        t('cancel', language),
+        'danger'
       );
     } catch (err: any) {
-      if (Platform.OS === 'web') {
-        window.alert(err.message || 'Error checking customer transactions');
-      } else {
-        Alert.alert(t('error', language), err.message || 'Error checking customer transactions');
-      }
+      showAlert(t('error', language), err.message || 'Error checking customer transactions', undefined, 'danger');
     }
   };
 
@@ -207,7 +186,7 @@ export const VillageDetailScreen: React.FC = () => {
         language === 'hi'
           ? `गाँव "${currentVillageName}" में ${villageCustIds.size} ग्राहक और ${matchingTxs.length} लेन-देन दर्ज हैं।\n\nखाता-बही की सुरक्षा के लिए, सक्रिय लेन-देन वाले गाँव को नहीं हटाया जा सकता।\n\nकृपया पहले संबंधित लेन-देन हटाएं या ग्राहकों का गाँव बदलें।`
           : `Village "${currentVillageName}" has ${villageCustIds.size} customer(s) with ${matchingTxs.length} recorded transaction(s).\n\nTo preserve accounting records, villages with active transactions cannot be deleted.\n\nPlease delete or reassign all related transactions first.`;
-      Alert.alert(t('cannotDeleteVillageTitle', language), msg);
+      showAlert(t('cannotDeleteVillageTitle', language), msg, undefined, 'danger');
       return;
     }
 
@@ -216,35 +195,33 @@ export const VillageDetailScreen: React.FC = () => {
         ? `क्या आप सचमुच गाँव "${currentVillageName}" को हटाना चाहते हैं?`
         : `Are you sure you want to delete village "${currentVillageName}"?`;
 
-    Alert.alert(
+    confirmAction(
       t('deleteVillage', language),
       confirmMsg,
-      [
-        { text: t('cancel', language), style: 'cancel' },
-        {
-          text: t('delete', language),
-          style: 'destructive',
-          onPress: async () => {
-            const res = await DataRepository.deleteVillage(business.id, villageSummary.villageId);
-            if (res.success) {
-              await refreshAllData();
-              navigation.goBack();
-              const successMsg =
-                language === 'hi'
-                  ? `गाँव "${currentVillageName}" सफलतापूर्वक हटा दिया गया।`
-                  : `Village "${currentVillageName}" deleted successfully.`;
-              Alert.alert(t('success', language), successMsg);
-            } else if (res.error === 'HAS_TRANSACTIONS') {
-              Alert.alert(
-                t('cannotDeleteVillageTitle', language),
-                t('cannotDeleteVillageHasTx', language)
-              );
-            } else {
-              Alert.alert(t('error', language), res.error || 'Failed to delete village');
-            }
-          },
-        },
-      ]
+      async () => {
+        const res = await DataRepository.deleteVillage(business.id, villageSummary.villageId);
+        if (res.success) {
+          await refreshAllData();
+          navigation.goBack();
+          const successMsg =
+            language === 'hi'
+              ? `गाँव "${currentVillageName}" सफलतापूर्वक हटा दिया गया।`
+              : `Village "${currentVillageName}" deleted successfully.`;
+          showAlert(t('success', language), successMsg, undefined, 'success');
+        } else if (res.error === 'HAS_TRANSACTIONS') {
+          showAlert(
+            t('cannotDeleteVillageTitle', language),
+            t('cannotDeleteVillageHasTx', language),
+            undefined,
+            'danger'
+          );
+        } else {
+          showAlert(t('error', language), res.error || 'Failed to delete village', undefined, 'danger');
+        }
+      },
+      t('delete', language),
+      t('cancel', language),
+      'danger'
     );
   };
 

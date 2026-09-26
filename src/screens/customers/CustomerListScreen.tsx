@@ -21,7 +21,7 @@ import { t } from '../../i18n';
 import { formatCurrency } from '../../utils/money';
 import { DataRepository } from '../../services/db';
 import { Customer, Village } from '../../types';
-import { confirmAction } from '../../utils/dialog';
+import { confirmAction, showAlert } from '../../utils/dialog';
 import { Ionicons } from '@expo/vector-icons';
 
 type FilterTab = 'ALL' | 'WITH_DUES' | 'ZERO_DUE';
@@ -74,11 +74,7 @@ export const CustomerListScreen: React.FC = () => {
           language === 'hi'
             ? `"${cust.name}" के खाते में ${txs.length} लेन-देन दर्ज हैं।\n\nखाता-बही की सुरक्षा के लिए, जब तक लेन-देन मौजूद हैं ग्राहक को हटाया नहीं जा सकता।\n\nकृपया पहले खाता-बही से सभी लेन-देन हटाएं।`
             : `"${cust.name}" has ${txs.length} recorded transaction(s).\n\nTo preserve accounting accuracy, customers with transaction history cannot be deleted.\n\nPlease delete all transactions from the customer ledger first.`;
-        if (Platform.OS === 'web') {
-          window.alert(`${t('cannotDeleteCustomerTitle', language)}\n\n${msg}`);
-        } else {
-          Alert.alert(t('cannotDeleteCustomerTitle', language), msg);
-        }
+        showAlert(t('cannotDeleteCustomerTitle', language), msg, undefined, 'danger');
         return;
       }
 
@@ -99,36 +95,19 @@ export const CustomerListScreen: React.FC = () => {
               language === 'hi'
                 ? `ग्राहक "${cust.name}" सफलतापूर्वक हटा दिया गया।`
                 : `Customer "${cust.name}" deleted successfully.`;
-            if (Platform.OS === 'web') {
-              window.alert(successMsg);
-            } else {
-              Alert.alert(t('success', language), successMsg);
-            }
+            showAlert(t('success', language), successMsg, undefined, 'success');
           } else if (res.error === 'HAS_TRANSACTIONS') {
-            const hasTxMsg = `${t('cannotDeleteCustomerTitle', language)}\n\n${t('cannotDeleteCustomerHasTx', language)}`;
-            if (Platform.OS === 'web') {
-              window.alert(hasTxMsg);
-            } else {
-              Alert.alert(t('cannotDeleteCustomerTitle', language), t('cannotDeleteCustomerHasTx', language));
-            }
+            showAlert(t('cannotDeleteCustomerTitle', language), t('cannotDeleteCustomerHasTx', language), undefined, 'danger');
           } else {
-            const errMsg = res.error || 'Failed to delete customer';
-            if (Platform.OS === 'web') {
-              window.alert(errMsg);
-            } else {
-              Alert.alert(t('error', language), errMsg);
-            }
+            showAlert(t('error', language), res.error || 'Failed to delete customer', undefined, 'danger');
           }
         },
         t('delete', language),
-        t('cancel', language)
+        t('cancel', language),
+        'danger'
       );
     } catch (err: any) {
-      if (Platform.OS === 'web') {
-        window.alert(err.message || 'Error checking customer transactions');
-      } else {
-        Alert.alert(t('error', language), err.message || 'Error checking customer transactions');
-      }
+      showAlert(t('error', language), err.message || 'Error checking customer transactions', undefined, 'danger');
     }
   };
 

@@ -22,7 +22,7 @@ import { toPaise, toRupees } from '../../utils/money';
 import { DataRepository } from '../../services/db';
 import { Customer, Village } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
-import { confirmAction } from '../../utils/dialog';
+import { confirmAction, showAlert } from '../../utils/dialog';
 
 export const AddEditCustomerScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -117,11 +117,7 @@ export const AddEditCustomerScreen: React.FC = () => {
         language === 'hi'
           ? `"${existingCustomer.name}" के खाते में ${txs.length} लेन-देन दर्ज हैं।\n\nखाता-बही की सुरक्षा के लिए, जब तक लेन-देन मौजूद हैं ग्राहक को हटाया नहीं जा सकता।\n\nकृपया पहले खाता-बही से सभी लेन-देन हटाएं।`
           : `"${existingCustomer.name}" has ${txs.length} recorded transaction(s).\n\nTo preserve accounting accuracy, customers with transaction history cannot be deleted.\n\nPlease delete all transactions from the customer ledger first.`;
-      if (Platform.OS === 'web') {
-        window.alert(`${t('cannotDeleteCustomerTitle', language)}\n\n${msg}`);
-      } else {
-        Alert.alert(t('cannotDeleteCustomerTitle', language), msg);
-      }
+      showAlert(t('cannotDeleteCustomerTitle', language), msg, undefined, 'danger');
       return;
     }
 
@@ -143,39 +139,21 @@ export const AddEditCustomerScreen: React.FC = () => {
             language === 'hi'
               ? `ग्राहक "${existingCustomer.name}" सफलतापूर्वक हटा दिया गया।`
               : `Customer "${existingCustomer.name}" deleted successfully.`;
-          if (Platform.OS === 'web') {
-            window.alert(successMsg);
-            navigation.navigate('MainTabs', { screen: 'CustomersTab' });
-          } else {
-            Alert.alert(t('success', language), successMsg, [
-              {
-                text: t('ok', language),
-                onPress: () => {
-                  navigation.navigate('MainTabs', { screen: 'CustomersTab' });
-                },
-              },
-            ]);
-          }
+          showAlert(
+            t('success', language),
+            successMsg,
+            () => navigation.navigate('MainTabs', { screen: 'CustomersTab' }),
+            'success'
+          );
         } else if (res.error === 'HAS_TRANSACTIONS') {
-          if (Platform.OS === 'web') {
-            window.alert(`${t('cannotDeleteCustomerTitle', language)}\n\n${t('cannotDeleteCustomerHasTx', language)}`);
-          } else {
-            Alert.alert(
-              t('cannotDeleteCustomerTitle', language),
-              t('cannotDeleteCustomerHasTx', language)
-            );
-          }
+          showAlert(t('cannotDeleteCustomerTitle', language), t('cannotDeleteCustomerHasTx', language), undefined, 'danger');
         } else {
-          const errMsg = res.error || 'Failed to delete customer';
-          if (Platform.OS === 'web') {
-            window.alert(errMsg);
-          } else {
-            Alert.alert(t('error', language), errMsg);
-          }
+          showAlert(t('error', language), res.error || 'Failed to delete customer', undefined, 'danger');
         }
       },
       t('delete', language),
-      t('cancel', language)
+      t('cancel', language),
+      'danger'
     );
   };
 
@@ -226,21 +204,12 @@ export const AddEditCustomerScreen: React.FC = () => {
           }
         };
 
-        if (Platform.OS === 'web') {
-          window.alert(t('customerSavedSuccess', language));
-          onDone();
-        } else {
-          Alert.alert(
-            t('success', language),
-            t('customerSavedSuccess', language),
-            [
-              {
-                text: t('ok', language),
-                onPress: onDone,
-              },
-            ]
-          );
-        }
+        showAlert(
+          t('success', language),
+          t('customerSavedSuccess', language),
+          onDone,
+          'success'
+        );
       }
     } catch (err: any) {
       setLoading(false);

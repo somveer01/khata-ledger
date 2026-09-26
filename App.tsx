@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { AppProvider } from './src/context/AppContext';
 import { RootNavigator } from './src/navigation/RootNavigator';
+import { CustomDialogModal } from './src/components/CustomDialogModal';
 
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
   const existing = document.getElementById('khata-web-input-focus-fix');
@@ -51,6 +52,7 @@ export default function App() {
         <NavigationContainer>
           <StatusBar style="light" />
           <RootNavigator />
+          <CustomDialogModal />
         </NavigationContainer>
       </AppProvider>
     </SafeAreaProvider>
