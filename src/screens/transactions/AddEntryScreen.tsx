@@ -155,23 +155,38 @@ export const AddEntryScreen: React.FC = () => {
     }
 
     if (!business) {
-      Alert.alert(t('error', language), 'Business not loaded');
+      showAlert(t('error', language), language === 'hi' ? 'बिजनेस लोड नहीं हुआ' : 'Business not loaded', undefined, 'danger');
       return;
     }
 
     if (!selectedCustomer) {
-      Alert.alert(t('error', language), t('pleaseSelectCustomer', language));
+      showAlert(
+        t('error', language), 
+        language === 'hi' ? 'कृपया ग्राहक चुनें!' : 'Please select a customer!', 
+        undefined, 
+        'warning'
+      );
       return;
     }
 
     if (mode === 'CREDIT') {
       const amountNum = parseFloat(finalCreditAmount);
       if (isNaN(amountNum) || amountNum <= 0) {
-        Alert.alert(t('error', language), t('enterValidAmount', language));
+        showAlert(
+          t('error', language), 
+          language === 'hi' ? 'कृपया कुल राशि (Total Amount) भरें!' : 'Please enter a valid total amount!', 
+          undefined, 
+          'warning'
+        );
         return;
       }
       if (!description.trim()) {
-        Alert.alert(t('error', language), t('enterItemDescription', language));
+        showAlert(
+          t('error', language), 
+          language === 'hi' ? 'कृपया सामान का नाम भरें! (जैसे: बीज, खाद)' : 'Please enter item description! (e.g. Seeds, Fertilizer)', 
+          undefined, 
+          'warning'
+        );
         return;
       }
 
