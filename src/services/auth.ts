@@ -4,6 +4,7 @@ import {
   signOut as firebaseSignOut,
   onAuthStateChanged,
   updateProfile,
+  sendPasswordResetEmail,
 } from 'firebase/auth';
 import { auth, isFirebaseConfigured } from './firebase';
 import { StorageService } from './storage';
@@ -190,6 +191,52 @@ export const AuthService = {
     }
     await StorageService.setCurrentUser(null);
     await StorageService.setIsGuest(true);
+  },
+
+  /**
+   * Send Password Reset Email
+   */
+  async resetPassword(
+    email: string
+  ): Promise<{ success: boolean; message?: string; error?: string }> {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !trimmedEmail.includes('@')) {
+      return { success: false, error: 'Please enter a valid email address.' };
+    }
+
+    if (isFirebaseConfigured() && auth) {
+      try {
+        await sendPasswordResetEmail(auth, trimmedEmail);
+        return {
+          success: true,
+          message: 'Password reset link sent to your email. Check your inbox and spam folder.',
+        };
+      } catch (err: any) {
+        let msg = err.message || 'Failed to send password reset email';
+        if (err.code === 'auth/user-not-found') {
+          msg = 'No user account found with this email address.';
+        } else if (err.code === 'auth/invalid-email') {
+          msg = 'Invalid email address format.';
+        } else if (err.code === 'auth/too-many-requests') {
+          msg = 'Too many requests. Please wait a moment before trying again.';
+        }
+        return { success: false, error: msg };
+      }
+    }
+
+    // Local / Offline fallback mode
+    const localUsers = await StorageService.getLocalUsers();
+    const existing = localUsers.find(
+      (u) => u.email.toLowerCase() === trimmedEmail.toLowerCase()
+    );
+    if (!existing) {
+      return { success: false, error: 'No user account found with this email address.' };
+    }
+
+    return {
+      success: true,
+      message: 'Password reset request received for your account.',
+    };
   },
 
   /**

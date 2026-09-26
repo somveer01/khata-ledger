@@ -30,8 +30,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onSuccess,
   customMessage,
 }) => {
-  const { language, login, register, loginAsGuest } = useApp();
-  const [tab, setTab] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
+  const { language, login, register, loginAsGuest, resetPassword } = useApp();
+  const [tab, setTab] = useState<'LOGIN' | 'REGISTER' | 'FORGOT_PASSWORD'>('LOGIN');
 
   // Form states
   const [email, setEmail] = useState('');
@@ -43,6 +43,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   // Status states
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
 
   const resetForm = () => {
     setEmail('');
@@ -50,6 +51,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setConfirmPassword('');
     setFullName('');
     setErrorMsg('');
+    setSuccessMsg('');
     setLoading(false);
   };
 
@@ -63,8 +65,30 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     handleClose();
   };
 
+  const handleResetPassword = async () => {
+    setErrorMsg('');
+    setSuccessMsg('');
+
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !trimmedEmail.includes('@')) {
+      setErrorMsg(t('invalidEmailError', language));
+      return;
+    }
+
+    setLoading(true);
+    const res = await resetPassword(trimmedEmail);
+    setLoading(false);
+
+    if (res.success) {
+      setSuccessMsg(res.message || t('resetLinkSent', language));
+    } else {
+      setErrorMsg(res.error || 'Failed to send password reset email');
+    }
+  };
+
   const handleSubmit = async () => {
     setErrorMsg('');
+    setSuccessMsg('');
 
     const trimmedEmail = email.trim();
     if (!trimmedEmail || !trimmedEmail.includes('@')) {
@@ -130,11 +154,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           {/* Header */}
           <View style={styles.modalHeader}>
             <View style={styles.headerLeft}>
-              <View style={styles.iconCircle}>
-                <Ionicons name="lock-closed" size={20} color={Colors.primary} />
+              <View
+                style={[
+                  styles.iconCircle,
+                  tab === 'FORGOT_PASSWORD' && styles.iconCircleWarning,
+                ]}
+              >
+                <Ionicons
+                  name={tab === 'FORGOT_PASSWORD' ? 'key-outline' : 'lock-closed'}
+                  size={20}
+                  color={tab === 'FORGOT_PASSWORD' ? '#D97706' : Colors.primary}
+                />
               </View>
               <Text style={styles.headerTitle}>
-                {tab === 'LOGIN' ? t('login', language) : t('register', language)}
+                {tab === 'FORGOT_PASSWORD'
+                  ? t('resetPasswordTitle', language)
+                  : tab === 'LOGIN'
+                  ? t('login', language)
+                  : t('register', language)}
               </Text>
             </View>
 
@@ -148,7 +185,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </View>
 
           {/* Subtitle / Custom prompt message */}
-          {customMessage ? (
+          {tab === 'FORGOT_PASSWORD' ? (
+            <Text style={styles.subTitle}>{t('resetPasswordDesc', language)}</Text>
+          ) : customMessage ? (
             <View style={styles.promptBanner}>
               <Ionicons name="information-circle" size={16} color="#B45309" />
               <Text style={styles.promptText}>{customMessage}</Text>
@@ -159,48 +198,60 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </Text>
           )}
 
-          {/* Tab Switcher: Login vs Register */}
-          <View style={styles.tabsContainer}>
-            <TouchableOpacity
-              style={[styles.tabButton, tab === 'LOGIN' && styles.activeTabButton]}
-              onPress={() => {
-                setTab('LOGIN');
-                setErrorMsg('');
-              }}
-            >
-              <Text
-                style={[
-                  styles.tabButtonText,
-                  tab === 'LOGIN' && styles.activeTabButtonText,
-                ]}
+          {/* Tab Switcher: Login vs Register (hidden on FORGOT_PASSWORD) */}
+          {tab !== 'FORGOT_PASSWORD' && (
+            <View style={styles.tabsContainer}>
+              <TouchableOpacity
+                style={[styles.tabButton, tab === 'LOGIN' && styles.activeTabButton]}
+                onPress={() => {
+                  setTab('LOGIN');
+                  setErrorMsg('');
+                  setSuccessMsg('');
+                }}
               >
-                {t('loginTab', language)}
-              </Text>
-            </TouchableOpacity>
+                <Text
+                  style={[
+                    styles.tabButtonText,
+                    tab === 'LOGIN' && styles.activeTabButtonText,
+                  ]}
+                >
+                  {t('loginTab', language)}
+                </Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.tabButton, tab === 'REGISTER' && styles.activeTabButton]}
-              onPress={() => {
-                setTab('REGISTER');
-                setErrorMsg('');
-              }}
-            >
-              <Text
-                style={[
-                  styles.tabButtonText,
-                  tab === 'REGISTER' && styles.activeTabButtonText,
-                ]}
+              <TouchableOpacity
+                style={[styles.tabButton, tab === 'REGISTER' && styles.activeTabButton]}
+                onPress={() => {
+                  setTab('REGISTER');
+                  setErrorMsg('');
+                  setSuccessMsg('');
+                }}
               >
-                {t('registerTab', language)}
-              </Text>
-            </TouchableOpacity>
-          </View>
+                <Text
+                  style={[
+                    styles.tabButtonText,
+                    tab === 'REGISTER' && styles.activeTabButtonText,
+                  ]}
+                >
+                  {t('registerTab', language)}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           {/* Error Message */}
           {errorMsg ? (
             <View style={styles.errorBanner}>
               <Ionicons name="alert-circle" size={16} color={Colors.creditSale} />
               <Text style={styles.errorBannerText}>{errorMsg}</Text>
+            </View>
+          ) : null}
+
+          {/* Success Message */}
+          {successMsg ? (
+            <View style={styles.successBanner}>
+              <Ionicons name="checkmark-circle" size={18} color="#059669" />
+              <Text style={styles.successBannerText}>{successMsg}</Text>
             </View>
           ) : null}
 
@@ -229,58 +280,108 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               autoCorrect={false}
             />
 
-            <View style={styles.passwordWrapper}>
-              <Input
-                label={t('password', language)}
-                placeholder={t('passwordPlaceholder', language)}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-              />
-              <TouchableOpacity
-                onPress={() => setShowPassword(!showPassword)}
-                style={styles.eyeBtn}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Ionicons
-                  name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                  size={18}
-                  color={Colors.textSecondary}
+            {tab !== 'FORGOT_PASSWORD' && (
+              <>
+                <View style={styles.passwordWrapper}>
+                  <Input
+                    label={t('password', language)}
+                    placeholder={t('passwordPlaceholder', language)}
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                  />
+                  <TouchableOpacity
+                    onPress={() => setShowPassword(!showPassword)}
+                    style={styles.eyeBtn}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons
+                      name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                      size={18}
+                      color={Colors.textSecondary}
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                {tab === 'LOGIN' && (
+                  <View style={styles.forgotPasswordRow}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setTab('FORGOT_PASSWORD');
+                        setErrorMsg('');
+                        setSuccessMsg('');
+                      }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Text style={styles.forgotPasswordText}>
+                        {t('forgotPassword', language)}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {tab === 'REGISTER' && (
+                  <Input
+                    label={t('confirmPassword', language)}
+                    placeholder={t('confirmPasswordPlaceholder', language)}
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                  />
+                )}
+              </>
+            )}
+
+            {/* Action Buttons */}
+            {tab === 'FORGOT_PASSWORD' ? (
+              <>
+                {!successMsg && (
+                  <Button
+                    title={t('sendResetLink', language)}
+                    onPress={handleResetPassword}
+                    loading={loading}
+                    variant="primary"
+                    size="lg"
+                    style={styles.submitBtn}
+                  />
+                )}
+                <TouchableOpacity
+                  style={styles.backToLoginBtn}
+                  onPress={() => {
+                    setTab('LOGIN');
+                    setErrorMsg('');
+                    setSuccessMsg('');
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="arrow-back" size={16} color={Colors.primary} />
+                  <Text style={styles.backToLoginText}>{t('backToLogin', language)}</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Button
+                  title={tab === 'LOGIN' ? t('login', language) : t('register', language)}
+                  onPress={handleSubmit}
+                  loading={loading}
+                  variant="primary"
+                  size="lg"
+                  style={styles.submitBtn}
                 />
-              </TouchableOpacity>
-            </View>
 
-            {tab === 'REGISTER' ? (
-              <Input
-                label={t('confirmPassword', language)}
-                placeholder={t('confirmPasswordPlaceholder', language)}
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-              />
-            ) : null}
-
-            {/* Primary Submit Button */}
-            <Button
-              title={tab === 'LOGIN' ? t('login', language) : t('register', language)}
-              onPress={handleSubmit}
-              loading={loading}
-              variant="primary"
-              size="lg"
-              style={styles.submitBtn}
-            />
-
-            {/* Continue as Guest Button */}
-            <TouchableOpacity
-              style={styles.guestBtn}
-              onPress={handleContinueAsGuest}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="person-outline" size={16} color={Colors.textSecondary} />
-              <Text style={styles.guestBtnText}>{t('loginAsGuest', language)}</Text>
-            </TouchableOpacity>
+                {/* Continue as Guest Button */}
+                <TouchableOpacity
+                  style={styles.guestBtn}
+                  onPress={handleContinueAsGuest}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="person-outline" size={16} color={Colors.textSecondary} />
+                  <Text style={styles.guestBtnText}>{t('loginAsGuest', language)}</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
@@ -434,5 +535,50 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     fontWeight: '600',
     textDecorationLine: 'underline',
+  },
+  iconCircleWarning: {
+    backgroundColor: '#FEF3C7',
+  },
+  forgotPasswordRow: {
+    alignItems: 'flex-end',
+    marginTop: -Spacing.xs,
+    marginBottom: Spacing.sm,
+  },
+  forgotPasswordText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.primary,
+  },
+  successBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs + 2,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.sm,
+    gap: Spacing.xs,
+  },
+  successBannerText: {
+    fontSize: 12,
+    color: '#065F46',
+    fontWeight: '600',
+    flex: 1,
+    lineHeight: 18,
+  },
+  backToLoginBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.sm,
+    gap: Spacing.xs,
+    marginTop: Spacing.xs,
+  },
+  backToLoginText: {
+    fontSize: 13,
+    color: Colors.primary,
+    fontWeight: '700',
   },
 });

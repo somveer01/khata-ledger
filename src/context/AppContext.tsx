@@ -19,6 +19,7 @@ interface AppContextType {
   isAuthenticated: boolean;
   login: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   register: (email: string, pass: string, name?: string) => Promise<{ success: boolean; error?: string }>;
+  resetPassword: (email: string) => Promise<{ success: boolean; message?: string; error?: string }>;
   logout: () => Promise<void>;
   loginAsGuest: () => void;
   showAuthModal: (message?: string, onSuccess?: () => void) => void;
@@ -144,6 +145,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return res;
   };
 
+  const resetPassword = async (email: string) => {
+    return await AuthService.resetPassword(email);
+  };
+
   const logout = async () => {
     await AuthService.logout();
     setUser(null);
@@ -192,6 +197,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         isAuthenticated: !!user && !isGuest,
         login,
         register,
+        resetPassword,
         logout,
         loginAsGuest,
         showAuthModal,

@@ -45,6 +45,7 @@ export const SettingsScreen: React.FC = () => {
     isAuthenticated,
     showAuthModal,
     logout,
+    resetPassword,
   } = useApp();
 
   const [name, setName] = useState(business?.name || '');
@@ -234,28 +235,65 @@ export const SettingsScreen: React.FC = () => {
           </View>
 
           {isAuthenticated ? (
-            <Button
-              title={t('logout', language)}
-              variant="outline"
-              size="sm"
-              onPress={() => {
-                const isSomveer = user?.email?.toLowerCase().includes('somveerkushwaha');
-                const accountName = isSomveer
-                  ? 'Somveer Kushwaha'
-                  : (user?.displayName && !user.displayName.toLowerCase().includes('shiv')
-                      ? user.displayName
-                      : user?.email?.split('@')[0] || t('account', language));
-                confirmAction(
-                  t('logoutConfirmTitle', language),
-                  `${t('account', language)}: ${accountName}\n${t('loggedInAs', language)}: ${user?.email || ''}\n\n${t('logoutConfirmDesc', language)}`,
-                  () => logout(),
-                  t('logout', language),
-                  t('cancel', language),
-                  'logout'
-                );
-              }}
-              style={{ marginTop: Spacing.sm }}
-            />
+            <View style={{ flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.sm }}>
+              <Button
+                title={t('resetPassword', language)}
+                variant="outline"
+                size="sm"
+                icon={<Ionicons name="key-outline" size={16} color={Colors.primary} />}
+                onPress={() => {
+                  if (!user?.email) return;
+                  confirmAction(
+                    t('sendResetLinkConfirmTitle', language),
+                    `${t('sendResetLinkConfirmDesc', language)} ${user.email}?`,
+                    async () => {
+                      const res = await resetPassword(user.email!);
+                      if (res.success) {
+                        showAlert(
+                          t('success', language),
+                          t('passwordResetSentAlert', language),
+                          undefined,
+                          'success'
+                        );
+                      } else {
+                        showAlert(
+                          t('error', language),
+                          res.error || 'Failed to send reset link',
+                          undefined,
+                          'danger'
+                        );
+                      }
+                    },
+                    t('sendResetLink', language),
+                    t('cancel', language),
+                    'info'
+                  );
+                }}
+                style={{ flex: 1 }}
+              />
+              <Button
+                title={t('logout', language)}
+                variant="outline"
+                size="sm"
+                onPress={() => {
+                  const isSomveer = user?.email?.toLowerCase().includes('somveerkushwaha');
+                  const accountName = isSomveer
+                    ? 'Somveer Kushwaha'
+                    : (user?.displayName && !user.displayName.toLowerCase().includes('shiv')
+                        ? user.displayName
+                        : user?.email?.split('@')[0] || t('account', language));
+                  confirmAction(
+                    t('logoutConfirmTitle', language),
+                    `${t('account', language)}: ${accountName}\n${t('loggedInAs', language)}: ${user?.email || ''}\n\n${t('logoutConfirmDesc', language)}`,
+                    () => logout(),
+                    t('logout', language),
+                    t('cancel', language),
+                    'logout'
+                  );
+                }}
+                style={{ flex: 1 }}
+              />
+            </View>
           ) : (
             <Button
               title={`${t('login', language)} / ${t('register', language)}`}
