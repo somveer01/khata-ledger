@@ -178,6 +178,9 @@ export const CustomerListScreen: React.FC = () => {
                   </TouchableOpacity>
                 </View>
                 <View style={styles.metaRow}>
+                  <Ionicons name="location-outline" size={13} color={Colors.textSecondary} />
+                  <Text style={styles.metaText}>{item.villageName || t('noVillageRecorded', language)}</Text>
+                  <Text style={styles.metaDivider}>•</Text>
                   <Ionicons name="call-outline" size={13} color={Colors.textSecondary} />
                   <Text style={styles.metaText}>{item.mobile}</Text>
                 </View>

@@ -263,6 +263,9 @@ export const CustomerLedgerScreen: React.FC = () => {
             <TouchableOpacity onPress={handleSendReminder} style={styles.iconBtn}>
               <Ionicons name="logo-whatsapp" size={20} color="#4ADE80" />
             </TouchableOpacity>
+            <TouchableOpacity onPress={handleExportCsv} style={styles.iconBtn}>
+              <Ionicons name="download-outline" size={20} color={Colors.textInverse} />
+            </TouchableOpacity>
           </View>
         }
       />
@@ -289,22 +292,6 @@ export const CustomerLedgerScreen: React.FC = () => {
                 variant={isDue ? 'danger' : isAdvance ? 'info' : 'success'}
                 size="md"
               />
-              <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                <TouchableOpacity
-                  style={styles.editCustomerBadgeBtn}
-                  onPress={() => guardAction(() => navigation.navigate('EditCustomer', { customer }))}
-                >
-                  <Ionicons name="pencil" size={12} color={Colors.primary} />
-                  <Text style={styles.editCustomerBadgeText}>{t('editCustomerDetails', language)}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.deleteCustomerBadgeBtn}
-                  onPress={() => guardAction(handleDeleteCustomer)}
-                >
-                  <Ionicons name="trash-outline" size={12} color={Colors.danger} />
-                  <Text style={styles.deleteCustomerBadgeText}>{t('delete', language)}</Text>
-                </TouchableOpacity>
-              </View>
             </View>
           </View>
 
@@ -357,23 +344,7 @@ export const CustomerLedgerScreen: React.FC = () => {
         </Card>
       </View>
 
-      {/* Action shortcuts row: PDF, WhatsApp, CSV */}
-      <View style={styles.actionShortcutsRow}>
-        <TouchableOpacity style={styles.shortcutBtn} onPress={handleExportPdf} disabled={exportingPdf}>
-          <Ionicons name="document-text-outline" size={15} color={Colors.primary} />
-          <Text style={styles.shortcutText}>{t('statementPdf', language)}</Text>
-        </TouchableOpacity>
 
-        <TouchableOpacity style={styles.shortcutBtn} onPress={handleSendReminder}>
-          <Ionicons name="logo-whatsapp" size={15} color="#16A34A" />
-          <Text style={styles.shortcutText}>{t('sendWhatsAppReminder', language)}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.shortcutBtn} onPress={handleExportCsv}>
-          <Ionicons name="download-outline" size={15} color={Colors.textSecondary} />
-          <Text style={styles.shortcutText}>{t('exportCsv', language)}</Text>
-        </TouchableOpacity>
-      </View>
 
       {/* Particulars Search Input */}
       <View style={[styles.searchBar, searchFocused && styles.searchBarFocused]}>

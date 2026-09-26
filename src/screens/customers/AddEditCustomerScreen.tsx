@@ -63,7 +63,7 @@ export const AddEditCustomerScreen: React.FC = () => {
     try {
       const contact = await pickContactFromDevice();
       if (contact) {
-        // User requested to remove name autofill
+        if (contact.name) setName(contact.name);
         if (contact.mobile) setMobile(contact.mobile);
         showAlert(
           t('success', language),
@@ -98,11 +98,11 @@ export const AddEditCustomerScreen: React.FC = () => {
       parsedPreview.name || parsedPreview.mobile
         ? parsedPreview
         : parseContactText(rawContactText);
-    if (!parsed.mobile) {
+    if (!parsed.name && !parsed.mobile) {
       showAlert(t('error', language), t('contactImportFailed', language), undefined, 'warning');
       return;
     }
-    // Only autofill mobile
+    if (parsed.name) setName(parsed.name);
     if (parsed.mobile) setMobile(parsed.mobile);
     setPasteModalVisible(false);
     setRawContactText('');
@@ -271,7 +271,20 @@ export const AddEditCustomerScreen: React.FC = () => {
             error={errors.mobile}
           />
 
-          {/* Village Selector Removed */}
+          {/* Village Selector */}
+          <View style={styles.fieldContainer}>
+            <Text style={styles.fieldLabel}>{t('village', language)}</Text>
+            <TouchableOpacity
+              style={styles.selectButton}
+              onPress={() => setVillageModalVisible(true)}
+            >
+              <Ionicons name="business-outline" size={18} color={Colors.textSecondary} />
+              <Text style={styles.selectText}>
+                {selectedVillage ? selectedVillage.name : t('selectOrCreateVillage', language)}
+              </Text>
+              <Ionicons name="chevron-down" size={18} color={Colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
 
           {/* Opening Balance */}
           <Input
