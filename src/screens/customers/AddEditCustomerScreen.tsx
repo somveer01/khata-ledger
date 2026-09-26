@@ -168,63 +168,6 @@ export const AddEditCustomerScreen: React.FC = () => {
     setVillageModalVisible(false);
   };
 
-  const handleDeleteCustomer = async () => {
-    if (!isAuthenticated) {
-      guardAction(() => handleDeleteCustomer());
-      return;
-    }
-    if (!business || !existingCustomer) return;
-
-    // Prevent deletion if transactions exist
-    setLoading(true);
-    const txs = await DataRepository.getTransactions(business.id, existingCustomer.id);
-    setLoading(false);
-
-    if (txs.length > 0) {
-      const msg =
-        language === 'hi'
-          ? `"${existingCustomer.name}" के खाते में ${txs.length} लेन-देन दर्ज हैं।\n\nखाता-बही की सुरक्षा के लिए, जब तक लेन-देन मौजूद हैं ग्राहक को हटाया नहीं जा सकता।\n\nकृपया पहले खाता-बही से सभी लेन-देन हटाएं।`
-          : `"${existingCustomer.name}" has ${txs.length} recorded transaction(s).\n\nTo preserve accounting accuracy, customers with transaction history cannot be deleted.\n\nPlease delete all transactions from the customer ledger first.`;
-      showAlert(t('cannotDeleteCustomerTitle', language), msg, undefined, 'danger');
-      return;
-    }
-
-    const confirmMsg =
-      language === 'hi'
-        ? `क्या आप सचमुच ग्राहक "${existingCustomer.name}" को हटाना चाहते हैं?`
-        : `Are you sure you want to delete customer "${existingCustomer.name}"?`;
-
-    confirmAction(
-      t('deleteCustomer', language),
-      confirmMsg,
-      async () => {
-        setLoading(true);
-        const res = await DataRepository.deleteCustomer(business.id, existingCustomer.id);
-        await refreshAllData();
-        setLoading(false);
-        if (res.success) {
-          const successMsg =
-            language === 'hi'
-              ? `ग्राहक "${existingCustomer.name}" सफलतापूर्वक हटा दिया गया।`
-              : `Customer "${existingCustomer.name}" deleted successfully.`;
-          showAlert(
-            t('success', language),
-            successMsg,
-            () => navigation.navigate('MainTabs', { screen: 'CustomersTab' }),
-            'success'
-          );
-        } else if (res.error === 'HAS_TRANSACTIONS') {
-          showAlert(t('cannotDeleteCustomerTitle', language), t('cannotDeleteCustomerHasTx', language), undefined, 'danger');
-        } else {
-          showAlert(t('error', language), res.error || 'Failed to delete customer', undefined, 'danger');
-        }
-      },
-      t('delete', language),
-      t('cancel', language),
-      'danger'
-    );
-  };
-
   const handleSave = async () => {
     if (!isAuthenticated) {
       guardAction(() => handleSave());
@@ -291,13 +234,6 @@ export const AddEditCustomerScreen: React.FC = () => {
         title={isEditing ? t('editCustomer', language) : t('addCustomer', language)}
         showBack
         onBack={() => navigation.goBack()}
-        rightAction={
-          isEditing ? (
-            <TouchableOpacity onPress={handleDeleteCustomer} style={styles.headerDeleteBtn}>
-              <Ionicons name="trash-outline" size={20} color={Colors.textInverse} />
-            </TouchableOpacity>
-          ) : undefined
-        }
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -387,18 +323,6 @@ export const AddEditCustomerScreen: React.FC = () => {
             size="lg"
             style={styles.saveBtn}
           />
-
-          {isEditing && (
-            <Button
-              title={t('deleteCustomer', language)}
-              onPress={handleDeleteCustomer}
-              loading={loading}
-              variant="danger"
-              size="lg"
-              icon={<Ionicons name="trash-outline" size={18} color="#FFFFFF" />}
-              style={styles.deleteBtn}
-            />
-          )}
         </Card>
       </ScrollView>
 
@@ -585,17 +509,6 @@ const styles = StyleSheet.create({
   },
   saveBtn: {
     marginTop: Spacing.md,
-  },
-  deleteBtn: {
-    marginTop: Spacing.md,
-  },
-  headerDeleteBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(239, 68, 68, 0.25)',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   modalOverlay: {
     flex: 1,
