@@ -23,6 +23,11 @@ import { DataRepository } from '../../services/db';
 import { Customer, Village } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
 import { confirmAction, showAlert } from '../../utils/dialog';
+import {
+  isContactPickerSupported,
+  pickContactFromDevice,
+  parseContactText,
+} from '../../utils/contacts';
 
 export const AddEditCustomerScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -45,6 +50,69 @@ export const AddEditCustomerScreen: React.FC = () => {
   const [newVillageName, setNewVillageName] = useState('');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Quick contact import states
+  const [pasteModalVisible, setPasteModalVisible] = useState(false);
+  const [rawContactText, setRawContactText] = useState('');
+  const [parsedPreview, setParsedPreview] = useState<{ name: string; mobile: string }>({
+    name: '',
+    mobile: '',
+  });
+
+  const handleImportFromDevice = async () => {
+    try {
+      const contact = await pickContactFromDevice();
+      if (contact) {
+        if (contact.name) setName(contact.name);
+        if (contact.mobile) setMobile(contact.mobile);
+        showAlert(
+          t('success', language),
+          t('contactImportedSuccess', language),
+          undefined,
+          'success'
+        );
+      }
+    } catch (err) {
+      console.log('Error importing contact:', err);
+    }
+  };
+
+  const handleOpenContactOption = () => {
+    if (isContactPickerSupported()) {
+      handleImportFromDevice();
+    } else {
+      setRawContactText('');
+      setParsedPreview({ name: '', mobile: '' });
+      setPasteModalVisible(true);
+    }
+  };
+
+  const handlePasteTextChange = (text: string) => {
+    setRawContactText(text);
+    const parsed = parseContactText(text);
+    setParsedPreview(parsed);
+  };
+
+  const handleApplyPastedContact = () => {
+    const parsed =
+      parsedPreview.name || parsedPreview.mobile
+        ? parsedPreview
+        : parseContactText(rawContactText);
+    if (!parsed.name && !parsed.mobile) {
+      showAlert(t('error', language), t('contactImportFailed', language), undefined, 'warning');
+      return;
+    }
+    if (parsed.name) setName(parsed.name);
+    if (parsed.mobile) setMobile(parsed.mobile);
+    setPasteModalVisible(false);
+    setRawContactText('');
+    showAlert(
+      t('success', language),
+      t('contactImportedSuccess', language),
+      undefined,
+      'success'
+    );
+  };
 
   useEffect(() => {
     const loadVillages = async () => {
@@ -234,6 +302,66 @@ export const AddEditCustomerScreen: React.FC = () => {
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <Card>
+          {!isEditing && (
+            <View style={styles.importBanner}>
+              <View style={styles.importBannerLeft}>
+                <View style={styles.importIconBadge}>
+                  <Ionicons name="people" size={20} color={Colors.primary} />
+                </View>
+                <View style={styles.importTextWrap}>
+                  <Text style={styles.importTitle}>{t('importContact', language)}</Text>
+                  <Text style={styles.importSubtitle}>
+                    {language === 'hi'
+                      ? 'फ़ोन संपर्कों या WhatsApp से सीधा भरें'
+                      : 'Auto-fill from Phone or WhatsApp'}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.importBtnRow}>
+                {isContactPickerSupported() ? (
+                  <TouchableOpacity
+                    style={styles.actionPillPrimary}
+                    onPress={handleImportFromDevice}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="call" size={14} color="#FFFFFF" />
+                    <Text style={styles.actionPillTextPrimary}>
+                      {language === 'hi' ? 'फ़ोन संपर्क' : 'Phonebook'}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+
+                <TouchableOpacity
+                  style={[
+                    styles.actionPillSecondary,
+                    !isContactPickerSupported() && styles.actionPillPrimary,
+                  ]}
+                  onPress={() => {
+                    setRawContactText('');
+                    setParsedPreview({ name: '', mobile: '' });
+                    setPasteModalVisible(true);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name="clipboard-outline"
+                    size={14}
+                    color={!isContactPickerSupported() ? '#FFFFFF' : Colors.primary}
+                  />
+                  <Text
+                    style={[
+                      styles.actionPillTextSecondary,
+                      !isContactPickerSupported() && styles.actionPillTextPrimary,
+                    ]}
+                  >
+                    {language === 'hi' ? 'पेस्ट करें' : 'Paste Text'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
           {/* Customer Name */}
           <Input
             label={`${t('customerName', language)} *`}
@@ -244,9 +372,21 @@ export const AddEditCustomerScreen: React.FC = () => {
             autoFocus={!isEditing}
           />
 
-          {/* Mobile Number */}
+          {/* Mobile Number with inline contact button */}
+          <View style={styles.fieldHeaderRow}>
+            <Text style={styles.fieldLabel}>{t('mobileNumber', language)}</Text>
+            {!isEditing && (
+              <TouchableOpacity
+                onPress={handleOpenContactOption}
+                style={styles.inlineImportBtn}
+                activeOpacity={0.6}
+              >
+                <Ionicons name="person-add" size={13} color={Colors.primary} />
+                <Text style={styles.inlineImportText}>{t('importContact', language)}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
           <Input
-            label={t('mobileNumber', language)}
             placeholder={language === 'hi' ? '10 अंकों का मोबाइल नंबर' : '10 digit mobile number'}
             value={mobile}
             onChangeText={setMobile}
@@ -300,7 +440,7 @@ export const AddEditCustomerScreen: React.FC = () => {
           />
 
           <Button
-            title={isEditing ? t('save', language) : t('saveTransaction', language)}
+            title={isEditing ? t('updateCustomerBtn', language) : t('registerBtn', language)}
             onPress={handleSave}
             loading={loading}
             variant="primary"
@@ -321,6 +461,65 @@ export const AddEditCustomerScreen: React.FC = () => {
           )}
         </Card>
       </ScrollView>
+
+      {/* Quick Paste / Import Contact Modal */}
+      <Modal visible={pasteModalVisible} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
+                <Ionicons name="person-add" size={20} color={Colors.primary} />
+                <Text style={styles.modalTitle}>{t('pasteContactModalTitle', language)}</Text>
+              </View>
+              <TouchableOpacity onPress={() => setPasteModalVisible(false)}>
+                <Ionicons name="close" size={24} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalHelperText}>
+              {t('pasteContactModalDesc', language)}
+            </Text>
+
+            <Input
+              placeholder={t('pasteContactPlaceholder', language)}
+              value={rawContactText}
+              onChangeText={handlePasteTextChange}
+              multiline
+              numberOfLines={3}
+              containerStyle={{ marginTop: Spacing.sm, marginBottom: Spacing.md }}
+            />
+
+            {(parsedPreview.name || parsedPreview.mobile) ? (
+              <View style={styles.previewBox}>
+                <Text style={styles.previewTitle}>
+                  {language === 'hi' ? 'पहचाना गया विवरण:' : 'Detected Information:'}
+                </Text>
+                {parsedPreview.name ? (
+                  <View style={styles.previewRow}>
+                    <Text style={styles.previewLabel}>{t('detectedName', language)}:</Text>
+                    <Text style={styles.previewVal}>{parsedPreview.name}</Text>
+                  </View>
+                ) : null}
+                {parsedPreview.mobile ? (
+                  <View style={styles.previewRow}>
+                    <Text style={styles.previewLabel}>{t('detectedMobile', language)}:</Text>
+                    <Text style={styles.previewVal}>{parsedPreview.mobile}</Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+
+            <Button
+              title={t('autoFillBtn', language)}
+              onPress={handleApplyPastedContact}
+              variant="primary"
+              size="lg"
+              disabled={!rawContactText.trim()}
+              style={{ marginTop: Spacing.sm }}
+            />
+          </View>
+        </View>
+      </Modal>
 
       {/* Village Picker / Quick Add Modal */}
       <Modal visible={villageModalVisible} transparent animationType="slide">
@@ -399,6 +598,97 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: Spacing.lg,
   },
+  importBanner: {
+    backgroundColor: 'rgba(30, 58, 138, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(30, 58, 138, 0.15)',
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.lg,
+    gap: Spacing.sm,
+  },
+  importBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  importIconBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(30, 58, 138, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  importTextWrap: {
+    flex: 1,
+  },
+  importTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  importSubtitle: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 1,
+  },
+  importBtnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: 2,
+  },
+  actionPillPrimary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primary,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 7,
+    borderRadius: BorderRadius.full,
+    gap: 6,
+  },
+  actionPillTextPrimary: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  actionPillSecondary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 7,
+    borderRadius: BorderRadius.full,
+    gap: 6,
+  },
+  actionPillTextSecondary: {
+    color: Colors.primary,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  fieldHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.xs,
+  },
+  inlineImportBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(30, 58, 138, 0.08)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.sm,
+  },
+  inlineImportText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.primary,
+  },
   fieldContainer: {
     marginBottom: Spacing.md,
   },
@@ -457,6 +747,43 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     ...Typography.h3,
+    color: Colors.textPrimary,
+  },
+  modalHelperText: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.xs,
+    lineHeight: 18,
+  },
+  previewBox: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    gap: 4,
+  },
+  previewTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+    marginBottom: 2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  previewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  previewLabel: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+  },
+  previewVal: {
+    fontSize: 14,
+    fontWeight: '700',
     color: Colors.textPrimary,
   },
   quickAddRow: {
