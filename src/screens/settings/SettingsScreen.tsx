@@ -13,12 +13,22 @@ import { Header } from '../../components/Header';
 import { Card } from '../../components/Card';
 import { Input } from '../../components/Input';
 import { Button } from '../../components/Button';
+import { Badge } from '../../components/Badge';
 import { Colors, Spacing, Typography, BorderRadius } from '../../constants/theme';
 import { useApp } from '../../context/AppContext';
 import { t } from '../../i18n';
 import { Business, SupportedLanguage } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
 import { confirmAction } from '../../utils/dialog';
+
+let deferredInstallPrompt: any = null;
+
+if (Platform.OS === 'web' && typeof window !== 'undefined') {
+  window.addEventListener('beforeinstallprompt', (e: any) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+  });
+}
 
 export const SettingsScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -43,6 +53,17 @@ export const SettingsScreen: React.FC = () => {
   const [address, setAddress] = useState(business?.address || '');
   const [upiId, setUpiId] = useState(business?.upiId || '');
   const [saving, setSaving] = useState(false);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const isStandalone =
+        window.matchMedia('(display-mode: standalone)').matches ||
+        (window.navigator as any).standalone === true;
+      setIsInstalled(isStandalone);
+    }
+  }, []);
 
   useEffect(() => {
     if (business) {
@@ -153,6 +174,64 @@ export const SettingsScreen: React.FC = () => {
         },
       ]
     );
+  };
+
+  const handleInstallApp = async () => {
+    if (Platform.OS === 'web') {
+      if (deferredInstallPrompt) {
+        deferredInstallPrompt.prompt();
+        const choice = await deferredInstallPrompt.userChoice;
+        if (choice?.outcome === 'accepted') {
+          setIsInstalled(true);
+        }
+        deferredInstallPrompt = null;
+        return;
+      }
+
+      if (isInstalled) {
+        window.alert(t('installAppAlreadyInstalled', language));
+        return;
+      }
+
+      const isIos = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+      if (isIos) {
+        window.alert(`${t('installApp', language)}\n\n${t('installAppIosGuide', language)}`);
+      } else {
+        window.alert(`${t('installApp', language)}\n\n${t('installAppAndroidGuide', language)}`);
+      }
+    } else {
+      Alert.alert(t('installApp', language), t('installAppAlreadyInstalled', language));
+    }
+  };
+
+  const handleCheckUpdates = async () => {
+    setCheckingUpdate(true);
+    try {
+      if (Platform.OS === 'web') {
+        await fetch(`index.html?t=${Date.now()}`, { cache: 'no-store' }).catch(() => {});
+        if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+          const reg = await navigator.serviceWorker.getRegistration();
+          if (reg) {
+            await reg.update().catch(() => {});
+          }
+        }
+      }
+    } catch {
+      // ignore network errors
+    }
+    setTimeout(() => {
+      setCheckingUpdate(false);
+      if (Platform.OS === 'web') {
+        const wantsReload = window.confirm(
+          `${t('appUpToDate', language)}\n\n${language === 'hi' ? 'क्या आप नए कैश के साथ ऐप रीलोड करना चाहते हैं?' : 'Would you like to reload the app with fresh cache?'}`
+        );
+        if (wantsReload) {
+          window.location.reload();
+        }
+      } else {
+        Alert.alert(t('updateApp', language), t('appUpToDate', language));
+      }
+    }, 700);
   };
 
   return (
@@ -354,6 +433,57 @@ export const SettingsScreen: React.FC = () => {
           />
         </Card>
 
+        {/* App Installation & Updates Card */}
+        <Card style={styles.appMgmtCard}>
+          <View style={styles.appMgmtHeader}>
+            <View style={styles.appMgmtIconBox}>
+              <Ionicons name="phone-portrait-outline" size={22} color={Colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sectionTitle}>{t('appManagement', language)}</Text>
+              <Text style={styles.appMgmtSub}>{t('installAppDesc', language)}</Text>
+            </View>
+          </View>
+
+          {/* Version Info Row */}
+          <View style={styles.appVersionRow}>
+            <View>
+              <Text style={styles.appVersionLabel}>{t('appVersion', language)}</Text>
+              <Text style={styles.appVersionValue}>v1.0.0</Text>
+            </View>
+            <Badge
+              label={t('appUpToDateStatus', language)}
+              variant="success"
+              size="sm"
+            />
+          </View>
+
+          <View style={{ gap: Spacing.sm, marginTop: Spacing.md }}>
+            <Button
+              title={isInstalled ? t('installAppAlreadyInstalled', language) : t('installApp', language)}
+              onPress={handleInstallApp}
+              variant={isInstalled ? 'outline' : 'primary'}
+              size="md"
+              icon={
+                <Ionicons
+                  name={isInstalled ? 'checkmark-circle' : 'download-outline'}
+                  size={18}
+                  color={isInstalled ? Colors.paymentReceived : '#FFFFFF'}
+                />
+              }
+            />
+
+            <Button
+              title={t('updateApp', language)}
+              onPress={handleCheckUpdates}
+              loading={checkingUpdate}
+              variant="outline"
+              size="md"
+              icon={<Ionicons name="sync-outline" size={18} color={Colors.primary} />}
+            />
+          </View>
+        </Card>
+
         {/* App Info Footer */}
         <View style={styles.appFooter}>
           <Text style={styles.appNameText}>{t('versionFooter', language)}</Text>
@@ -489,5 +619,52 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     textAlign: 'center',
     paddingHorizontal: Spacing.xl,
+  },
+  appMgmtCard: {
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#FFFFFF',
+    marginBottom: Spacing.md,
+  },
+  appMgmtHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  appMgmtIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primaryLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  appMgmtSub: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  appVersionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.background,
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  appVersionLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  appVersionValue: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+    marginTop: 2,
   },
 });

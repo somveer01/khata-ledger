@@ -22,7 +22,14 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "name": "Khata Book - डिजिटल बहीखाता",
+      "shortName": "KhataBook",
+      "themeColor": "#1E3A8A",
+      "backgroundColor": "#1E3A8A",
+      "display": "standalone",
+      "scope": "/khata-ledger/",
+      "startUrl": "/khata-ledger/"
     },
     "plugins": [
       "expo-sharing",
