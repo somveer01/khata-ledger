@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,7 @@ import {
   Alert,
   Modal,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Header } from '../../components/Header';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
@@ -56,20 +56,23 @@ export const ReportsScreen: React.FC = () => {
   const [viewYear, setViewYear] = useState<number>(new Date().getFullYear());
   const [viewMonth, setViewMonth] = useState<number>(new Date().getMonth());
 
-  useEffect(() => {
-    const load = async () => {
-      if (!business) return;
-      const [c, tx, v] = await Promise.all([
-        DataRepository.getCustomers(business.id),
-        DataRepository.getTransactions(business.id),
-        DataRepository.getVillageSummaries(business.id),
-      ]);
-      setCustomers(c);
-      setTransactions(tx);
-      setVillages(v);
-    };
-    load();
+  const loadData = useCallback(async () => {
+    if (!business) return;
+    const [c, tx, v] = await Promise.all([
+      DataRepository.getCustomers(business.id),
+      DataRepository.getTransactions(business.id),
+      DataRepository.getVillageSummaries(business.id),
+    ]);
+    setCustomers(c);
+    setTransactions(tx);
+    setVillages(v);
   }, [business]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
 
   const customerMap = useMemo(() => {
     const map = new Map<string, Customer>();

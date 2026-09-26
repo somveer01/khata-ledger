@@ -201,7 +201,7 @@ export const DataRepository = {
             }
           })
           .catch((err) => console.warn('Firestore getCustomers background sync error:', err));
-        return localCustomers;
+        return [...localCustomers]; // Clone to ensure React re-renders on mutation
       }
 
       // Initial load when cache is empty: await Firestore
@@ -210,13 +210,13 @@ export const DataRepository = {
         if (!snap.empty) {
           const list = snap.docs.map((d) => d.data() as Customer);
           await StorageService.saveCustomers(businessId, list);
-          return list;
+          return [...list];
         }
       } catch (err) {
         console.warn('Firestore getCustomers error, using local:', err);
       }
     }
-    return localCustomers;
+    return [...localCustomers];
   },
 
   async saveCustomer(customer: Customer): Promise<{ success: boolean; customer: Customer }> {
@@ -329,9 +329,9 @@ export const DataRepository = {
           .catch((err) => console.warn('Firestore getTransactions background sync error:', err));
 
         if (customerId) {
-          return localTx.filter((t) => t.customerId === customerId);
+          return localTx.filter((t) => t.customerId === customerId); // filter creates a new array
         }
-        return localTx;
+        return [...localTx]; // clone
       }
 
       // Initial load when cache is empty: await Firestore
@@ -341,9 +341,9 @@ export const DataRepository = {
           const list = snap.docs.map((d) => d.data() as Transaction);
           await StorageService.saveTransactions(businessId, list);
           if (customerId) {
-            return list.filter((t) => t.customerId === customerId);
+            return list.filter((t) => t.customerId === customerId); // filter creates a new array
           }
-          return list;
+          return [...list]; // clone
         }
       } catch (err) {
         console.warn('Firestore getTransactions error, using local:', err);
@@ -353,7 +353,7 @@ export const DataRepository = {
     if (customerId) {
       return localTx.filter((t) => t.customerId === customerId);
     }
-    return localTx;
+    return [...localTx];
   },
 
   /**
