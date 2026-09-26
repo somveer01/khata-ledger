@@ -17,12 +17,19 @@ import { Colors } from '../constants/theme';
 import { useApp } from '../context/AppContext';
 import { t } from '../i18n';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { View, StyleSheet, Platform } from 'react-native';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
 const MainTabs: React.FC = () => {
   const { language } = useApp();
+  const insets = useSafeAreaInsets();
+
+  // Ensure plenty of bottom padding on Android 3-button bar, iPhone home bar, and Web browsers
+  const bottomInset = Platform.OS === 'web' ? Math.max(insets.bottom, 14) : Math.max(insets.bottom, 10);
+  const tabHeight = 62 + bottomInset;
 
   return (
     <Tab.Navigator
@@ -32,18 +39,28 @@ const MainTabs: React.FC = () => {
         tabBarActiveTintColor: Colors.primary,
         tabBarInactiveTintColor: Colors.textSecondary,
         tabBarStyle: {
-          backgroundColor: Colors.surface,
+          backgroundColor: '#FFFFFF',
           borderTopWidth: 1,
-          borderTopColor: Colors.border,
-          height: 60,
-          paddingBottom: 8,
+          borderTopColor: '#E2E8F0',
+          height: tabHeight,
+          paddingBottom: bottomInset,
           paddingTop: 6,
+          elevation: 10,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -3 },
+          shadowOpacity: 0.08,
+          shadowRadius: 8,
+        },
+        tabBarItemStyle: {
+          paddingVertical: 2,
         },
         tabBarLabelStyle: {
           fontSize: 11,
-          fontWeight: '600',
+          fontWeight: '700',
+          marginTop: 2,
+          marginBottom: 1,
         },
-        tabBarIcon: ({ focused, color, size }) => {
+        tabBarIcon: ({ focused, color }) => {
           let iconName: keyof typeof Ionicons.glyphMap = 'home';
 
           if (route.name === 'DashboardTab') {
@@ -58,7 +75,11 @@ const MainTabs: React.FC = () => {
             iconName = focused ? 'settings' : 'settings-outline';
           }
 
-          return <Ionicons name={iconName} size={22} color={color} />;
+          return (
+            <View style={[tabStyles.iconBox, focused && tabStyles.iconBoxFocused]}>
+              <Ionicons name={iconName} size={22} color={color} />
+            </View>
+          );
         },
       })}
     >
@@ -90,6 +111,19 @@ const MainTabs: React.FC = () => {
     </Tab.Navigator>
   );
 };
+
+const tabStyles = StyleSheet.create({
+  iconBox: {
+    paddingHorizontal: 12,
+    paddingVertical: 3,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconBoxFocused: {
+    backgroundColor: 'rgba(30, 58, 138, 0.09)',
+  },
+});
 
 export const RootNavigator: React.FC = () => {
   return (
