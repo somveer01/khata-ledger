@@ -181,4 +181,13 @@ export const StorageService = {
     }
     await AsyncStorage.setItem(STORAGE_KEYS.LOCAL_USERS, JSON.stringify(users));
   },
+
+  async clearAllLocalAuthAndUsers(): Promise<void> {
+    memoryCache.delete(STORAGE_KEYS.CURRENT_USER);
+    memoryCache.delete(STORAGE_KEYS.IS_GUEST);
+    memoryCache.delete(STORAGE_KEYS.LOCAL_USERS);
+    await AsyncStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+    await AsyncStorage.removeItem(STORAGE_KEYS.IS_GUEST);
+    await AsyncStorage.removeItem(STORAGE_KEYS.LOCAL_USERS);
+  },
 };

@@ -857,11 +857,12 @@ export const DataRepository = {
   // CLEAR ALL DATA (Reset)
   // -------------------------------------------------------------
   async clearAllData(businessId: string): Promise<void> {
-    // 1. Clear local storage and memory cache
+    // 1. Clear local storage, auth users, and memory cache
     await StorageService.clearBusinessData(businessId);
     await StorageService.saveCustomers(businessId, []);
     await StorageService.saveVillages(businessId, []);
     await StorageService.saveTransactions(businessId, []);
+    await StorageService.clearAllLocalAuthAndUsers();
 
     // 2. If Firebase is active, delete records from Firestore
     if (isFirebaseConfigured() && db) {
