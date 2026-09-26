@@ -22,9 +22,27 @@
         height: 100%;
         flex: 1;
       }
+      input, textarea, select {
+        outline: none !important;
+        -webkit-tap-highlight-color: transparent;
+      }
+      input:focus, textarea:focus, select:focus {
+        outline: none !important;
+        box-shadow: none !important;
+      }
+      *:focus {
+        outline: none !important;
+      }
     </style>
-  <meta name="theme-color" content="#1E3A8A">
-<link rel="icon" href="/khata-ledger/favicon.ico"/><style>input,textarea,select{outline:none!important;-webkit-tap-highlight-color:transparent;}input:focus,textarea:focus,select:focus{outline:none!important;box-shadow:none!important;}*:focus{outline:none!important;}</style></head>
+    <meta name="theme-color" content="#1E3A8A">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="KhataBook">
+    <link rel="manifest" href="/khata-ledger/manifest.json">
+    <link rel="apple-touch-icon" href="/khata-ledger/icon-192.png">
+    <link rel="icon" href="/khata-ledger/favicon.ico"/>
+  </head>
 
   <body>
     <!-- Use static rendering with Expo Router to support running without JavaScript. -->
@@ -33,6 +51,6 @@
     </noscript>
     <!-- The root element for your Expo app. -->
     <div id="root"></div>
-  <script src="/khata-ledger/_expo/static/js/web/index-e987e6fbdf6ced8ac8b696f3168e8466.js" defer></script>
+  <script src="/khata-ledger/_expo/static/js/web/index-8040b6ed77ea3f53e862924d2a2e85f9.js" defer></script>
 </body>
 </html>
