@@ -174,6 +174,27 @@ export const AddEntryScreen: React.FC = () => {
         return;
       }
 
+      const getMicBlockedMessage = () => {
+        const isHindi = language === 'hi';
+        return isHindi
+          ? 'माइक की अनुमति (Permission) बंद है!\n\nअनुमति चालू करने के आसान तरीके:\n\n1. Chrome ऐप खोलें ➔ ऊपर 3 डॉट्स (⋮) ➔ Settings (सेटिंग्स) ➔ Site settings (साइट सेटिंग्स) ➔ Microphone ➔ somveer01.github.io पर टैप करके "Allow" (अनुमति दें) करें।\n\n2. या फोन Settings ➔ Apps ➔ Chrome ➔ Permissions ➔ Microphone को "Allow" करें।'
+          : 'Microphone permission is blocked!\n\n2 easy ways to allow it:\n\n1. Open Chrome app ➔ tap 3 dots (⋮) at top right ➔ Settings ➔ Site settings ➔ Microphone ➔ tap "somveer01.github.io" and select "Allow".\n\n2. Or Phone Settings ➔ Apps ➔ Chrome ➔ Permissions ➔ Microphone ➔ select "Allow".';
+      };
+
+      // Explicitly request microphone access via getUserMedia first.
+      // On mobile Chrome and PWAs, this triggers the native browser/OS permission popup.
+      if (typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          stream.getTracks().forEach((track) => track.stop());
+        } catch (mediaErr: any) {
+          console.warn('getUserMedia permission error:', mediaErr);
+          setIsListening(false);
+          showAlert(t('error', language), getMicBlockedMessage(), undefined, 'danger');
+          return;
+        }
+      }
+
       try {
         const recognition = new SpeechRecognitionClass();
         recognition.lang = 'hi-IN';
@@ -188,9 +209,7 @@ export const AddEntryScreen: React.FC = () => {
           if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
             showAlert(
               t('error', language),
-              language === 'hi'
-                ? 'माइक की अनुमति नहीं मिली! Chrome ब्राउज़र में ऊपर URL के बगल में ताले 🔒 / सेटिंग्स आइकन पर टैप करें, और Microphone को "Allow" (अनुमति दें) करें।'
-                : 'Microphone permission denied! In Chrome, tap the Lock 🔒 icon next to the URL and allow Microphone.',
+              getMicBlockedMessage(),
               undefined,
               'danger'
             );
