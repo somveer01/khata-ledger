@@ -16,6 +16,7 @@ interface InputProps extends TextInputProps {
   error?: string;
   prefix?: string;
   suffix?: string;
+  rightElement?: React.ReactNode;
   containerStyle?: StyleProp<ViewStyle>;
   helperText?: string;
 }
@@ -25,6 +26,7 @@ export const Input: React.FC<InputProps> = ({
   error,
   prefix,
   suffix,
+  rightElement,
   containerStyle,
   helperText,
   style,
@@ -63,6 +65,7 @@ export const Input: React.FC<InputProps> = ({
           {...props}
         />
         {suffix && <Text style={styles.suffix}>{suffix}</Text>}
+        {rightElement && rightElement}
       </View>
       {error ? (
         <Text style={styles.errorText}>{error}</Text>

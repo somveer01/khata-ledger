@@ -100,6 +100,45 @@ export const AddEntryScreen: React.FC = () => {
     editingTransaction?.paymentMethod || 'CASH'
   );
 
+  const [isListening, setIsListening] = useState(false);
+
+  const handleMicPress = () => {
+    if (Platform.OS !== 'web') {
+      showAlert(t('error', language), language === 'hi' ? 'कृपया टाइप करने के लिए कीबोर्ड के माइक (Mic) बटन का इस्तेमाल करें।' : 'Please use your keyboard mic to dictate text.', undefined, 'warning');
+      return;
+    }
+    
+    try {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        showAlert(t('error', language), language === 'hi' ? 'आपका ब्राउज़र बोलकर टाइप करने की सुविधा को सपोर्ट नहीं करता।' : 'Speech recognition not supported in this browser.', undefined, 'warning');
+        return;
+      }
+      
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'hi-IN';
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      
+      recognition.onstart = () => setIsListening(true);
+      recognition.onend = () => setIsListening(false);
+      recognition.onerror = (event: any) => {
+        setIsListening(false);
+        console.warn('Speech recognition error:', event.error);
+      };
+      
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        setDescription((prev) => prev ? prev + ' ' + transcript : transcript);
+      };
+      
+      recognition.start();
+    } catch (err) {
+      setIsListening(false);
+      console.warn('Speech API init error:', err);
+    }
+  };
+
   useEffect(() => {
     const loadCustomers = async () => {
       if (!business) return;
@@ -587,9 +626,18 @@ export const AddEntryScreen: React.FC = () => {
               {/* Particulars / Goods */}
               <Input
                 label={`${t('itemDescription', language)} *`}
-                placeholder={language === 'hi' ? 'जैसे: धान बीज (Dhan), डीएपी खाद' : 'e.g. Rice seeds, Fertilizer'}
+                placeholder={language === 'hi' ? (isListening ? 'सुन रहा हूँ... बोलिए' : 'उदा: धान (Dhan), यूरिया (Urea)') : (isListening ? 'Listening...' : 'e.g. Rice seeds, Fertilizer')}
                 value={description}
                 onChangeText={setDescription}
+                rightElement={
+                  <TouchableOpacity onPress={handleMicPress} style={{ padding: 4 }}>
+                    <Ionicons 
+                      name={isListening ? 'mic' : 'mic-outline'} 
+                      size={22} 
+                      color={isListening ? Colors.danger : Colors.textSecondary} 
+                    />
+                  </TouchableOpacity>
+                }
               />
 
               {/* Clean, well-spaced Quantity, Unit, Rate Section */}
