@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   Modal,
   FlatList,
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { Header } from '../../components/Header';
 import { DatePickerField } from '../../components/DatePickerField';
 import { Input } from '../../components/Input';
@@ -27,7 +27,7 @@ import { Ionicons } from '@expo/vector-icons';
 export const AddUdhaarScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const { business, language, refreshAllData } = useApp();
+  const { business, language, refreshAllData, dataVersion } = useApp();
 
   const preselectedCustomer: Customer | undefined = route.params?.customer;
 
@@ -49,17 +49,31 @@ export const AddUdhaarScreen: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [idempotencyKey] = useState(`idemp_udhaar_${Date.now()}_${Math.random().toString(36).substring(7)}`);
 
-  useEffect(() => {
-    const loadCustomers = async () => {
-      if (!business) return;
-      const list = await DataRepository.getCustomers(business.id);
-      setCustomers(list.filter((c) => c.status !== 'INACTIVE'));
-      if (!selectedCustomer && list.length > 0) {
-        setSelectedCustomer(list[0]);
+  const loadCustomers = useCallback(async () => {
+    if (!business) return;
+    const list = await DataRepository.getCustomers(business.id);
+    const active = list.filter((c) => c.status !== 'INACTIVE');
+    setCustomers(active);
+    setSelectedCustomer((prev) => {
+      if (prev) {
+        return active.find((c) => c.id === prev.id) || (active.length > 0 ? active[0] : null);
       }
-    };
+      if (preselectedCustomer) {
+        return active.find((c) => c.id === preselectedCustomer.id) || (active.length > 0 ? active[0] : null);
+      }
+      return active.length > 0 ? active[0] : null;
+    });
+  }, [business, preselectedCustomer]);
+
+  useEffect(() => {
     loadCustomers();
-  }, [business]);
+  }, [loadCustomers, dataVersion]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadCustomers();
+    }, [loadCustomers])
+  );
 
   const computedTotal = () => {
     const q = parseFloat(quantity);

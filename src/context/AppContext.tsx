@@ -26,6 +26,7 @@ interface AppContextType {
   hideAuthModal: () => void;
   guardAction: (action: () => void, promptMessage?: string) => void;
 
+  dataVersion: number;
   setLanguage: (lang: SupportedLanguage) => Promise<void>;
   updateBusiness: (business: Business) => Promise<void>;
   refreshAllData: () => Promise<void>;
@@ -36,6 +37,7 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
+  const [dataVersion, setDataVersion] = useState<number>(0);
   const [business, setBusiness] = useState<Business | null>(null);
   const [language, setLang] = useState<SupportedLanguage>('hi'); // Default to Hindi as per rural retailer requirements
   const [isFirebaseActive] = useState<boolean>(isFirebaseConfigured());
@@ -100,6 +102,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const refreshAllData = async () => {
+    setDataVersion((v) => v + 1);
     if (business) {
       setIsSyncing(true);
       const count = await StorageService.getPendingSyncCount(business.id);
@@ -203,6 +206,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         showAuthModal,
         hideAuthModal,
         guardAction,
+        dataVersion,
         setLanguage: changeLanguage,
         updateBusiness,
         refreshAllData,

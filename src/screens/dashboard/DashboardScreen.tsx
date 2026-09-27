@@ -24,7 +24,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 export const DashboardScreen: React.FC = () => {
   const navigation = useNavigation<any>();
-  const { business, language, refreshAllData, guardAction } = useApp();
+  const { business, language, refreshAllData, guardAction, dataVersion } = useApp();
   const [refreshing, setRefreshing] = useState(false);
   const [metrics, setMetrics] = useState<DashboardMetrics>({
     totalOutstandingPaise: 0,
@@ -63,7 +63,7 @@ export const DashboardScreen: React.FC = () => {
 
   useEffect(() => {
     loadData();
-  }, [loadData]);
+  }, [loadData, dataVersion]);
 
   useFocusEffect(
     useCallback(() => {

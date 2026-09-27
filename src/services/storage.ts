@@ -54,17 +54,17 @@ export const StorageService = {
   async getVillages(businessId: string): Promise<Village[]> {
     const key = `${STORAGE_KEYS.VILLAGES}_${businessId}`;
     if (memoryCache.has(key)) {
-      return memoryCache.get(key);
+      return [...memoryCache.get(key)];
     }
     const raw = await AsyncStorage.getItem(key);
     const list = raw ? JSON.parse(raw) : [];
     memoryCache.set(key, list);
-    return list;
+    return [...list];
   },
 
   async saveVillages(businessId: string, villages: Village[]): Promise<void> {
     const key = `${STORAGE_KEYS.VILLAGES}_${businessId}`;
-    memoryCache.set(key, villages);
+    memoryCache.set(key, [...villages]);
     await AsyncStorage.setItem(key, JSON.stringify(villages));
   },
 
@@ -72,17 +72,17 @@ export const StorageService = {
   async getCustomers(businessId: string): Promise<Customer[]> {
     const key = `${STORAGE_KEYS.CUSTOMERS}_${businessId}`;
     if (memoryCache.has(key)) {
-      return memoryCache.get(key);
+      return [...memoryCache.get(key)];
     }
     const raw = await AsyncStorage.getItem(key);
     const list = raw ? JSON.parse(raw) : [];
     memoryCache.set(key, list);
-    return list;
+    return [...list];
   },
 
   async saveCustomers(businessId: string, customers: Customer[]): Promise<void> {
     const key = `${STORAGE_KEYS.CUSTOMERS}_${businessId}`;
-    memoryCache.set(key, customers);
+    memoryCache.set(key, [...customers]);
     await AsyncStorage.setItem(key, JSON.stringify(customers));
   },
 
@@ -90,12 +90,12 @@ export const StorageService = {
   async getTransactions(businessId: string): Promise<Transaction[]> {
     const key = `${STORAGE_KEYS.TRANSACTIONS}_${businessId}`;
     if (memoryCache.has(key)) {
-      return memoryCache.get(key);
+      return [...memoryCache.get(key)];
     }
     const raw = await AsyncStorage.getItem(key);
     const list = raw ? JSON.parse(raw) : [];
     memoryCache.set(key, list);
-    return list;
+    return [...list];
   },
 
   async saveTransactions(businessId: string, transactions: Transaction[]): Promise<void> {

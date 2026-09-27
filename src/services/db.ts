@@ -64,7 +64,7 @@ export const DataRepository = {
             }
           })
           .catch((err) => console.warn('Firestore getVillages background sync error:', err));
-        return localVillages;
+        return [...localVillages];
       }
 
       // Initial load when cache is empty: await Firestore
@@ -73,13 +73,13 @@ export const DataRepository = {
         if (!snap.empty) {
           const list = snap.docs.map((d) => d.data() as Village);
           await StorageService.saveVillages(businessId, list);
-          return list;
+          return [...list];
         }
       } catch (err) {
         console.warn('Firestore getVillages error, using local:', err);
       }
     }
-    return localVillages;
+    return [...localVillages];
   },
 
   async saveVillage(village: Village): Promise<{ success: boolean; error?: string }> {

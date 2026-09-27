@@ -33,7 +33,7 @@ const monthNames = [
 
 export const ReportsScreen: React.FC = () => {
   const navigation = useNavigation<any>();
-  const { business, language } = useApp();
+  const { business, language, dataVersion } = useApp();
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -67,6 +67,10 @@ export const ReportsScreen: React.FC = () => {
     setTransactions(tx);
     setVillages(v);
   }, [business]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData, dataVersion]);
 
   useFocusEffect(
     useCallback(() => {

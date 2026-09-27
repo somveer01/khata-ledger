@@ -29,7 +29,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 export const VillageListScreen: React.FC = () => {
   const navigation = useNavigation<any>();
-  const { business, language, refreshAllData, guardAction } = useApp();
+  const { business, language, refreshAllData, guardAction, dataVersion } = useApp();
 
   const [summaries, setSummaries] = useState<VillageSummary[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
@@ -46,7 +46,7 @@ export const VillageListScreen: React.FC = () => {
 
   useEffect(() => {
     loadData();
-  }, [loadData]);
+  }, [loadData, dataVersion]);
 
   useFocusEffect(
     useCallback(() => {

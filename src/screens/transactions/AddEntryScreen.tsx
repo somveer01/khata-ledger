@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ExpoSpeechRecognitionModule } from 'expo-speech-recognition';
 import {
   View,
@@ -11,7 +11,7 @@ import {
   FlatList,
   Platform,
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { Header } from '../../components/Header';
 import { DatePickerField } from '../../components/DatePickerField';
 import { Input } from '../../components/Input';
@@ -33,7 +33,7 @@ type EntryMode = 'CREDIT' | 'PAYMENT';
 export const AddEntryScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const { business, language, refreshAllData, isAuthenticated, guardAction } = useApp();
+  const { business, language, refreshAllData, isAuthenticated, guardAction, dataVersion } = useApp();
 
   const preselectedCustomer: Customer | undefined = route.params?.customer;
   const editingTransaction: Transaction | undefined = route.params?.editingTransaction;
@@ -252,26 +252,41 @@ export const AddEntryScreen: React.FC = () => {
     }
   };
 
-  useEffect(() => {
-    const loadCustomers = async () => {
-      if (!business) return;
-      const list = await DataRepository.getCustomers(business.id);
-      const active = list.filter((c) => c.status !== 'INACTIVE');
-      setCustomers(active);
-      if (!selectedCustomer && active.length > 0) {
-        if (editingTransaction) {
-          const match = active.find((c) => c.id === editingTransaction.customerId);
-          if (match) setSelectedCustomer(match);
-        } else if (mode === 'PAYMENT') {
-          const dueCust = active.find((c) => (c.currentBalancePaise || 0) > 0);
-          setSelectedCustomer(dueCust || active[0]);
-        } else {
-          setSelectedCustomer(active[0]);
-        }
+  const loadCustomers = useCallback(async () => {
+    if (!business) return;
+    const list = await DataRepository.getCustomers(business.id);
+    const active = list.filter((c) => c.status !== 'INACTIVE');
+    setCustomers(active);
+
+    setSelectedCustomer((prev) => {
+      if (editingTransaction) {
+        return active.find((c) => c.id === editingTransaction.customerId) || prev || (active.length > 0 ? active[0] : null);
       }
-    };
+      if (prev) {
+        const updated = active.find((c) => c.id === prev.id);
+        return updated || (active.length > 0 ? active[0] : null);
+      }
+      if (preselectedCustomer) {
+        const found = active.find((c) => c.id === preselectedCustomer.id);
+        if (found) return found;
+      }
+      if (mode === 'PAYMENT') {
+        const dueCust = active.find((c) => (c.currentBalancePaise || 0) > 0);
+        return dueCust || (active.length > 0 ? active[0] : null);
+      }
+      return active.length > 0 ? active[0] : null;
+    });
+  }, [business, mode, editingTransaction, preselectedCustomer]);
+
+  useEffect(() => {
     loadCustomers();
-  }, [business, mode, editingTransaction]);
+  }, [loadCustomers, dataVersion]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadCustomers();
+    }, [loadCustomers])
+  );
 
   // Udhaar computed amount
   const computedCreditTotal = () => {

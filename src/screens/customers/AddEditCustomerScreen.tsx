@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
   FlatList,
   Platform,
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { Header } from '../../components/Header';
 import { Input } from '../../components/Input';
 import { Button } from '../../components/Button';
@@ -32,7 +32,7 @@ import {
 export const AddEditCustomerScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const { business, language, refreshAllData, isAuthenticated, guardAction } = useApp();
+  const { business, language, refreshAllData, isAuthenticated, guardAction, dataVersion } = useApp();
 
   const existingCustomer: Customer | undefined = route.params?.customer;
   const isEditing = !!existingCustomer;
@@ -114,21 +114,33 @@ export const AddEditCustomerScreen: React.FC = () => {
     );
   };
 
-  useEffect(() => {
-    const loadVillages = async () => {
-      if (!business) return;
-      const vList = await DataRepository.getVillages(business.id);
-      setVillages(vList);
+  const loadVillages = useCallback(async () => {
+    if (!business) return;
+    const vList = await DataRepository.getVillages(business.id);
+    setVillages(vList);
 
-      if (existingCustomer?.villageId) {
-        const found = vList.find((v) => v.id === existingCustomer.villageId);
-        if (found) setSelectedVillage(found);
-      } else if (vList.length > 0 && !selectedVillage) {
-        setSelectedVillage(vList[0]);
-      }
-    };
-    loadVillages();
+    if (existingCustomer?.villageId) {
+      const found = vList.find((v) => v.id === existingCustomer.villageId);
+      setSelectedVillage(found || (vList.length > 0 ? vList[0] : null));
+    } else {
+      setSelectedVillage((prev) => {
+        if (prev && !vList.some((v) => v.id === prev.id)) {
+          return vList.length > 0 ? vList[0] : null;
+        }
+        return prev || (vList.length > 0 ? vList[0] : null);
+      });
+    }
   }, [business, existingCustomer]);
+
+  useEffect(() => {
+    loadVillages();
+  }, [loadVillages, dataVersion]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadVillages();
+    }, [loadVillages])
+  );
 
   const validate = () => {
     const errs: Record<string, string> = {};

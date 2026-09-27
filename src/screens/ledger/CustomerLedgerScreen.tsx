@@ -33,7 +33,7 @@ import { Ionicons } from '@expo/vector-icons';
 export const CustomerLedgerScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const { business, language, refreshAllData, guardAction } = useApp();
+  const { business, language, refreshAllData, guardAction, dataVersion } = useApp();
 
   const customerParam: Customer = route.params?.customer;
   const [customer, setCustomer] = useState<Customer>(customerParam);
@@ -62,7 +62,7 @@ export const CustomerLedgerScreen: React.FC = () => {
 
   useEffect(() => {
     loadLedger();
-  }, [loadLedger]);
+  }, [loadLedger, dataVersion]);
 
   useFocusEffect(
     useCallback(() => {

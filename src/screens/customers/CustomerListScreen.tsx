@@ -29,7 +29,7 @@ type SortOption = 'HIGHEST_DUE' | 'NAME';
 
 export const CustomerListScreen: React.FC = () => {
   const navigation = useNavigation<any>();
-  const { business, language, guardAction, refreshAllData } = useApp();
+  const { business, language, guardAction, refreshAllData, dataVersion } = useApp();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [search, setSearch] = useState('');
   const [filterTab, setFilterTab] = useState<FilterTab>('ALL');
@@ -45,7 +45,7 @@ export const CustomerListScreen: React.FC = () => {
 
   useEffect(() => {
     loadData();
-  }, [loadData]);
+  }, [loadData, dataVersion]);
 
   useFocusEffect(
     useCallback(() => {
