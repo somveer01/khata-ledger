@@ -102,7 +102,7 @@ export const AddEntryScreen: React.FC = () => {
 
   const [isListening, setIsListening] = useState(false);
 
-  const handleMicPress = () => {
+  const handleMicPress = async () => {
     if (Platform.OS !== 'web') {
       showAlert(t('error', language), language === 'hi' ? 'कृपया टाइप करने के लिए कीबोर्ड के माइक (Mic) बटन का इस्तेमाल करें।' : 'Please use your keyboard mic to dictate text.', undefined, 'warning');
       return;
@@ -125,6 +125,23 @@ export const AddEntryScreen: React.FC = () => {
       recognition.onerror = (event: any) => {
         setIsListening(false);
         console.warn('Speech recognition error:', event.error);
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+          showAlert(
+            t('error', language), 
+            language === 'hi' 
+              ? '???? ?? ?????? ???? ????! ????? ???? ??????? ?? ???????? ??? ???? ??????????? (Microphone) ?? ?????? ????' 
+              : 'Microphone permission denied. Please allow microphone access in your browser settings.', 
+            undefined, 
+            'danger'
+          );
+        } else if (event.error === 'network') {
+          showAlert(
+            t('error', language), 
+            language === 'hi' ? '??????? ??????? ???? ??? ????? ???? ???? ?? ??? ??????? ????? ???' : 'Network error. Speech recognition requires internet.', 
+            undefined, 
+            'danger'
+          );
+        }
       };
       
       recognition.onresult = (event: any) => {
