@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ExpoSpeechRecognitionModule } from 'expo-speech-recognition';
 import {
   View,
@@ -102,69 +102,140 @@ export const AddEntryScreen: React.FC = () => {
   );
 
   const [isListening, setIsListening] = useState(false);
+  const webRecognitionRef = useRef<any>(null);
 
   useEffect(() => {
-    const startSub = ExpoSpeechRecognitionModule.addListener('start', () => setIsListening(true));
-    const endSub = ExpoSpeechRecognitionModule.addListener('end', () => setIsListening(false));
-    const errorSub = ExpoSpeechRecognitionModule.addListener('error', (event) => {
-      setIsListening(false);
-      console.log('error code:', event.error, 'error message:', event.message);
-      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-        showAlert(
-          t('error', language), 
-          language === 'hi' 
-            ? 'маик ли пермишюн нехи мили! крпя мобаил сетингс мен макр эп ко пермишюн ден.' 
-            : 'Microphone permission denied! Please allow mic in app settings.', 
-          undefined, 
-          'danger'
-        );
-      } else if (event.error === 'network') {
-        showAlert(
-          t('error', language), 
-          language === 'hi' ? 'интернет кнекшн нехи сет.' : 'Network error.', 
-          undefined, 
-          'danger'
-        );
-      } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
-        showAlert(t('error', language), event.message || event.error, undefined, 'warning');
-      }
-    });
-    const resultSub = ExpoSpeechRecognitionModule.addListener('result', (event) => {
-      const transcript = event.results[0]?.transcript || '';
-      if (transcript) {
-        setDescription((prev) => prev ? prev + ' ' + transcript : transcript);
-      }
-    });
+    if (Platform.OS !== 'web') {
+      const startSub = ExpoSpeechRecognitionModule.addListener('start', () => setIsListening(true));
+      const endSub = ExpoSpeechRecognitionModule.addListener('end', () => setIsListening(false));
+      const errorSub = ExpoSpeechRecognitionModule.addListener('error', (event) => {
+        setIsListening(false);
+        console.log('error code:', event.error, 'error message:', event.message);
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+          showAlert(
+            t('error', language), 
+            language === 'hi' 
+              ? 'माइक की अनुमति नहीं मिली! कृपया मोबाइल सेटिंग्स (Settings -> Apps -> Khata Book -> Permissions) में जाकर Microphone को Allow करें।' 
+              : 'Microphone permission denied! Please allow mic in Settings -> Apps -> Khata Book -> Permissions.', 
+            undefined, 
+            'danger'
+          );
+        } else if (event.error === 'network') {
+          showAlert(
+            t('error', language), 
+            language === 'hi' ? 'इंटरनेट कनेक्शन नहीं है। बोलकर टाइप करने के लिए इंटरनेट ज़रूरी है।' : 'Network error. Speech recognition requires internet.', 
+            undefined, 
+            'danger'
+          );
+        } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
+          showAlert(t('error', language), event.message || event.error, undefined, 'warning');
+        }
+      });
+      const resultSub = ExpoSpeechRecognitionModule.addListener('result', (event) => {
+        const transcript = event.results[0]?.transcript || '';
+        if (transcript) {
+          setDescription((prev) => prev ? prev + ' ' + transcript : transcript);
+        }
+      });
 
-    return () => {
-      startSub.remove();
-      endSub.remove();
-      errorSub.remove();
-      resultSub.remove();
-    };
+      return () => {
+        startSub.remove();
+        endSub.remove();
+        errorSub.remove();
+        resultSub.remove();
+      };
+    }
   }, [language]);
 
   const handleMicPress = async () => {
     if (isListening) {
-      ExpoSpeechRecognitionModule.stop();
+      if (Platform.OS === 'web') {
+        if (webRecognitionRef.current) {
+          try { webRecognitionRef.current.stop(); } catch {}
+        }
+      } else {
+        ExpoSpeechRecognitionModule.stop();
+      }
+      setIsListening(false);
       return;
     }
 
+    if (Platform.OS === 'web') {
+      const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SpeechRecognitionClass) {
+        showAlert(
+          t('error', language),
+          language === 'hi'
+            ? 'आपका ब्राउज़र बोलकर टाइप करने की सुविधा को सपोर्ट नहीं करता। कृपया Google Chrome ब्राउज़र में खोलें।'
+            : 'Speech recognition not supported in this browser. Please open in Google Chrome.',
+          undefined,
+          'warning'
+        );
+        return;
+      }
+
+      try {
+        const recognition = new SpeechRecognitionClass();
+        recognition.lang = 'hi-IN';
+        recognition.continuous = false;
+        recognition.interimResults = false;
+
+        recognition.onstart = () => setIsListening(true);
+        recognition.onend = () => setIsListening(false);
+        recognition.onerror = (event: any) => {
+          setIsListening(false);
+          console.warn('Speech recognition error:', event.error);
+          if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+            showAlert(
+              t('error', language),
+              language === 'hi'
+                ? 'माइक की अनुमति नहीं मिली! Chrome ब्राउज़र में ऊपर URL के बगल में ताले 🔒 / सेटिंग्स आइकन पर टैप करें, और Microphone को "Allow" (अनुमति दें) करें।'
+                : 'Microphone permission denied! In Chrome, tap the Lock 🔒 icon next to the URL and allow Microphone.',
+              undefined,
+              'danger'
+            );
+          } else if (event.error === 'network') {
+            showAlert(
+              t('error', language),
+              language === 'hi'
+                ? 'इंटरनेट कनेक्शन नहीं है। बोलकर टाइप करने के लिए इंटरनेट ज़रूरी है।'
+                : 'Network error. Speech recognition requires an internet connection.',
+              undefined,
+              'danger'
+            );
+          } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
+            showAlert(t('error', language), event.error || 'Speech error', undefined, 'warning');
+          }
+        };
+
+        recognition.onresult = (event: any) => {
+          const transcript = event.results?.[0]?.[0]?.transcript || '';
+          if (transcript) {
+            setDescription((prev) => prev ? prev + ' ' + transcript : transcript);
+          }
+        };
+
+        webRecognitionRef.current = recognition;
+        recognition.start();
+      } catch (err) {
+        setIsListening(false);
+        console.warn('Speech API init error:', err);
+      }
+      return;
+    }
 
     try {
-      if (Platform.OS !== 'web') {
-        const hasPermissions = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-        if (!hasPermissions.granted) {
-          showAlert(
-            t('error', language), 
-            language === 'hi' 
-              ? 'маик л� пермишн несШ мили! кेप्या мобачल सेटिंग्स мें Макр эп को пермишн ден.' 
-              : 'Microphone permission denied! Please allow mic in app settings.', 
+      const hasPermissions = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (!hasPermissions.granted) {
+        showAlert(
+          t('error', language), 
+          language === 'hi' 
+            ? 'माइक की अनुमति नहीं मिली! कृपया मोबाइल सेटिंग्स (Settings -> Apps -> Khata Book -> Permissions) में जाकर Microphone को Allow करें।' 
+            : 'Microphone permission denied! Please allow mic in Settings -> Apps -> Khata Book -> Permissions.', 
             undefined, 
             'danger'
           );
-          return;
-        }
+        return;
       }
 
       ExpoSpeechRecognitionModule.start({
@@ -176,7 +247,7 @@ export const AddEntryScreen: React.FC = () => {
       });
     } catch (error) {
       console.error('Mic error:', error);
-      showAlert(t('error', language), language === 'hi' ? 'маик шуру кेरने мें смсяа АЈ"' : 'Failed to start mic.', undefined, 'warning');
+      showAlert(t('error', language), language === 'hi' ? 'माइक शुरू करने में समस्या आई।' : 'Failed to start mic.', undefined, 'warning');
       setIsListening(false);
     }
   };
