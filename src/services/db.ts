@@ -132,14 +132,18 @@ export const DataRepository = {
     const targetVillage = villages.find((v) => v.id === villageId);
     const villageName = targetVillage?.name;
 
-    const filtered = villages.filter((v) => v.id !== villageId);
+    const filtered = villages.filter((v) => v.id !== villageId && v.id !== 'other');
     await StorageService.saveVillages(businessId, filtered);
 
     // Unassign customers from this deleted village (ledger and balance remain 100% safe)
     const customers = await StorageService.getCustomers(businessId);
     let custsChanged = false;
     customers.forEach((c) => {
-      if (c.villageId === villageId || (villageName && c.villageName === villageName)) {
+      if (
+        c.villageId === villageId ||
+        (villageId === 'other' && (!c.villageId || c.villageId === 'other' || c.villageName === 'Other')) ||
+        (villageName && c.villageName === villageName)
+      ) {
         c.villageId = '';
         c.villageName = '';
         c.updatedAt = new Date().toISOString();
@@ -151,11 +155,11 @@ export const DataRepository = {
     }
 
     // Also clear denormalized villageName on transactions
-    if (villageName) {
+    if (villageName || villageId === 'other') {
       const txs = await StorageService.getTransactions(businessId);
       let txChanged = false;
       txs.forEach((tx) => {
-        if (tx.villageName === villageName) {
+        if ((villageName && tx.villageName === villageName) || (villageId === 'other' && tx.villageName === 'Other')) {
           tx.villageName = '';
           txChanged = true;
         }
@@ -165,7 +169,7 @@ export const DataRepository = {
       }
     }
 
-    if (isFirebaseConfigured() && db) {
+    if (isFirebaseConfigured() && db && villageId !== 'other') {
       try {
         await deleteDoc(doc(db, 'villages', villageId));
       } catch (err) {
@@ -616,12 +620,12 @@ export const DataRepository = {
     return calculateDashboardMetrics(customers, transactions, villages.length);
   },
 
-  async getVillageSummaries(businessId: string): Promise<VillageSummary[]> {
+  async getVillageSummaries(businessId: string, includeUnassigned: boolean = false): Promise<VillageSummary[]> {
     const [villages, customers] = await Promise.all([
       this.getVillages(businessId),
       this.getCustomers(businessId),
     ]);
-    return calculateVillageSummaries(villages, customers);
+    return calculateVillageSummaries(villages, customers, includeUnassigned);
   },
 
   // -------------------------------------------------------------

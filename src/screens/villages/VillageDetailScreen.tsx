@@ -43,7 +43,11 @@ export const VillageDetailScreen: React.FC = () => {
   const loadCustomers = useCallback(async () => {
     if (!business || !villageSummary) return;
     const all = await DataRepository.getCustomers(business.id);
-    const villageCusts = all.filter((c) => c.villageId === villageSummary.villageId);
+    const villageCusts = all.filter((c) =>
+      villageSummary.villageId === 'other'
+        ? !c.villageId || c.villageId === 'other'
+        : c.villageId === villageSummary.villageId
+    );
     setCustomers(villageCusts);
   }, [business, villageSummary]);
 

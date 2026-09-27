@@ -61,7 +61,7 @@ export const ReportsScreen: React.FC = () => {
     const [c, tx, v] = await Promise.all([
       DataRepository.getCustomers(business.id),
       DataRepository.getTransactions(business.id),
-      DataRepository.getVillageSummaries(business.id),
+      DataRepository.getVillageSummaries(business.id, true),
     ]);
     setCustomers(c);
     setTransactions(tx);

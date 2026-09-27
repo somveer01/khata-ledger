@@ -104,7 +104,8 @@ export function computeLedgerWithRunningBalances(
  */
 export function calculateVillageSummaries(
   villages: { id: string; name: string }[],
-  customers: Customer[]
+  customers: Customer[],
+  includeUnassigned: boolean = false
 ): VillageSummary[] {
   const map = new Map<string, VillageSummary>();
 
@@ -125,6 +126,10 @@ export function calculateVillageSummaries(
 
     let vSummary = map.get(c.villageId);
     if (!vSummary) {
+      if (!includeUnassigned) {
+        // Do not inject a synthetic "Other" village into the actual villages management list
+        continue;
+      }
       vSummary = {
         villageId: c.villageId || 'other',
         villageName: c.villageName || 'Other',
