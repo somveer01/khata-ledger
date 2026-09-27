@@ -232,13 +232,30 @@ export const AddEntryScreen: React.FC = () => {
               undefined,
               'warning'
             );
+          } else if (event.error === 'no-speech') {
+            showAlert(
+              language === 'hi' ? 'आवाज़ नहीं मिली' : 'No speech detected',
+              language === 'hi' ? 'माइक के पास आकर स्पष्ट बोलें।' : 'Please speak clearly closer to the microphone.',
+              undefined,
+              'info'
+            );
+          } else if (event.error !== 'aborted') {
+            showAlert(
+              t('error', language),
+              language === 'hi' ? `माइक एरर: ${event.error}` : `Mic error: ${event.error}`,
+              undefined,
+              'warning'
+            );
           }
         };
 
         recognition.onresult = (event: any) => {
-          const transcript = event.results?.[0]?.[0]?.transcript || '';
+          let transcript = '';
+          for (let i = 0; i < event.results.length; i++) {
+            transcript += event.results[i][0].transcript;
+          }
           if (transcript) {
-            setDescription((prev) => (prev ? prev + ' ' + transcript : transcript));
+            setDescription(transcript);
           }
         };
 
@@ -248,7 +265,15 @@ export const AddEntryScreen: React.FC = () => {
       } catch (err: any) {
         setIsListening(false);
         webRecognitionRef.current = null;
-        console.warn('Speech API init error:', err);
+        console.error('Speech API init error:', err);
+        showAlert(
+          t('error', language),
+          language === 'hi'
+            ? `माइक शुरू करने में समस्या आई: ${err?.message || err}`
+            : `Failed to start mic: ${err?.message || err}`,
+          undefined,
+          'danger'
+        );
       }
       return;
     }
