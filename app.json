@@ -33,7 +33,8 @@
     },
     "plugins": [
       "expo-sharing",
-      "expo-font"
+      "expo-font",
+      "expo-speech-recognition"
     ],
     "experiments": {
       "baseUrl": "/khata-ledger"
