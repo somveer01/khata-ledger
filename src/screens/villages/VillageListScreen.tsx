@@ -105,27 +105,21 @@ export const VillageListScreen: React.FC = () => {
     if (!business) return;
 
     guardAction(async () => {
-      // Check if transactions exist for customers of this village
-      const allTxs = await DataRepository.getTransactions(business.id);
-      const allCusts = await DataRepository.getCustomers(business.id);
-      const villageCustIds = new Set(allCusts.filter((c) => c.villageId === item.villageId).map((c) => c.id));
-      const matchingTxs = allTxs.filter(
-        (t) => (t.customerId && villageCustIds.has(t.customerId)) || t.villageName === item.villageName
-      );
+      // Close modal if open so confirm dialog is clearly visible
+      setModalVisible(false);
+      setEditingVillage(null);
 
-      if (matchingTxs.length > 0) {
-        const msg =
-          language === 'hi'
-            ? `गाँव "${item.villageName}" में ${villageCustIds.size} ग्राहक और ${matchingTxs.length} लेन-देन दर्ज हैं।\n\nखाता-बही की सुरक्षा के लिए, सक्रिय लेन-देन वाले गाँव को नहीं हटाया जा सकता।\n\nकृपया पहले संबंधित लेन-देन हटाएं या ग्राहकों का गाँव बदलें।`
-            : `Village "${item.villageName}" has ${villageCustIds.size} customer(s) with ${matchingTxs.length} recorded transaction(s).\n\nTo preserve accounting records, villages with active transactions cannot be deleted.\n\nPlease delete or reassign all related transactions first.`;
-        Alert.alert(t('cannotDeleteVillageTitle', language), msg);
-        return;
-      }
+      const allCusts = await DataRepository.getCustomers(business.id);
+      const villageCustCount = allCusts.filter((c) => c.villageId === item.villageId).length;
 
       const confirmMsg =
-        language === 'hi'
-          ? `क्या आप सचमुच गाँव "${item.villageName}" को हटाना चाहते हैं?`
-          : `Are you sure you want to delete village "${item.villageName}"?`;
+        villageCustCount > 0
+          ? (language === 'hi'
+              ? `क्या आप सचमुच गाँव "${item.villageName}" को हटाना चाहते हैं?\n\nइस गाँव से जुड़े ${villageCustCount} ग्राहक अनअसाइन्ड (बिना गाँव वाले) हो जाएंगे। उनके खाते और लेन-देन पूरी तरह सुरक्षित रहेंगे।`
+              : `Are you sure you want to delete village "${item.villageName}"?\n\n${villageCustCount} customer(s) will become unassigned. Their ledger balances and transactions will remain safe.`)
+          : (language === 'hi'
+              ? `क्या आप सचमुच गाँव "${item.villageName}" को हटाना चाहते हैं?`
+              : `Are you sure you want to delete village "${item.villageName}"?`);
 
       confirmAction(
         t('deleteVillage', language),
@@ -134,8 +128,6 @@ export const VillageListScreen: React.FC = () => {
           if (!business) return;
           const res = await DataRepository.deleteVillage(business.id, item.villageId);
           if (res.success) {
-            setModalVisible(false);
-            setEditingVillage(null);
             setVillageName('');
             await refreshAllData();
             await loadData();
@@ -144,8 +136,6 @@ export const VillageListScreen: React.FC = () => {
                 ? `गाँव "${item.villageName}" सफलतापूर्वक हटा दिया गया।`
                 : `Village "${item.villageName}" deleted successfully.`;
             showAlert(t('success', language), successMsg, undefined, 'success');
-          } else if (res.error === 'HAS_TRANSACTIONS') {
-            showAlert(t('cannotDeleteVillageTitle', language), t('cannotDeleteVillageHasTx', language), undefined, 'danger');
           } else {
             showAlert(t('error', language), res.error || 'Failed to delete village', undefined, 'danger');
           }

@@ -132,37 +132,37 @@ export const DataRepository = {
     const targetVillage = villages.find((v) => v.id === villageId);
     const villageName = targetVillage?.name;
 
-    // Check if transactions exist for customers of this village or associated with this village
-    const customers = await StorageService.getCustomers(businessId);
-    const villageCustomerIds = new Set(
-      customers.filter((c) => c.villageId === villageId).map((c) => c.id)
-    );
-
-    const txs = await StorageService.getTransactions(businessId);
-    const hasTransactions = txs.some(
-      (t) =>
-        (t.customerId && villageCustomerIds.has(t.customerId)) ||
-        (villageName && t.villageName === villageName)
-    );
-
-    if (hasTransactions) {
-      return { success: false, error: 'HAS_TRANSACTIONS' };
-    }
-
     const filtered = villages.filter((v) => v.id !== villageId);
     await StorageService.saveVillages(businessId, filtered);
 
-    // Unassign customers from this deleted village
+    // Unassign customers from this deleted village (ledger and balance remain 100% safe)
+    const customers = await StorageService.getCustomers(businessId);
     let custsChanged = false;
     customers.forEach((c) => {
-      if (c.villageId === villageId) {
+      if (c.villageId === villageId || (villageName && c.villageName === villageName)) {
         c.villageId = '';
         c.villageName = '';
+        c.updatedAt = new Date().toISOString();
         custsChanged = true;
       }
     });
     if (custsChanged) {
       await StorageService.saveCustomers(businessId, customers);
+    }
+
+    // Also clear denormalized villageName on transactions
+    if (villageName) {
+      const txs = await StorageService.getTransactions(businessId);
+      let txChanged = false;
+      txs.forEach((tx) => {
+        if (tx.villageName === villageName) {
+          tx.villageName = '';
+          txChanged = true;
+        }
+      });
+      if (txChanged) {
+        await StorageService.saveTransactions(businessId, txs);
+      }
     }
 
     if (isFirebaseConfigured() && db) {
