@@ -179,6 +179,31 @@ export const AddEntryScreen: React.FC = () => {
         return;
       }
 
+      // Detect if app is running in installed Android home-screen / PWA (WebAPK) mode
+      const isStandalone =
+        typeof window !== 'undefined' &&
+        ((window.navigator as any).standalone === true ||
+          (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches));
+
+      if (isStandalone) {
+        confirmAction(
+          language === 'hi' ? 'Chrome में बोलकर लिखें' : 'Use Voice Typing in Chrome',
+          language === 'hi'
+            ? 'Android सुरक्षा नियमों के अनुसार Google होम-स्क्रीन ऐप में बोलकर लिखने की अनुमति नहीं देता (Google इसे ब्लॉक करता है)।\n\nलेकिन Google Chrome ब्राउज़र में माइक 100% चालू है!\n\nक्या आप अभी इसे Chrome में खोलना चाहते हैं?'
+            : 'Due to Android security restrictions, Google blocks voice typing in installed home-screen apps.\n\nHowever, the microphone works 100% inside Google Chrome!\n\nWould you like to open it in Chrome now?',
+          () => {
+            if (typeof window !== 'undefined') {
+              window.location.href =
+                'intent://somveer01.github.io/khata-ledger/#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=https%3A%2F%2Fsomveer01.github.io%2Fkhata-ledger%2F;end';
+            }
+          },
+          language === 'hi' ? 'Chrome में खोलें' : 'Open in Chrome',
+          language === 'hi' ? 'रद्द करें' : 'Cancel',
+          'info'
+        );
+        return;
+      }
+
       // Check if permission has already been granted previously
       const MIC_PERM_KEY = '@khata_mic_perm_v1';
       let hasPermission = false;
@@ -188,7 +213,6 @@ export const AddEntryScreen: React.FC = () => {
         }
       } catch {}
 
-      // If not granted yet in this PWA/browser, explicitly ask via getUserMedia to trigger the mobile permission prompt!
       if (!hasPermission) {
         if (typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
           try {
@@ -219,7 +243,6 @@ export const AddEntryScreen: React.FC = () => {
       }
 
       // Permission is already granted! Hardware is released and idle.
-      // Clean up any lingering recognition instance
       if (webRecognitionRef.current) {
         try {
           webRecognitionRef.current.abort();
