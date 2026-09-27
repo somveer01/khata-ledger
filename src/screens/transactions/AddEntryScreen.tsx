@@ -27,7 +27,6 @@ import { DataRepository } from '../../services/db';
 import { Customer, Transaction, PaymentMethod } from '../../types';
 import { confirmAction, showAlert } from '../../utils/dialog';
 import { Ionicons } from '@expo/vector-icons';
-import { googleSpeechRecorder } from '../../services/googleSpeechService';
 
 type EntryMode = 'CREDIT' | 'PAYMENT';
 
@@ -103,9 +102,7 @@ export const AddEntryScreen: React.FC = () => {
   );
 
   const [isListening, setIsListening] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
-  const autoStopTimerRef = useRef<any>(null);
-  const handleMicPressRef = useRef<(() => void) | undefined>(undefined);
+  const webRecognitionRef = useRef<any>(null);
 
   useEffect(() => {
     if (Platform.OS !== 'web') {
@@ -147,97 +144,201 @@ export const AddEntryScreen: React.FC = () => {
         errorSub.remove();
         resultSub.remove();
       };
-    } else {
-      return () => {
-        if (autoStopTimerRef.current) {
-          clearTimeout(autoStopTimerRef.current);
-          autoStopTimerRef.current = null;
-        }
-        googleSpeechRecorder.cancelRecording();
-      };
     }
   }, [language]);
 
   const handleMicPress = async () => {
-    if (autoStopTimerRef.current) {
-      clearTimeout(autoStopTimerRef.current);
-      autoStopTimerRef.current = null;
-    }
-
     if (isListening) {
       if (Platform.OS === 'web') {
-        setIsListening(false);
-        setIsTranscribing(true);
-        try {
-          const res = await googleSpeechRecorder.stopAndTranscribe(language === 'hi' ? 'hi' : 'en');
-          if (res.success && res.text) {
-            setDescription((prev) => (prev ? `${prev} ${res.text}` : res.text!));
-          } else if (
-            res.errorCode === 'PERMISSION_DENIED' ||
-            res.error?.includes('Cloud Speech-to-Text API') ||
-            res.error?.includes('disabled')
-          ) {
-            confirmAction(
-              language === 'hi' ? 'Google Speech API चालू करें' : 'Enable Google Speech API',
+        if (webRecognitionRef.current) {
+          try {
+            webRecognitionRef.current.stop();
+          } catch {}
+          webRecognitionRef.current = null;
+        }
+      } else {
+        ExpoSpeechRecognitionModule.stop();
+      }
+      setIsListening(false);
+      return;
+    }
+
+    if (Platform.OS === 'web') {
+      const SpeechRecognitionClass =
+        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+      if (!SpeechRecognitionClass) {
+        showAlert(
+          t('error', language),
+          language === 'hi'
+            ? 'आपका ब्राउज़र बोलकर टाइप करने की सुविधा को सपोर्ट नहीं करता। कृपया Google Chrome ब्राउज़र में खोलें।'
+            : 'Speech recognition not supported in this browser. Please open in Google Chrome.',
+          undefined,
+          'warning'
+        );
+        return;
+      }
+
+      // Detect if app is running in installed Android home-screen / PWA (WebAPK) mode
+      const isStandalone =
+        typeof window !== 'undefined' &&
+        ((window.navigator as any).standalone === true ||
+          (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches));
+
+      if (isStandalone) {
+        confirmAction(
+          language === 'hi' ? 'Chrome में बोलकर लिखें' : 'Use Voice Typing in Chrome',
+          language === 'hi'
+            ? 'Android सुरक्षा नियमों के अनुसार Google होम-स्क्रीन ऐप में बोलकर लिखने की अनुमति नहीं देता (Google इसे ब्लॉक करता है)।\n\nलेकिन Google Chrome ब्राउज़र में माइक 100% चालू है!\n\nक्या आप अभी इसे Chrome में खोलना चाहते हैं?'
+            : 'Due to Android security restrictions, Google blocks voice typing in installed home-screen apps.\n\nHowever, the microphone works 100% inside Google Chrome!\n\nWould you like to open it in Chrome now?',
+          () => {
+            if (typeof window !== 'undefined') {
+              window.location.href =
+                'intent://somveer01.github.io/khata-ledger/#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=https%3A%2F%2Fsomveer01.github.io%2Fkhata-ledger%2F;end';
+            }
+          },
+          language === 'hi' ? 'Chrome में खोलें' : 'Open in Chrome',
+          language === 'hi' ? 'रद्द करें' : 'Cancel',
+          'info'
+        );
+        return;
+      }
+
+      // Check if permission has already been granted previously
+      const MIC_PERM_KEY = '@khata_mic_perm_v1';
+      let hasPermission = false;
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          hasPermission = window.localStorage.getItem(MIC_PERM_KEY) === 'granted';
+        }
+      } catch {}
+
+      if (!hasPermission) {
+        if (typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            stream.getTracks().forEach((track) => track.stop());
+            if (typeof window !== 'undefined' && window.localStorage) {
+              window.localStorage.setItem(MIC_PERM_KEY, 'granted');
+            }
+            showAlert(
+              language === 'hi' ? 'माइक अनुमति मिल गई!' : 'Permission Granted!',
               language === 'hi'
-                ? 'Google Cloud Speech-to-Text सेवा आपके प्रोजेक्ट में चालू नहीं है।\n\nGoogle Cloud Console में जाकर 1-क्लिक में "Enable" बटन दबाएँ (यह बिल्कुल फ्री है - 60 मिनट/महीना फ्री)।\n\nक्या आप अभी चालू करने का पेज खोलना चाहते हैं?'
-                : 'Google Cloud Speech-to-Text API is not enabled in your project.\n\nPlease enable it in Google Cloud Console (Free tier includes 60 mins/month).\n\nOpen console page now?',
-              () => {
-                if (typeof window !== 'undefined') {
-                  window.open(
-                    'https://console.developers.google.com/apis/api/speech.googleapis.com/overview?project=1026719118798',
-                    '_blank'
-                  );
-                }
-              },
-              language === 'hi' ? 'अभी चालू करें (Enable)' : 'Enable Now',
-              language === 'hi' ? 'बाद में' : 'Later',
-              'info'
+                ? 'माइक की अनुमति सफलतापूर्वक मिल गई है। अब बोलकर लिखने के लिए माइक बटन पर टैप करें।'
+                : 'Microphone permission granted! Now tap the mic button to start speaking.',
+              undefined,
+              'success'
             );
-          } else if (res.error === 'NO_SPEECH_DETECTED') {
+            return;
+          } catch (permErr: any) {
+            console.warn('getUserMedia permission denied:', permErr);
+            const isHindi = language === 'hi';
+            const errMsg = isHindi
+              ? 'माइक की अनुमति (Permission) बंद है!\n\nअनुमति चालू करने के आसान तरीके:\n\n1. Chrome ऐप खोलें ➔ ऊपर 3 डॉट्स (⋮) ➔ Settings (सेटिंग्स) ➔ Site settings (साइट सेटिंग्स) ➔ Microphone ➔ somveer01.github.io पर टैप करें और "Allow" (अनुमति दें) चुनें।\n\n2. या फोन Settings ➔ Apps ➔ Chrome ➔ Permissions ➔ Microphone को "Allow" करें।'
+              : 'Microphone permission is blocked!\n\nEasy ways to allow it:\n\n1. Open Chrome app ➔ tap 3 dots (⋮) ➔ Settings ➔ Site settings ➔ Microphone ➔ tap "somveer01.github.io" and select "Allow".\n\n2. Or Phone Settings ➔ Apps ➔ Chrome ➔ Permissions ➔ Microphone ➔ select "Allow".';
+            showAlert(t('error', language), errMsg, undefined, 'danger');
+            return;
+          }
+        }
+      }
+
+      // Permission is already granted! Hardware is released and idle.
+      if (webRecognitionRef.current) {
+        try {
+          webRecognitionRef.current.abort();
+        } catch {}
+        webRecognitionRef.current = null;
+      }
+
+      try {
+        const recognition = new SpeechRecognitionClass();
+        recognition.lang = language === 'hi' ? 'hi-IN' : 'en-IN';
+        recognition.continuous = false;
+        recognition.interimResults = true;
+        recognition.maxAlternatives = 1;
+
+        recognition.onstart = () => {
+          setIsListening(true);
+        };
+
+        recognition.onend = () => {
+          setIsListening(false);
+          webRecognitionRef.current = null;
+        };
+
+        recognition.onerror = (event: any) => {
+          setIsListening(false);
+          webRecognitionRef.current = null;
+          console.warn('Speech recognition error:', event.error);
+
+          if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+            try {
+              if (typeof window !== 'undefined' && window.localStorage) {
+                window.localStorage.removeItem(MIC_PERM_KEY);
+              }
+            } catch {}
+            const isHindi = language === 'hi';
+            const errMsg = isHindi
+              ? 'माइक की अनुमति (Permission) बंद है!\n\nअनुमति चालू करने के आसान तरीके:\n\n1. Chrome ऐप खोलें ➔ ऊपर 3 डॉट्स (⋮) ➔ Settings (सेटिंग्स) ➔ Site settings (साइट सेटिंग्स) ➔ Microphone ➔ somveer01.github.io पर टैप करें और "Allow" (अनुमति दें) चुनें।\n\n2. या फोन Settings ➔ Apps ➔ Chrome ➔ Permissions ➔ Microphone को "Allow" करें।'
+              : 'Microphone permission is blocked!\n\nEasy ways to allow it:\n\n1. Open Chrome app ➔ tap 3 dots (⋮) ➔ Settings ➔ Site settings ➔ Microphone ➔ tap "somveer01.github.io" and select "Allow".\n\n2. Or Phone Settings ➔ Apps ➔ Chrome ➔ Permissions ➔ Microphone ➔ select "Allow".';
+            showAlert(t('error', language), errMsg, undefined, 'danger');
+          } else if (event.error === 'network') {
+            showAlert(
+              t('error', language),
+              language === 'hi'
+                ? 'इंटरनेट कनेक्शन नहीं है। बोलकर टाइप करने के लिए इंटरनेट ज़रूरी है।'
+                : 'Network error. Speech recognition requires an internet connection.',
+              undefined,
+              'danger'
+            );
+          } else if (event.error === 'audio-capture') {
+            showAlert(
+              t('error', language),
+              language === 'hi'
+                ? 'माइक्रोफोन नहीं मिला या किसी अन्य ऐप द्वारा उपयोग में है।'
+                : 'No microphone was found or it is currently in use by another app.',
+              undefined,
+              'warning'
+            );
+          } else if (event.error === 'no-speech') {
             showAlert(
               language === 'hi' ? 'आवाज़ नहीं मिली' : 'No speech detected',
               language === 'hi' ? 'माइक के पास आकर स्पष्ट बोलें।' : 'Please speak clearly closer to the microphone.',
               undefined,
               'info'
             );
-          } else if (res.error) {
-            showAlert(t('error', language), res.error, undefined, 'warning');
+          } else if (event.error !== 'aborted') {
+            showAlert(
+              t('error', language),
+              language === 'hi' ? `माइक एरर: ${event.error}` : `Mic error: ${event.error}`,
+              undefined,
+              'warning'
+            );
           }
-        } catch (err: any) {
-          showAlert(t('error', language), err?.message || 'Speech error', undefined, 'danger');
-        } finally {
-          setIsTranscribing(false);
-        }
-        return;
-      } else {
-        ExpoSpeechRecognitionModule.stop();
-        setIsListening(false);
-        return;
-      }
-    }
+        };
 
-    if (Platform.OS === 'web') {
-      const startRes = await googleSpeechRecorder.startRecording();
-      if (startRes.success) {
-        setIsListening(true);
-        // Safety auto-stop after 15 seconds so recording does not run indefinitely
-        autoStopTimerRef.current = setTimeout(() => {
-          if (handleMicPressRef.current) {
-            handleMicPressRef.current();
+        recognition.onresult = (event: any) => {
+          let transcript = '';
+          for (let i = 0; i < event.results.length; i++) {
+            transcript += event.results[i][0].transcript;
           }
-        }, 15000);
-      } else {
+          if (transcript) {
+            setDescription(transcript);
+          }
+        };
+
+        webRecognitionRef.current = recognition;
+        // MUST be called synchronously within the user gesture without any preceding await/sleep
+        recognition.start();
+      } catch (err: any) {
         setIsListening(false);
-        const isHindi = language === 'hi';
-        const errMsg = isHindi
-          ? 'माइक की अनुमति (Permission) बंद है!\n\nकृपया ब्राउज़र में Microphone की अनुमति (Allow) दें।'
-          : 'Microphone permission is blocked! Please allow microphone access in your browser settings.';
+        webRecognitionRef.current = null;
+        console.error('Speech API init error:', err);
         showAlert(
           t('error', language),
-          startRes.error?.toLowerCase().includes('permission') || startRes.error?.toLowerCase().includes('denied')
-            ? errMsg
-            : (startRes.error || 'Microphone error'),
+          language === 'hi'
+            ? `माइक शुरू करने में समस्या आई: ${err?.message || err}`
+            : `Failed to start mic: ${err?.message || err}`,
           undefined,
           'danger'
         );
@@ -255,14 +356,14 @@ export const AddEntryScreen: React.FC = () => {
             language === 'hi' 
               ? 'माइक की अनुमति नहीं मिली! कृपया मोबाइल सेटिंग्स (Settings -> Apps -> Khata Book -> Permissions) में जाकर Microphone को Allow करें।' 
               : 'Microphone permission denied! Please allow mic in Settings -> Apps -> Khata Book -> Permissions.', 
-            undefined, 
-            'danger'
-          );
+              undefined, 
+              'danger'
+            );
           return;
         }
 
         ExpoSpeechRecognitionModule.start({
-          lang: language === 'hi' ? 'hi-IN' : 'en-IN',
+          lang: 'hi-IN',
           interimResults: false,
           maxAlternatives: 1,
           requiresOnDeviceRecognition: false,
@@ -275,8 +376,6 @@ export const AddEntryScreen: React.FC = () => {
       }
     })();
   };
-
-  handleMicPressRef.current = handleMicPress;
 
   const loadCustomers = useCallback(async () => {
     if (!business) return;
@@ -780,34 +879,16 @@ export const AddEntryScreen: React.FC = () => {
               {/* Particulars / Goods */}
               <Input
                 label={`${t('itemDescription', language)} *`}
-                placeholder={
-                  isTranscribing
-                    ? (language === 'hi' ? 'आवाज़ पहचानी जा रही है...' : 'Transcribing...')
-                    : isListening
-                    ? (language === 'hi' ? 'सुन रहा हूँ... बोलिए (रोकने के लिए दोबारा दबाएँ)' : 'Listening... (tap again to stop)')
-                    : (language === 'hi' ? 'उदा: धान (Dhan), यूरिया (Urea)' : 'e.g. Rice seeds, Fertilizer')
-                }
+                placeholder={language === 'hi' ? (isListening ? 'सुन रहा हूँ... बोलिए' : 'उदा: धान (Dhan), यूरिया (Urea)') : (isListening ? 'Listening...' : 'e.g. Rice seeds, Fertilizer')}
                 value={description}
                 onChangeText={setDescription}
                 rightElement={
-                  <TouchableOpacity
-                    onPress={handleMicPress}
-                    disabled={isTranscribing}
-                    style={{ padding: 4 }}
-                  >
-                    {isTranscribing ? (
-                      <Ionicons
-                        name="hourglass-outline"
-                        size={22}
-                        color={Colors.primary}
-                      />
-                    ) : (
-                      <Ionicons
-                        name={isListening ? 'mic' : 'mic-outline'}
-                        size={22}
-                        color={isListening ? Colors.danger : Colors.textSecondary}
-                      />
-                    )}
+                  <TouchableOpacity onPress={handleMicPress} style={{ padding: 4 }}>
+                    <Ionicons 
+                      name={isListening ? 'mic' : 'mic-outline'} 
+                      size={22} 
+                      color={isListening ? Colors.danger : Colors.textSecondary} 
+                    />
                   </TouchableOpacity>
                 }
               />
