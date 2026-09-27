@@ -147,7 +147,7 @@ export const AddEntryScreen: React.FC = () => {
     }
   }, [language]);
 
-  const handleMicPress = () => {
+  const handleMicPress = async () => {
     if (isListening) {
       if (Platform.OS === 'web') {
         if (webRecognitionRef.current) {
@@ -179,7 +179,47 @@ export const AddEntryScreen: React.FC = () => {
         return;
       }
 
-      // Abort any lingering instance
+      // Check if permission has already been granted previously
+      const MIC_PERM_KEY = '@khata_mic_perm_v1';
+      let hasPermission = false;
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          hasPermission = window.localStorage.getItem(MIC_PERM_KEY) === 'granted';
+        }
+      } catch {}
+
+      // If not granted yet in this PWA/browser, explicitly ask via getUserMedia to trigger the mobile permission prompt!
+      if (!hasPermission) {
+        if (typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            stream.getTracks().forEach((track) => track.stop());
+            if (typeof window !== 'undefined' && window.localStorage) {
+              window.localStorage.setItem(MIC_PERM_KEY, 'granted');
+            }
+            showAlert(
+              language === 'hi' ? 'माइक अनुमति मिल गई!' : 'Permission Granted!',
+              language === 'hi'
+                ? 'माइक की अनुमति सफलतापूर्वक मिल गई है। अब बोलकर लिखने के लिए माइक बटन पर टैप करें।'
+                : 'Microphone permission granted! Now tap the mic button to start speaking.',
+              undefined,
+              'success'
+            );
+            return;
+          } catch (permErr: any) {
+            console.warn('getUserMedia permission denied:', permErr);
+            const isHindi = language === 'hi';
+            const errMsg = isHindi
+              ? 'माइक की अनुमति (Permission) बंद है!\n\nअनुमति चालू करने के आसान तरीके:\n\n1. Chrome ऐप खोलें ➔ ऊपर 3 डॉट्स (⋮) ➔ Settings (सेटिंग्स) ➔ Site settings (साइट सेटिंग्स) ➔ Microphone ➔ somveer01.github.io पर टैप करें और "Allow" (अनुमति दें) चुनें।\n\n2. या फोन Settings ➔ Apps ➔ Chrome ➔ Permissions ➔ Microphone को "Allow" करें।'
+              : 'Microphone permission is blocked!\n\nEasy ways to allow it:\n\n1. Open Chrome app ➔ tap 3 dots (⋮) ➔ Settings ➔ Site settings ➔ Microphone ➔ tap "somveer01.github.io" and select "Allow".\n\n2. Or Phone Settings ➔ Apps ➔ Chrome ➔ Permissions ➔ Microphone ➔ select "Allow".';
+            showAlert(t('error', language), errMsg, undefined, 'danger');
+            return;
+          }
+        }
+      }
+
+      // Permission is already granted! Hardware is released and idle.
+      // Clean up any lingering recognition instance
       if (webRecognitionRef.current) {
         try {
           webRecognitionRef.current.abort();
@@ -191,7 +231,7 @@ export const AddEntryScreen: React.FC = () => {
         const recognition = new SpeechRecognitionClass();
         recognition.lang = language === 'hi' ? 'hi-IN' : 'en-IN';
         recognition.continuous = false;
-        recognition.interimResults = false;
+        recognition.interimResults = true;
         recognition.maxAlternatives = 1;
 
         recognition.onstart = () => {
@@ -209,6 +249,11 @@ export const AddEntryScreen: React.FC = () => {
           console.warn('Speech recognition error:', event.error);
 
           if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+            try {
+              if (typeof window !== 'undefined' && window.localStorage) {
+                window.localStorage.removeItem(MIC_PERM_KEY);
+              }
+            } catch {}
             const isHindi = language === 'hi';
             const errMsg = isHindi
               ? 'माइक की अनुमति (Permission) बंद है!\n\nअनुमति चालू करने के आसान तरीके:\n\n1. Chrome ऐप खोलें ➔ ऊपर 3 डॉट्स (⋮) ➔ Settings (सेटिंग्स) ➔ Site settings (साइट सेटिंग्स) ➔ Microphone ➔ somveer01.github.io पर टैप करें और "Allow" (अनुमति दें) चुनें।\n\n2. या फोन Settings ➔ Apps ➔ Chrome ➔ Permissions ➔ Microphone को "Allow" करें।'
