@@ -147,11 +147,14 @@ export const AddEntryScreen: React.FC = () => {
     }
   }, [language]);
 
-  const handleMicPress = async () => {
+  const handleMicPress = () => {
     if (isListening) {
       if (Platform.OS === 'web') {
         if (webRecognitionRef.current) {
-          try { webRecognitionRef.current.stop(); } catch {}
+          try {
+            webRecognitionRef.current.stop();
+          } catch {}
+          webRecognitionRef.current = null;
         }
       } else {
         ExpoSpeechRecognitionModule.stop();
@@ -161,7 +164,9 @@ export const AddEntryScreen: React.FC = () => {
     }
 
     if (Platform.OS === 'web') {
-      const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      const SpeechRecognitionClass =
+        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
       if (!SpeechRecognitionClass) {
         showAlert(
           t('error', language),
@@ -174,45 +179,41 @@ export const AddEntryScreen: React.FC = () => {
         return;
       }
 
-      const getMicBlockedMessage = () => {
-        const isHindi = language === 'hi';
-        return isHindi
-          ? 'माइक की अनुमति (Permission) बंद है!\n\nअनुमति चालू करने के आसान तरीके:\n\n1. Chrome ऐप खोलें ➔ ऊपर 3 डॉट्स (⋮) ➔ Settings (सेटिंग्स) ➔ Site settings (साइट सेटिंग्स) ➔ Microphone ➔ somveer01.github.io पर टैप करके "Allow" (अनुमति दें) करें।\n\n2. या फोन Settings ➔ Apps ➔ Chrome ➔ Permissions ➔ Microphone को "Allow" करें।'
-          : 'Microphone permission is blocked!\n\n2 easy ways to allow it:\n\n1. Open Chrome app ➔ tap 3 dots (⋮) at top right ➔ Settings ➔ Site settings ➔ Microphone ➔ tap "somveer01.github.io" and select "Allow".\n\n2. Or Phone Settings ➔ Apps ➔ Chrome ➔ Permissions ➔ Microphone ➔ select "Allow".';
-      };
-
-      // Explicitly request microphone access via getUserMedia first.
-      // On mobile Chrome and PWAs, this triggers the native browser/OS permission popup.
-      if (typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      // Abort any lingering instance
+      if (webRecognitionRef.current) {
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          stream.getTracks().forEach((track) => track.stop());
-        } catch (mediaErr: any) {
-          console.warn('getUserMedia permission error:', mediaErr);
-          setIsListening(false);
-          showAlert(t('error', language), getMicBlockedMessage(), undefined, 'danger');
-          return;
-        }
+          webRecognitionRef.current.abort();
+        } catch {}
+        webRecognitionRef.current = null;
       }
 
       try {
         const recognition = new SpeechRecognitionClass();
-        recognition.lang = 'hi-IN';
+        recognition.lang = language === 'hi' ? 'hi-IN' : 'en-IN';
         recognition.continuous = false;
         recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
 
-        recognition.onstart = () => setIsListening(true);
-        recognition.onend = () => setIsListening(false);
+        recognition.onstart = () => {
+          setIsListening(true);
+        };
+
+        recognition.onend = () => {
+          setIsListening(false);
+          webRecognitionRef.current = null;
+        };
+
         recognition.onerror = (event: any) => {
           setIsListening(false);
+          webRecognitionRef.current = null;
           console.warn('Speech recognition error:', event.error);
+
           if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-            showAlert(
-              t('error', language),
-              getMicBlockedMessage(),
-              undefined,
-              'danger'
-            );
+            const isHindi = language === 'hi';
+            const errMsg = isHindi
+              ? 'माइक की अनुमति (Permission) बंद है!\n\nअनुमति चालू करने के आसान तरीके:\n\n1. Chrome ऐप खोलें ➔ ऊपर 3 डॉट्स (⋮) ➔ Settings (सेटिंग्स) ➔ Site settings (साइट सेटिंग्स) ➔ Microphone ➔ somveer01.github.io पर टैप करें और "Allow" (अनुमति दें) चुनें।\n\n2. या फोन Settings ➔ Apps ➔ Chrome ➔ Permissions ➔ Microphone को "Allow" करें।'
+              : 'Microphone permission is blocked!\n\nEasy ways to allow it:\n\n1. Open Chrome app ➔ tap 3 dots (⋮) ➔ Settings ➔ Site settings ➔ Microphone ➔ tap "somveer01.github.io" and select "Allow".\n\n2. Or Phone Settings ➔ Apps ➔ Chrome ➔ Permissions ➔ Microphone ➔ select "Allow".';
+            showAlert(t('error', language), errMsg, undefined, 'danger');
           } else if (event.error === 'network') {
             showAlert(
               t('error', language),
@@ -222,53 +223,65 @@ export const AddEntryScreen: React.FC = () => {
               undefined,
               'danger'
             );
-          } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
-            showAlert(t('error', language), event.error || 'Speech error', undefined, 'warning');
+          } else if (event.error === 'audio-capture') {
+            showAlert(
+              t('error', language),
+              language === 'hi'
+                ? 'माइक्रोफोन नहीं मिला या किसी अन्य ऐप द्वारा उपयोग में है।'
+                : 'No microphone was found or it is currently in use by another app.',
+              undefined,
+              'warning'
+            );
           }
         };
 
         recognition.onresult = (event: any) => {
           const transcript = event.results?.[0]?.[0]?.transcript || '';
           if (transcript) {
-            setDescription((prev) => prev ? prev + ' ' + transcript : transcript);
+            setDescription((prev) => (prev ? prev + ' ' + transcript : transcript));
           }
         };
 
         webRecognitionRef.current = recognition;
+        // MUST be called synchronously within the user gesture without any preceding await/sleep
         recognition.start();
-      } catch (err) {
+      } catch (err: any) {
         setIsListening(false);
+        webRecognitionRef.current = null;
         console.warn('Speech API init error:', err);
       }
       return;
     }
 
-    try {
-      const hasPermissions = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-      if (!hasPermissions.granted) {
-        showAlert(
-          t('error', language), 
-          language === 'hi' 
-            ? 'माइक की अनुमति नहीं मिली! कृपया मोबाइल सेटिंग्स (Settings -> Apps -> Khata Book -> Permissions) में जाकर Microphone को Allow करें।' 
-            : 'Microphone permission denied! Please allow mic in Settings -> Apps -> Khata Book -> Permissions.', 
-            undefined, 
-            'danger'
-          );
-        return;
-      }
+    // Native Android/iOS (APK build)
+    (async () => {
+      try {
+        const hasPermissions = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+        if (!hasPermissions.granted) {
+          showAlert(
+            t('error', language), 
+            language === 'hi' 
+              ? 'माइक की अनुमति नहीं मिली! कृपया मोबाइल सेटिंग्स (Settings -> Apps -> Khata Book -> Permissions) में जाकर Microphone को Allow करें।' 
+              : 'Microphone permission denied! Please allow mic in Settings -> Apps -> Khata Book -> Permissions.', 
+              undefined, 
+              'danger'
+            );
+          return;
+        }
 
-      ExpoSpeechRecognitionModule.start({
-        lang: 'hi-IN',
-        interimResults: false,
-        maxAlternatives: 1,
-        requiresOnDeviceRecognition: false,
-        addsPunctuation: false,
-      });
-    } catch (error) {
-      console.error('Mic error:', error);
-      showAlert(t('error', language), language === 'hi' ? 'माइक शुरू करने में समस्या आई।' : 'Failed to start mic.', undefined, 'warning');
-      setIsListening(false);
-    }
+        ExpoSpeechRecognitionModule.start({
+          lang: 'hi-IN',
+          interimResults: false,
+          maxAlternatives: 1,
+          requiresOnDeviceRecognition: false,
+          addsPunctuation: false,
+        });
+      } catch (error) {
+        console.error('Mic error:', error);
+        showAlert(t('error', language), language === 'hi' ? 'माइक शुरू करने में समस्या आई।' : 'Failed to start mic.', undefined, 'warning');
+        setIsListening(false);
+      }
+    })();
   };
 
   const loadCustomers = useCallback(async () => {
