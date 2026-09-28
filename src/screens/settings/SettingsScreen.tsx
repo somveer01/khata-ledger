@@ -20,6 +20,7 @@ import { t } from '../../i18n';
 import { Business, SupportedLanguage } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
 import { confirmAction, showAlert } from '../../utils/dialog';
+import { StoreSwitcherModal } from '../../components/StoreSwitcherModal';
 
 let deferredInstallPrompt: any = null;
 
@@ -46,8 +47,11 @@ export const SettingsScreen: React.FC = () => {
     showAuthModal,
     logout,
     resetPassword,
+    isSuperAdmin,
+    availableBusinesses,
   } = useApp();
 
+  const [storeModalVisible, setStoreModalVisible] = useState(false);
   const [name, setName] = useState(business?.name || '');
   const [ownerName, setOwnerName] = useState(business?.ownerName || '');
   const [phone, setPhone] = useState(business?.phone || '');
@@ -305,6 +309,50 @@ export const SettingsScreen: React.FC = () => {
           )}
         </Card>
 
+        {/* Super Admin Multi-Store Switcher Card */}
+        {isSuperAdmin && (
+          <Card style={styles.superAdminCard}>
+            <View style={styles.superAdminHeaderRow}>
+              <View style={styles.superAdminIconBox}>
+                <Ionicons name="shield-checkmark" size={24} color="#0D9488" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={styles.sectionTitle}>
+                    {language === 'hi' ? '👑 सुपर एडमिन कंट्रोल' : '👑 Super Admin Control'}
+                  </Text>
+                  <View style={styles.superAdminBadge}>
+                    <Text style={styles.superAdminBadgeText}>Master</Text>
+                  </View>
+                </View>
+                <Text style={styles.superAdminSubText}>
+                  {language === 'hi'
+                    ? 'आप सभी पंजीकृत दुकानों का खाता देख व स्विच कर सकते हैं।'
+                    : 'You can view and switch between all registered stores.'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.currentStoreRow}>
+              <Text style={styles.currentStoreLabel}>
+                {language === 'hi' ? 'वर्तमान चुनी हुई दुकान:' : 'Current Active Store:'}
+              </Text>
+              <Text style={styles.currentStoreValue}>
+                {business?.name || 'Khata Book'} {business?.ownerName ? `(${business.ownerName})` : ''}
+              </Text>
+            </View>
+
+            <Button
+              title={language === 'hi' ? 'दुकान बदलें (Store Switcher)' : 'Switch Store'}
+              variant="primary"
+              size="sm"
+              icon={<Ionicons name="storefront-outline" size={16} color="#FFFFFF" />}
+              onPress={() => setStoreModalVisible(true)}
+              style={{ marginTop: Spacing.sm }}
+            />
+          </Card>
+        )}
+
         {/* Language Selection Card (Exclusive location in settings screen) */}
         <Card style={styles.languageCard}>
           <View style={styles.langHeader}>
@@ -505,6 +553,13 @@ export const SettingsScreen: React.FC = () => {
 
         <View style={{ height: 60 }} />
       </ScrollView>
+
+      {isSuperAdmin && (
+        <StoreSwitcherModal
+          visible={storeModalVisible}
+          onClose={() => setStoreModalVisible(false)}
+        />
+      )}
     </View>
   );
 };
@@ -678,6 +733,61 @@ const styles = StyleSheet.create({
   appVersionValue: {
     fontSize: 14,
     fontWeight: '800',
+    color: Colors.textPrimary,
+    marginTop: 2,
+  },
+  superAdminCard: {
+    borderWidth: 1.5,
+    borderColor: '#99F6E4',
+    backgroundColor: '#F0FDFA',
+    marginBottom: Spacing.md,
+  },
+  superAdminHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  superAdminIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#CCFBF1',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  superAdminBadge: {
+    backgroundColor: '#0D9488',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: BorderRadius.full,
+  },
+  superAdminBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    textTransform: 'uppercase',
+  },
+  superAdminSubText: {
+    fontSize: 12,
+    color: '#0F766E',
+    marginTop: 2,
+  },
+  currentStoreRow: {
+    backgroundColor: '#FFFFFF',
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: '#CCFBF1',
+    marginTop: Spacing.sm,
+  },
+  currentStoreLabel: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    fontWeight: '600',
+  },
+  currentStoreValue: {
+    fontSize: 14,
+    fontWeight: '700',
     color: Colors.textPrimary,
     marginTop: 2,
   },

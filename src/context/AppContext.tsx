@@ -5,6 +5,7 @@ import { DataRepository } from '../services/db';
 import { isFirebaseConfigured } from '../services/firebase';
 import { AuthService } from '../services/auth';
 import { AuthModal } from '../components/AuthModal';
+import { isSuperAdmin as checkIsSuperAdmin } from '../utils/tenant';
 
 interface AppContextType {
   business: Business | null;
@@ -25,6 +26,12 @@ interface AppContextType {
   showAuthModal: (message?: string, onSuccess?: () => void) => void;
   hideAuthModal: () => void;
   guardAction: (action: () => void, promptMessage?: string) => void;
+
+  // Super Admin Multi-Store Controls
+  isSuperAdmin: boolean;
+  availableBusinesses: Business[];
+  switchBusiness: (business: Business) => Promise<void>;
+  refreshAvailableBusinesses: () => Promise<void>;
 
   dataVersion: number;
   setLanguage: (lang: SupportedLanguage) => Promise<void>;
@@ -51,6 +58,26 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [authPromptMessage, setAuthPromptMessage] = useState<string | undefined>(undefined);
   const [onAuthSuccessCallback, setOnAuthSuccessCallback] = useState<(() => void) | undefined>(undefined);
 
+  // Super Admin Multi-Store States
+  const [availableBusinesses, setAvailableBusinesses] = useState<Business[]>([]);
+  const isSuperAdmin = checkIsSuperAdmin(user?.email);
+
+  const refreshAvailableBusinesses = async () => {
+    if (checkIsSuperAdmin(user?.email)) {
+      const all = await DataRepository.getAllBusinesses();
+      setAvailableBusinesses(all);
+    } else {
+      setAvailableBusinesses([]);
+    }
+  };
+
+  const switchBusiness = async (targetBiz: Business) => {
+    StorageService.clearMemoryCache();
+    await StorageService.setCurrentBusiness(targetBiz);
+    setBusiness(targetBiz);
+    await refreshAllData();
+  };
+
   const init = async () => {
     try {
       const savedLang = await StorageService.getLanguage();
@@ -64,6 +91,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       let currentBiz: Business | null = null;
       if (authState.user && !authState.isGuest && authState.user.email) {
         currentBiz = await DataRepository.getOrCreateBusinessForUser(authState.user);
+        if (checkIsSuperAdmin(authState.user.email)) {
+          DataRepository.getAllBusinesses().then(setAvailableBusinesses).catch(() => {});
+        }
       } else {
         // Guest mode
         currentBiz = await StorageService.getBusiness('biz_guest');
@@ -141,6 +171,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const userBiz = await DataRepository.getOrCreateBusinessForUser(res.user);
       setBusiness(userBiz);
       await StorageService.setCurrentBusiness(userBiz);
+      if (checkIsSuperAdmin(res.user.email)) {
+        DataRepository.getAllBusinesses().then(setAvailableBusinesses).catch(() => {});
+      } else {
+        setAvailableBusinesses([]);
+      }
       await refreshAllData();
     }
     return res;
@@ -155,6 +190,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const userBiz = await DataRepository.getOrCreateBusinessForUser(res.user);
       setBusiness(userBiz);
       await StorageService.setCurrentBusiness(userBiz);
+      if (checkIsSuperAdmin(res.user.email)) {
+        DataRepository.getAllBusinesses().then(setAvailableBusinesses).catch(() => {});
+      } else {
+        setAvailableBusinesses([]);
+      }
       await refreshAllData();
     }
     return res;
@@ -169,6 +209,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     StorageService.clearMemoryCache();
     setUser(null);
     setIsGuestState(true);
+    setAvailableBusinesses([]);
     let guestBiz = await StorageService.getBusiness('biz_guest');
     if (!guestBiz) {
       guestBiz = {
@@ -193,6 +234,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     StorageService.clearMemoryCache();
     setUser(null);
     setIsGuestState(true);
+    setAvailableBusinesses([]);
     let guestBiz = await StorageService.getBusiness('biz_guest');
     if (!guestBiz) {
       guestBiz = {
@@ -254,6 +296,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         showAuthModal,
         hideAuthModal,
         guardAction,
+        isSuperAdmin,
+        availableBusinesses,
+        switchBusiness,
+        refreshAvailableBusinesses,
         dataVersion,
         setLanguage: changeLanguage,
         updateBusiness,

@@ -14,7 +14,7 @@ import { StorageService } from './storage';
 import { Business, Village, Customer, Transaction, VillageSummary, DashboardMetrics, AppUser } from '../types';
 import { calculateCustomerBalance, calculateVillageSummaries, calculateDashboardMetrics, calculateCustomerDueDate } from './accounting';
 import { toPaise } from '../utils/money';
-import { getBusinessIdFromEmail, isLegacyOwner, LEGACY_BUSINESS_ID, LEGACY_BUSINESS_TENANT_ID } from '../utils/tenant';
+import { getBusinessIdFromEmail, isLegacyOwner, LEGACY_BUSINESS_ID, LEGACY_BUSINESS_TENANT_ID, LEGACY_OWNER_EMAIL } from '../utils/tenant';
 
 export const DataRepository = {
   // -------------------------------------------------------------
@@ -34,6 +34,43 @@ export const DataRepository = {
       }
     }
     return (await StorageService.getBusiness(businessId)) || StorageService.getCurrentBusiness();
+  },
+
+  async getAllBusinesses(): Promise<Business[]> {
+    const list: Business[] = [];
+    if (isFirebaseConfigured() && db) {
+      try {
+        const snap = await getDocs(collection(db, 'businesses'));
+        snap.forEach((d) => {
+          const data = d.data() as Business;
+          if (data && data.id) {
+            // Filter out empty temporary duplicate
+            if (data.id === 'biz_sukhveersinghkush_gmail_com') return;
+            list.push(data);
+          }
+        });
+      } catch (err) {
+        console.warn('Firestore getAllBusinesses error:', err);
+      }
+    }
+
+    const uniqueMap = new Map<string, Business>();
+    list.forEach((b) => {
+      // For biz_default_1, make sure Sukhveer's email is visible
+      if (b.id === LEGACY_BUSINESS_ID && !b.ownerEmail) {
+        b.ownerEmail = LEGACY_OWNER_EMAIL;
+      }
+      uniqueMap.set(b.id, b);
+    });
+
+    const current = await StorageService.getCurrentBusiness();
+    if (current && !uniqueMap.has(current.id) && current.id !== 'biz_sukhveersinghkush_gmail_com') {
+      if (current.id === LEGACY_BUSINESS_ID && !current.ownerEmail) {
+        current.ownerEmail = LEGACY_OWNER_EMAIL;
+      }
+      uniqueMap.set(current.id, current);
+    }
+    return Array.from(uniqueMap.values());
   },
 
   async getOrCreateBusinessForUser(user: AppUser): Promise<Business> {
@@ -63,6 +100,10 @@ export const DataRepository = {
         const snap = await getDocs(query(collection(db, 'businesses'), where('id', '==', targetBusinessId)));
         if (!snap.empty) {
           const remoteBiz = snap.docs[0].data() as Business;
+          if (targetBusinessId === LEGACY_BUSINESS_ID && !remoteBiz.ownerEmail) {
+            remoteBiz.ownerEmail = email.toLowerCase();
+            this.saveBusiness(remoteBiz).catch(() => {});
+          }
           await StorageService.saveBusiness(remoteBiz);
           return remoteBiz;
         }
@@ -71,51 +112,18 @@ export const DataRepository = {
       }
     }
 
-    // 3. If this user is the legacy owner (somveerkushwaha@gmail.com):
-    // Map & migrate the existing biz_default_1 data so all 98 customers and 31 villages are preserved!
-    if (isLegacyOwner(email)) {
-      let legacyBiz: Business | null = null;
-      if (isFirebaseConfigured() && db) {
-        try {
-          const legSnap = await getDocs(query(collection(db, 'businesses'), where('id', '==', LEGACY_BUSINESS_ID)));
-          if (!legSnap.empty) {
-            legacyBiz = legSnap.docs[0].data() as Business;
-          }
-        } catch {}
-      }
-      if (!legacyBiz) {
-        legacyBiz = (await StorageService.getBusiness(LEGACY_BUSINESS_ID)) || (await StorageService.getCurrentBusiness());
-      }
-
-      if (legacyBiz) {
-        const migratedBiz: Business = {
-          ...legacyBiz,
-          id: targetBusinessId,
+    // 3. Fallback for legacy owner (Sukhveer): ensure biz_default_1 is used
+    if (targetBusinessId === LEGACY_BUSINESS_ID) {
+      const legBiz = (await StorageService.getBusiness(LEGACY_BUSINESS_ID)) || (await StorageService.getCurrentBusiness());
+      if (legBiz) {
+        const updatedLegBiz: Business = {
+          ...legBiz,
+          id: LEGACY_BUSINESS_ID,
           ownerEmail: email.toLowerCase(),
           updatedAt: new Date().toISOString(),
         };
-        await this.saveBusiness(migratedBiz);
-
-        // Migrate local storage for villages and customers if present under biz_default_1
-        const legacyVillages = await StorageService.getVillages(LEGACY_BUSINESS_ID);
-        if (legacyVillages.length > 0) {
-          const migratedVillages = legacyVillages.map((v) => ({ ...v, businessId: targetBusinessId }));
-          await StorageService.saveVillages(targetBusinessId, migratedVillages);
-        }
-
-        const legacyCustomers = await StorageService.getCustomers(LEGACY_BUSINESS_ID);
-        if (legacyCustomers.length > 0) {
-          const migratedCustomers = legacyCustomers.map((c) => ({ ...c, businessId: targetBusinessId }));
-          await StorageService.saveCustomers(targetBusinessId, migratedCustomers);
-        }
-
-        const legacyTxs = await StorageService.getTransactions(LEGACY_BUSINESS_ID);
-        if (legacyTxs.length > 0) {
-          const migratedTxs = legacyTxs.map((t) => ({ ...t, businessId: targetBusinessId }));
-          await StorageService.saveTransactions(targetBusinessId, migratedTxs);
-        }
-
-        return migratedBiz;
+        await this.saveBusiness(updatedLegBiz);
+        return updatedLegBiz;
       }
     }
 

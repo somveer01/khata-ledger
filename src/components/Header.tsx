@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -7,6 +7,7 @@ import { useApp } from '../context/AppContext';
 import { t } from '../i18n';
 import { Ionicons } from '@expo/vector-icons';
 import { confirmAction } from '../utils/dialog';
+import { StoreSwitcherModal } from './StoreSwitcherModal';
 
 interface HeaderProps {
   title?: string;
@@ -25,7 +26,18 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
-  const { business, language, isFirebaseActive, user, isAuthenticated, showAuthModal, logout } = useApp();
+  const [storeModalVisible, setStoreModalVisible] = useState(false);
+  const {
+    business,
+    language,
+    isFirebaseActive,
+    user,
+    isAuthenticated,
+    showAuthModal,
+    logout,
+    isSuperAdmin,
+    availableBusinesses,
+  } = useApp();
 
   const handleUserPress = () => {
     const isSomveer = user?.email?.toLowerCase().includes('somveerkushwaha') || false;
@@ -112,30 +124,52 @@ export const Header: React.FC<HeaderProps> = ({
           </Text>
         </View>
 
-        {isAuthenticated ? (
-          <TouchableOpacity
-            style={styles.authPill}
-            onPress={handleUserPress}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="person-circle" size={13} color="#DCFCE7" />
-            <Text numberOfLines={1} style={styles.authPillText}>
-              {getHeaderAccountText()}
-            </Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={[styles.authPill, styles.authPillGuest]}
-            onPress={() => showAuthModal()}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="log-in-outline" size={13} color="#FEF3C7" />
-            <Text style={[styles.authPillText, styles.authPillGuestText]}>
-              {t('guestUser', language)} ({t('login', language)})
-            </Text>
-          </TouchableOpacity>
-        )}
+        <View style={styles.syncRightRow}>
+          {isSuperAdmin && availableBusinesses.length > 0 && (
+            <TouchableOpacity
+              style={styles.storeSwitcherPill}
+              onPress={() => setStoreModalVisible(true)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="storefront" size={12} color="#FEF08A" />
+              <Text numberOfLines={1} style={styles.storeSwitcherText}>
+                {language === 'hi' ? 'दुकान बदलें ▾' : 'Switch ▾'}
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {isAuthenticated ? (
+            <TouchableOpacity
+              style={styles.authPill}
+              onPress={handleUserPress}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="person-circle" size={13} color="#DCFCE7" />
+              <Text numberOfLines={1} style={styles.authPillText}>
+                {getHeaderAccountText()}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[styles.authPill, styles.authPillGuest]}
+              onPress={() => showAuthModal()}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="log-in-outline" size={13} color="#FEF3C7" />
+              <Text style={[styles.authPillText, styles.authPillGuestText]}>
+                {t('guestUser', language)} ({t('login', language)})
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
+
+      {isSuperAdmin && (
+        <StoreSwitcherModal
+          visible={storeModalVisible}
+          onClose={() => setStoreModalVisible(false)}
+        />
+      )}
     </View>
   );
 };
@@ -223,6 +257,27 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: 'rgba(255,255,255,0.85)',
     fontWeight: '500',
+  },
+  syncRightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  storeSwitcherPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(234, 179, 8, 0.25)',
+    borderWidth: 1,
+    borderColor: 'rgba(254, 240, 138, 0.5)',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.full,
+  },
+  storeSwitcherText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FEF08A',
   },
   authPill: {
     flexDirection: 'row',
