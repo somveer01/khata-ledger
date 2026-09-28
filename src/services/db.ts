@@ -11,30 +11,131 @@ import {
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './firebase';
 import { StorageService } from './storage';
-import { Business, Village, Customer, Transaction, VillageSummary, DashboardMetrics } from '../types';
+import { Business, Village, Customer, Transaction, VillageSummary, DashboardMetrics, AppUser } from '../types';
 import { calculateCustomerBalance, calculateVillageSummaries, calculateDashboardMetrics, calculateCustomerDueDate } from './accounting';
 import { toPaise } from '../utils/money';
+import { getBusinessIdFromEmail, isLegacyOwner, LEGACY_BUSINESS_ID } from '../utils/tenant';
 
 export const DataRepository = {
   // -------------------------------------------------------------
-  // BUSINESS PROFILE
+  // BUSINESS PROFILE & MULTI-TENANCY
   // -------------------------------------------------------------
   async getBusiness(businessId: string): Promise<Business | null> {
     if (isFirebaseConfigured() && db) {
       try {
         const snap = await getDocs(query(collection(db, 'businesses'), where('id', '==', businessId)));
         if (!snap.empty) {
-          return snap.docs[0].data() as Business;
+          const remoteBiz = snap.docs[0].data() as Business;
+          await StorageService.saveBusiness(remoteBiz);
+          return remoteBiz;
         }
       } catch (err) {
         console.warn('Firestore getBusiness fallback to storage:', err);
       }
     }
-    return StorageService.getCurrentBusiness();
+    return (await StorageService.getBusiness(businessId)) || StorageService.getCurrentBusiness();
+  },
+
+  async getOrCreateBusinessForUser(user: AppUser): Promise<Business> {
+    const email = user.email || '';
+    const targetBusinessId = email ? getBusinessIdFromEmail(email) : 'biz_guest';
+
+    // 1. Try local cache first for instant (0ms) response
+    const cachedBiz = await StorageService.getBusiness(targetBusinessId);
+    if (cachedBiz) {
+      // Sync in background from Firestore
+      if (isFirebaseConfigured() && db) {
+        getDocs(query(collection(db, 'businesses'), where('id', '==', targetBusinessId)))
+          .then(async (snap) => {
+            if (!snap.empty) {
+              const remoteBiz = snap.docs[0].data() as Business;
+              await StorageService.saveBusiness(remoteBiz);
+            }
+          })
+          .catch((err) => console.warn('Background getBusiness error:', err));
+      }
+      return cachedBiz;
+    }
+
+    // 2. Check Firestore for this specific user's business
+    if (isFirebaseConfigured() && db) {
+      try {
+        const snap = await getDocs(query(collection(db, 'businesses'), where('id', '==', targetBusinessId)));
+        if (!snap.empty) {
+          const remoteBiz = snap.docs[0].data() as Business;
+          await StorageService.saveBusiness(remoteBiz);
+          return remoteBiz;
+        }
+      } catch (err) {
+        console.warn('Firestore getBusiness error:', err);
+      }
+    }
+
+    // 3. If this user is the legacy owner (somveerkushwaha@gmail.com):
+    // Map & migrate the existing biz_default_1 data so all 98 customers and 31 villages are preserved!
+    if (isLegacyOwner(email)) {
+      let legacyBiz: Business | null = null;
+      if (isFirebaseConfigured() && db) {
+        try {
+          const legSnap = await getDocs(query(collection(db, 'businesses'), where('id', '==', LEGACY_BUSINESS_ID)));
+          if (!legSnap.empty) {
+            legacyBiz = legSnap.docs[0].data() as Business;
+          }
+        } catch {}
+      }
+      if (!legacyBiz) {
+        legacyBiz = (await StorageService.getBusiness(LEGACY_BUSINESS_ID)) || (await StorageService.getCurrentBusiness());
+      }
+
+      if (legacyBiz) {
+        const migratedBiz: Business = {
+          ...legacyBiz,
+          id: targetBusinessId,
+          ownerEmail: email.toLowerCase(),
+          updatedAt: new Date().toISOString(),
+        };
+        await this.saveBusiness(migratedBiz);
+
+        // Migrate local storage for villages and customers if present under biz_default_1
+        const legacyVillages = await StorageService.getVillages(LEGACY_BUSINESS_ID);
+        if (legacyVillages.length > 0) {
+          const migratedVillages = legacyVillages.map((v) => ({ ...v, businessId: targetBusinessId }));
+          await StorageService.saveVillages(targetBusinessId, migratedVillages);
+        }
+
+        const legacyCustomers = await StorageService.getCustomers(LEGACY_BUSINESS_ID);
+        if (legacyCustomers.length > 0) {
+          const migratedCustomers = legacyCustomers.map((c) => ({ ...c, businessId: targetBusinessId }));
+          await StorageService.saveCustomers(targetBusinessId, migratedCustomers);
+        }
+
+        const legacyTxs = await StorageService.getTransactions(LEGACY_BUSINESS_ID);
+        if (legacyTxs.length > 0) {
+          const migratedTxs = legacyTxs.map((t) => ({ ...t, businessId: targetBusinessId }));
+          await StorageService.saveTransactions(targetBusinessId, migratedTxs);
+        }
+
+        return migratedBiz;
+      }
+    }
+
+    // 4. Create new isolated business for new user
+    const newBiz: Business = {
+      id: targetBusinessId,
+      name: user.displayName || (email.split('@')[0] ? `${email.split('@')[0]} की दुकान` : 'खाता बुक (Khata Book)'),
+      ownerName: user.displayName || email.split('@')[0] || 'दुकानदार',
+      phone: '',
+      currency: 'INR',
+      ownerEmail: email.toLowerCase(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await this.saveBusiness(newBiz);
+    return newBiz;
   },
 
   async saveBusiness(business: Business): Promise<void> {
-    await StorageService.setCurrentBusiness(business);
+    await StorageService.saveBusiness(business);
     if (isFirebaseConfigured() && db) {
       try {
         await setDoc(doc(db, 'businesses', business.id), {
@@ -52,7 +153,17 @@ export const DataRepository = {
   // VILLAGES
   // -------------------------------------------------------------
   async getVillages(businessId: string): Promise<Village[]> {
-    const localVillages = await StorageService.getVillages(businessId);
+    let localVillages = await StorageService.getVillages(businessId);
+
+    // If local cache is empty and this is the legacy owner, check legacy key
+    if (localVillages.length === 0 && businessId === 'biz_somveerkushwaha_gmail_com') {
+      const legLocal = await StorageService.getVillages(LEGACY_BUSINESS_ID);
+      if (legLocal.length > 0) {
+        localVillages = legLocal.map((v) => ({ ...v, businessId }));
+        await StorageService.saveVillages(businessId, localVillages);
+      }
+    }
+
     if (isFirebaseConfigured() && db) {
       if (localVillages.length > 0) {
         // Fast path: return cached data immediately and sync in background
@@ -61,6 +172,16 @@ export const DataRepository = {
             if (!snap.empty) {
               const list = snap.docs.map((d) => d.data() as Village);
               await StorageService.saveVillages(businessId, list);
+            } else if (businessId === 'biz_somveerkushwaha_gmail_com') {
+              // Legacy migration check in background
+              const legSnap = await getDocs(query(collection(db, 'villages'), where('businessId', '==', LEGACY_BUSINESS_ID)));
+              if (!legSnap.empty) {
+                const list = legSnap.docs.map((d) => ({ ...d.data(), businessId } as Village));
+                await StorageService.saveVillages(businessId, list);
+                list.forEach((v) => {
+                  setDoc(doc(db, 'villages', v.id), { ...v, serverTimestamp: serverTimestamp() }, { merge: true }).catch(() => {});
+                });
+              }
             }
           })
           .catch((err) => console.warn('Firestore getVillages background sync error:', err));
@@ -74,6 +195,16 @@ export const DataRepository = {
           const list = snap.docs.map((d) => d.data() as Village);
           await StorageService.saveVillages(businessId, list);
           return [...list];
+        } else if (businessId === 'biz_somveerkushwaha_gmail_com') {
+          const legSnap = await getDocs(query(collection(db, 'villages'), where('businessId', '==', LEGACY_BUSINESS_ID)));
+          if (!legSnap.empty) {
+            const list = legSnap.docs.map((d) => ({ ...d.data(), businessId } as Village));
+            await StorageService.saveVillages(businessId, list);
+            list.forEach((v) => {
+              setDoc(doc(db, 'villages', v.id), { ...v, serverTimestamp: serverTimestamp() }, { merge: true }).catch(() => {});
+            });
+            return [...list];
+          }
         }
       } catch (err) {
         console.warn('Firestore getVillages error, using local:', err);
@@ -184,7 +315,17 @@ export const DataRepository = {
   // CUSTOMERS
   // -------------------------------------------------------------
   async getCustomers(businessId: string): Promise<Customer[]> {
-    const localCustomers = await StorageService.getCustomers(businessId);
+    let localCustomers = await StorageService.getCustomers(businessId);
+
+    // If local cache is empty and this is the legacy owner, check legacy key
+    if (localCustomers.length === 0 && businessId === 'biz_somveerkushwaha_gmail_com') {
+      const legLocal = await StorageService.getCustomers(LEGACY_BUSINESS_ID);
+      if (legLocal.length > 0) {
+        localCustomers = legLocal.map((c) => ({ ...c, businessId }));
+        await StorageService.saveCustomers(businessId, localCustomers);
+      }
+    }
+
     if (isFirebaseConfigured() && db) {
       if (localCustomers.length > 0) {
         // Fast path: return cached customers immediately and sync in background
@@ -202,6 +343,16 @@ export const DataRepository = {
                 }
               });
               await StorageService.saveCustomers(businessId, Array.from(mergedMap.values()));
+            } else if (businessId === 'biz_somveerkushwaha_gmail_com') {
+              // Legacy migration check in background
+              const legSnap = await getDocs(query(collection(db, 'customers'), where('businessId', '==', LEGACY_BUSINESS_ID)));
+              if (!legSnap.empty) {
+                const list = legSnap.docs.map((d) => ({ ...d.data(), businessId } as Customer));
+                await StorageService.saveCustomers(businessId, list);
+                list.forEach((c) => {
+                  setDoc(doc(db, 'customers', c.id), { ...c, serverTimestamp: serverTimestamp() }, { merge: true }).catch(() => {});
+                });
+              }
             }
           })
           .catch((err) => console.warn('Firestore getCustomers background sync error:', err));
@@ -215,6 +366,16 @@ export const DataRepository = {
           const list = snap.docs.map((d) => d.data() as Customer);
           await StorageService.saveCustomers(businessId, list);
           return [...list];
+        } else if (businessId === 'biz_somveerkushwaha_gmail_com') {
+          const legSnap = await getDocs(query(collection(db, 'customers'), where('businessId', '==', LEGACY_BUSINESS_ID)));
+          if (!legSnap.empty) {
+            const list = legSnap.docs.map((d) => ({ ...d.data(), businessId } as Customer));
+            await StorageService.saveCustomers(businessId, list);
+            list.forEach((c) => {
+              setDoc(doc(db, 'customers', c.id), { ...c, serverTimestamp: serverTimestamp() }, { merge: true }).catch(() => {});
+            });
+            return [...list];
+          }
         }
       } catch (err) {
         console.warn('Firestore getCustomers error, using local:', err);

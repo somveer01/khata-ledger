@@ -61,24 +61,26 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       setUser(authState.user);
       setIsGuestState(authState.isGuest);
 
-      let currentBiz = await StorageService.getCurrentBusiness();
-      if (!currentBiz) {
-        // Automatically initialize default business if first launch
-        currentBiz = {
-          id: 'biz_default_1',
-          name: 'श्री गणेश खाद एवं बीज भण्डार',
-          ownerName: 'रामेश्वर दयाल',
-          phone: '9896012345',
-          address: 'मुख्य बाजार, मण्डी गेट के पास',
-          upiId: 'kisanagro@upi',
-          currency: 'INR',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        await StorageService.setCurrentBusiness(currentBiz);
-        // Seed initial reference ledger data
-        await DataRepository.seedDemoData(currentBiz.id);
+      let currentBiz: Business | null = null;
+      if (authState.user && !authState.isGuest && authState.user.email) {
+        currentBiz = await DataRepository.getOrCreateBusinessForUser(authState.user);
+      } else {
+        // Guest mode
+        currentBiz = await StorageService.getBusiness('biz_guest');
+        if (!currentBiz) {
+          currentBiz = {
+            id: 'biz_guest',
+            name: 'खाता बुक (Guest Store)',
+            ownerName: 'दुकानदार',
+            phone: '',
+            currency: 'INR',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          await StorageService.saveBusiness(currentBiz);
+        }
       }
+
       setBusiness(currentBiz);
       const count = await StorageService.getPendingSyncCount(currentBiz.id);
       setPendingSyncCount(count);
@@ -129,12 +131,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Auth Operations
+  // Auth Operations with Tenant Scoping
   const login = async (email: string, pass: string) => {
     const res = await AuthService.login(email, pass);
     if (res.success && res.user) {
+      StorageService.clearMemoryCache();
       setUser(res.user);
       setIsGuestState(false);
+      const userBiz = await DataRepository.getOrCreateBusinessForUser(res.user);
+      setBusiness(userBiz);
+      await StorageService.setCurrentBusiness(userBiz);
+      await refreshAllData();
     }
     return res;
   };
@@ -142,8 +149,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const register = async (email: string, pass: string, name?: string) => {
     const res = await AuthService.register(email, pass, name);
     if (res.success && res.user) {
+      StorageService.clearMemoryCache();
       setUser(res.user);
       setIsGuestState(false);
+      const userBiz = await DataRepository.getOrCreateBusinessForUser(res.user);
+      setBusiness(userBiz);
+      await StorageService.setCurrentBusiness(userBiz);
+      await refreshAllData();
     }
     return res;
   };
@@ -154,14 +166,50 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const logout = async () => {
     await AuthService.logout();
+    StorageService.clearMemoryCache();
     setUser(null);
     setIsGuestState(true);
+    let guestBiz = await StorageService.getBusiness('biz_guest');
+    if (!guestBiz) {
+      guestBiz = {
+        id: 'biz_guest',
+        name: 'खाता बुक (Guest Store)',
+        ownerName: 'दुकानदार',
+        phone: '',
+        currency: 'INR',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await StorageService.saveBusiness(guestBiz);
+    } else {
+      await StorageService.setCurrentBusiness(guestBiz);
+    }
+    setBusiness(guestBiz);
+    await refreshAllData();
   };
 
   const loginAsGuest = async () => {
     await AuthService.loginAsGuest();
+    StorageService.clearMemoryCache();
     setUser(null);
     setIsGuestState(true);
+    let guestBiz = await StorageService.getBusiness('biz_guest');
+    if (!guestBiz) {
+      guestBiz = {
+        id: 'biz_guest',
+        name: 'खाता बुक (Guest Store)',
+        ownerName: 'दुकानदार',
+        phone: '',
+        currency: 'INR',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await StorageService.saveBusiness(guestBiz);
+    } else {
+      await StorageService.setCurrentBusiness(guestBiz);
+    }
+    setBusiness(guestBiz);
+    await refreshAllData();
   };
 
   const showAuthModal = (message?: string, onSuccess?: () => void) => {

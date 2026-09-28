@@ -18,6 +18,11 @@ const STORAGE_KEYS = {
 const memoryCache = new Map<string, any>();
 
 export const StorageService = {
+  // Clear all in-memory L1 cache (crucial on login/logout to prevent tenant data leakage)
+  clearMemoryCache(): void {
+    memoryCache.clear();
+  },
+
   // Current Business
   async getCurrentBusiness(): Promise<Business | null> {
     if (memoryCache.has(STORAGE_KEYS.CURRENT_BUSINESS)) {
@@ -30,8 +35,26 @@ export const StorageService = {
   },
 
   async setCurrentBusiness(business: Business): Promise<void> {
+    const key = `${STORAGE_KEYS.CURRENT_BUSINESS}_${business.id}`;
+    memoryCache.set(key, business);
     memoryCache.set(STORAGE_KEYS.CURRENT_BUSINESS, business);
+    await AsyncStorage.setItem(key, JSON.stringify(business));
     await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BUSINESS, JSON.stringify(business));
+  },
+
+  async getBusiness(businessId: string): Promise<Business | null> {
+    const key = `${STORAGE_KEYS.CURRENT_BUSINESS}_${businessId}`;
+    if (memoryCache.has(key)) {
+      return memoryCache.get(key);
+    }
+    const raw = await AsyncStorage.getItem(key);
+    const data = raw ? JSON.parse(raw) : null;
+    if (data) memoryCache.set(key, data);
+    return data;
+  },
+
+  async saveBusiness(business: Business): Promise<void> {
+    await this.setCurrentBusiness(business);
   },
 
   // Language

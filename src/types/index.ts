@@ -12,6 +12,7 @@ export interface Business {
   address?: string;
   upiId?: string;
   currency: string; // 'INR'
+  ownerEmail?: string;
   createdAt: string;
   updatedAt: string;
 }
