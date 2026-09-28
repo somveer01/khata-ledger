@@ -1,5 +1,6 @@
-﻿export const LEGACY_BUSINESS_ID = 'biz_default_1';
+export const LEGACY_BUSINESS_ID = 'biz_default_1';
 export const LEGACY_OWNER_EMAIL = 'somveerkushwaha@gmail.com';
+export const LEGACY_BUSINESS_TENANT_ID = 'biz_somveerkushwaha_gmail_com';
 
 /**
  * Deterministically derives a unique, safe businessId / tenant ID from a user email.

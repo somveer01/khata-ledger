@@ -14,7 +14,7 @@ import { StorageService } from './storage';
 import { Business, Village, Customer, Transaction, VillageSummary, DashboardMetrics, AppUser } from '../types';
 import { calculateCustomerBalance, calculateVillageSummaries, calculateDashboardMetrics, calculateCustomerDueDate } from './accounting';
 import { toPaise } from '../utils/money';
-import { getBusinessIdFromEmail, isLegacyOwner, LEGACY_BUSINESS_ID } from '../utils/tenant';
+import { getBusinessIdFromEmail, isLegacyOwner, LEGACY_BUSINESS_ID, LEGACY_BUSINESS_TENANT_ID } from '../utils/tenant';
 
 export const DataRepository = {
   // -------------------------------------------------------------
@@ -156,7 +156,7 @@ export const DataRepository = {
     let localVillages = await StorageService.getVillages(businessId);
 
     // If local cache is empty and this is the legacy owner, check legacy key
-    if (localVillages.length === 0 && businessId === 'biz_somveerkushwaha_gmail_com') {
+    if (localVillages.length === 0 && businessId === LEGACY_BUSINESS_TENANT_ID) {
       const legLocal = await StorageService.getVillages(LEGACY_BUSINESS_ID);
       if (legLocal.length > 0) {
         localVillages = legLocal.map((v) => ({ ...v, businessId }));
@@ -172,7 +172,7 @@ export const DataRepository = {
             if (!snap.empty) {
               const list = snap.docs.map((d) => d.data() as Village);
               await StorageService.saveVillages(businessId, list);
-            } else if (businessId === 'biz_somveerkushwaha_gmail_com') {
+            } else if (businessId === LEGACY_BUSINESS_TENANT_ID) {
               // Legacy migration check in background
               const legSnap = await getDocs(query(collection(db, 'villages'), where('businessId', '==', LEGACY_BUSINESS_ID)));
               if (!legSnap.empty) {
@@ -195,7 +195,7 @@ export const DataRepository = {
           const list = snap.docs.map((d) => d.data() as Village);
           await StorageService.saveVillages(businessId, list);
           return [...list];
-        } else if (businessId === 'biz_somveerkushwaha_gmail_com') {
+        } else if (businessId === LEGACY_BUSINESS_TENANT_ID) {
           const legSnap = await getDocs(query(collection(db, 'villages'), where('businessId', '==', LEGACY_BUSINESS_ID)));
           if (!legSnap.empty) {
             const list = legSnap.docs.map((d) => ({ ...d.data(), businessId } as Village));
@@ -318,7 +318,7 @@ export const DataRepository = {
     let localCustomers = await StorageService.getCustomers(businessId);
 
     // If local cache is empty and this is the legacy owner, check legacy key
-    if (localCustomers.length === 0 && businessId === 'biz_somveerkushwaha_gmail_com') {
+    if (localCustomers.length === 0 && businessId === LEGACY_BUSINESS_TENANT_ID) {
       const legLocal = await StorageService.getCustomers(LEGACY_BUSINESS_ID);
       if (legLocal.length > 0) {
         localCustomers = legLocal.map((c) => ({ ...c, businessId }));
@@ -343,7 +343,7 @@ export const DataRepository = {
                 }
               });
               await StorageService.saveCustomers(businessId, Array.from(mergedMap.values()));
-            } else if (businessId === 'biz_somveerkushwaha_gmail_com') {
+            } else if (businessId === LEGACY_BUSINESS_TENANT_ID) {
               // Legacy migration check in background
               const legSnap = await getDocs(query(collection(db, 'customers'), where('businessId', '==', LEGACY_BUSINESS_ID)));
               if (!legSnap.empty) {
@@ -366,7 +366,7 @@ export const DataRepository = {
           const list = snap.docs.map((d) => d.data() as Customer);
           await StorageService.saveCustomers(businessId, list);
           return [...list];
-        } else if (businessId === 'biz_somveerkushwaha_gmail_com') {
+        } else if (businessId === LEGACY_BUSINESS_TENANT_ID) {
           const legSnap = await getDocs(query(collection(db, 'customers'), where('businessId', '==', LEGACY_BUSINESS_ID)));
           if (!legSnap.empty) {
             const list = legSnap.docs.map((d) => ({ ...d.data(), businessId } as Customer));
