@@ -20,6 +20,7 @@ import { getTodayIST, formatUpperDate } from '../../utils/date';
 import { DataRepository } from '../../services/db';
 import { PdfService } from '../../services/pdfService';
 import { ReminderService } from '../../services/reminderService';
+import { callPhoneNumber } from '../../utils/contacts';
 import { calculateCustomerDueDate, getDueStatus } from '../../services/accounting';
 import { Customer, Transaction, VillageSummary } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
@@ -584,7 +585,7 @@ export const ReportsScreen: React.FC = () => {
                     <View style={{ flex: 1, marginRight: 8 }}>
                       <Text style={styles.custName}>{cust.name}</Text>
                       <Text style={styles.custSub}>
-                        {cust.villageName || '-'} • {cust.mobile}
+                        {cust.villageName || t('noVillageRecorded', language)}
                       </Text>
 
                       {/* Due Date & Dynamic Status Badge */}
@@ -620,15 +621,38 @@ export const ReportsScreen: React.FC = () => {
 
                     <View style={{ alignItems: 'flex-end', justifyContent: 'center' }}>
                       <Text style={styles.dueAmount}>{formatCurrency(cust.currentBalancePaise)}</Text>
-                      <TouchableOpacity
-                        activeOpacity={0.7}
-                        style={styles.whatsappReminderBtn}
-                        onPress={() => handleSendReminder(cust)}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <Ionicons name="logo-whatsapp" size={16} color="#22C55E" />
-                        <Text style={styles.whatsappReminderText}>{language === 'hi' ? 'तगादा' : 'Remind'}</Text>
-                      </TouchableOpacity>
+                      <View style={styles.reportActionsRow}>
+                        {cust.mobile ? (
+                          <TouchableOpacity
+                            activeOpacity={0.7}
+                            style={styles.callReminderBtn}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              callPhoneNumber(cust.mobile, cust.name);
+                            }}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            accessibilityLabel={`${t('callCustomer', language)}: ${cust.name}`}
+                          >
+                            <Ionicons name="call" size={13} color="#1D4ED8" />
+                            <Text style={styles.callReminderText}>{t('callCustomer', language)}</Text>
+                          </TouchableOpacity>
+                        ) : null}
+
+                        {cust.mobile ? (
+                          <TouchableOpacity
+                            activeOpacity={0.7}
+                            style={styles.whatsappReminderBtn}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              handleSendReminder(cust);
+                            }}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Ionicons name="logo-whatsapp" size={14} color="#22C55E" />
+                            <Text style={styles.whatsappReminderText}>{language === 'hi' ? 'तगादा' : 'Remind'}</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
                     </View>
                   </TouchableOpacity>
                 );
@@ -1630,15 +1654,38 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#2563EB',
   },
+  reportActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 5,
+  },
+  callReminderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.sm,
+  },
+  callReminderText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#1D4ED8',
+  },
   whatsappReminderBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
     backgroundColor: '#DCFCE7',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
     paddingHorizontal: 7,
     paddingVertical: 3,
     borderRadius: BorderRadius.sm,
-    marginTop: 4,
   },
   whatsappReminderText: {
     fontSize: 10,

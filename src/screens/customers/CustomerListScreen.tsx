@@ -192,10 +192,10 @@ export const CustomerListScreen: React.FC = () => {
                         style={styles.callBadgeBtn}
                         hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                         activeOpacity={0.6}
-                        accessibilityLabel={`${t('callCustomer', language)}: ${item.mobile}`}
+                        accessibilityLabel={`${t('callCustomer', language)}: ${item.name}`}
                       >
                         <Ionicons name="call" size={11} color="#1D4ED8" />
-                        <Text style={styles.callBadgeText}>{item.mobile}</Text>
+                        <Text style={styles.callBadgeText}>{t('callCustomer', language)}</Text>
                       </TouchableOpacity>
                     </>
                   ) : null}

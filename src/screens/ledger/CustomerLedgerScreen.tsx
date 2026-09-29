@@ -239,18 +239,20 @@ export const CustomerLedgerScreen: React.FC = () => {
     <View style={styles.screen}>
       <Header
         title={customer.name}
-        subtitle={`${customer.villageName || t('noVillageRecorded', language)} • ${customer.mobile}`}
+        subtitle={customer.villageName || t('noVillageRecorded', language)}
         showBack
         onBack={() => navigation.goBack()}
         rightAction={
           <View style={{ flexDirection: 'row', gap: 6 }}>
-            <TouchableOpacity
-              onPress={() => callPhoneNumber(customer.mobile, customer.name)}
-              style={styles.iconBtn}
-              accessibilityLabel={t('callCustomer', language)}
-            >
-              <Ionicons name="call" size={18} color="#93C5FD" />
-            </TouchableOpacity>
+            {customer.mobile ? (
+              <TouchableOpacity
+                onPress={() => callPhoneNumber(customer.mobile, customer.name)}
+                style={styles.iconBtn}
+                accessibilityLabel={t('callCustomer', language)}
+              >
+                <Ionicons name="call" size={18} color="#93C5FD" />
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity
               onPress={() => navigation.navigate('EditCustomer', { customer })}
               style={styles.iconBtn}
@@ -268,9 +270,11 @@ export const CustomerLedgerScreen: React.FC = () => {
             <TouchableOpacity onPress={handleExportPdf} style={styles.iconBtn} disabled={exportingPdf}>
               <Ionicons name="document-text-outline" size={20} color={Colors.textInverse} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={handleSendReminder} style={styles.iconBtn}>
-              <Ionicons name="logo-whatsapp" size={20} color="#4ADE80" />
-            </TouchableOpacity>
+            {customer.mobile ? (
+              <TouchableOpacity onPress={handleSendReminder} style={styles.iconBtn}>
+                <Ionicons name="logo-whatsapp" size={20} color="#4ADE80" />
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity onPress={handleExportCsv} style={styles.iconBtn}>
               <Ionicons name="download-outline" size={20} color={Colors.textInverse} />
             </TouchableOpacity>
@@ -292,11 +296,10 @@ export const CustomerLedgerScreen: React.FC = () => {
                   style={styles.callPillBtn}
                   onPress={() => callPhoneNumber(customer.mobile, customer.name)}
                   activeOpacity={0.7}
-                  accessibilityLabel={t('callCustomer', language)}
+                  accessibilityLabel={`${t('callCustomer', language)}: ${customer.name}`}
                 >
-                  <Ionicons name="call" size={12} color="#1D4ED8" />
-                  <Text style={styles.callPillText}>{customer.mobile}</Text>
-                  <Text style={styles.callPillSubText}>• {t('callCustomer', language)}</Text>
+                  <Ionicons name="call" size={13} color="#1D4ED8" />
+                  <Text style={styles.callPillText}>{t('callCustomer', language)}</Text>
                 </TouchableOpacity>
               ) : null}
             </View>
