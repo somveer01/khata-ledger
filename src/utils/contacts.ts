@@ -1,25 +1,96 @@
+import { Linking, Platform } from 'react-native';
+import { showAlert } from './dialog';
+
 /**
- * Utility to clean and format Indian 10-digit mobile numbers
+ * Utility to clean and format Indian 10-digit mobile numbers.
+ * Handles:
+ * - Accidental letter 'o' or 'O' typed/OCR'd in place of digit '0' (e.g. 'o9876543210' -> '9876543210')
+ * - International prefix '+91' or '91' (e.g. '+91 9721204040' -> '9721204040')
+ * - Trunk prefix '0' (e.g. '09721204040' -> '9721204040')
+ * - Combined prefix '+91 0' or '910' (e.g. '+91 09721204040' -> '9721204040')
+ * - Spaces, dashes, brackets, and extra leading/trailing symbols
  */
 export function sanitizeIndianPhoneNumber(rawNumber: string): string {
   if (!rawNumber) return '';
-  // Remove all non-numeric characters
-  const digits = rawNumber.replace(/\D/g, '');
+
+  // 1. Convert common typo letter 'o' or 'O' to digit '0'
+  let cleaned = rawNumber.replace(/[oO]/g, '0');
+
+  // 2. Remove all non-numeric characters
+  let digits = cleaned.replace(/\D/g, '');
   if (!digits) return '';
 
-  // If 12 digits and starts with 91, strip 91
-  if (digits.length === 12 && digits.startsWith('91')) {
-    return digits.slice(2);
+  // 3. Handle Indian prefixes
+  // Combined prefix: 910... (13 digits: e.g. +91 09876543210)
+  if (digits.length === 13 && digits.startsWith('910')) {
+    digits = digits.slice(3);
   }
-  // If 11 digits and starts with 0, strip 0
-  if (digits.length === 11 && digits.startsWith('0')) {
-    return digits.slice(1);
+  // Standard country code: 91... (12 digits: e.g. +91 9876543210 or 919876543210)
+  else if (digits.length === 12 && digits.startsWith('91')) {
+    digits = digits.slice(2);
   }
-  // If more than 10 digits, take the last 10
-  if (digits.length > 10) {
-    return digits.slice(-10);
+  // Standard trunk prefix: 0... (11 digits: e.g. 09876543210)
+  else if (digits.length === 11 && digits.startsWith('0')) {
+    digits = digits.slice(1);
   }
+  // If more than 10 digits (e.g. 0091...), take the last 10 digits
+  else if (digits.length > 10) {
+    digits = digits.slice(-10);
+  }
+
   return digits;
+}
+
+/**
+ * Initiates a phone call to the given customer mobile number.
+ * Cross-platform (iOS, Android, and Web PWA).
+ */
+export async function callPhoneNumber(rawMobile: string, customerName?: string): Promise<void> {
+  const clean = sanitizeIndianPhoneNumber(rawMobile);
+  if (!clean || clean.length < 10) {
+    showAlert(
+      'कॉल त्रुटि (Call Error)',
+      customerName
+        ? `${customerName} का कोई वैध 10 अंकों का मोबाइल नंबर नहीं है।`
+        : 'कोई वैध 10 अंकों का मोबाइल नंबर उपलब्ध नहीं है।',
+      undefined,
+      'warning'
+    );
+    return;
+  }
+
+  const telUrl = `tel:${clean}`;
+  try {
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined') {
+        window.location.href = telUrl;
+      }
+      return;
+    }
+
+    const canOpen = await Linking.canOpenURL(telUrl);
+    if (canOpen) {
+      await Linking.openURL(telUrl);
+    } else {
+      showAlert(
+        'कॉल अनुपलब्ध',
+        `इस डिवाइस पर फोन डायलर उपलब्ध नहीं है: ${clean}`,
+        undefined,
+        'info'
+      );
+    }
+  } catch (err: any) {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.location.href = telUrl;
+    } else {
+      showAlert(
+        'कॉल त्रुटि',
+        `डायलर खोलने में विफल: ${err.message || clean}`,
+        undefined,
+        'danger'
+      );
+    }
+  }
 }
 
 /**
@@ -33,8 +104,8 @@ export function parseContactText(text: string): { name: string; mobile: string }
 
   const trimmed = text.trim();
 
-  // Pattern matching full phone representation (including +91, 0, spaces, hyphens)
-  const phonePattern = /(?:\+?\s*91[\s-]*)?(?:0[\s-]*)?[6-9]\d(?:\s*|\-*)?\d{3}(?:\s*|\-*)?\d{5}|(?:\+?\s*91[\s-]*)?(?:0[\s-]*)?\d{5}(?:\s*|\-*)?\d{5}/;
+  // Pattern matching full phone representation (including +91, 0, o, O, spaces, hyphens)
+  const phonePattern = /(?:\+?\s*91[\s-]*)?(?:[0oO][\s-]*)?[6-9]\d(?:\s*|\-*)?\d{3}(?:\s*|\-*)?\d{5}|(?:\+?\s*91[\s-]*)?(?:[0oO][\s-]*)?\d{5}(?:\s*|\-*)?\d{5}/i;
   const match = trimmed.match(phonePattern);
 
   let mobile = '';
@@ -46,10 +117,10 @@ export function parseContactText(text: string): { name: string; mobile: string }
     name = trimmed.replace(rawMatch, '').trim();
     name = name.replace(/^[\s,:+|\-()"]+|[\s,:+|\-()"]+$/g, '').trim();
   } else {
-    const digitsOnly = trimmed.replace(/\D/g, '');
-    if (digitsOnly.length >= 10) {
-      mobile = sanitizeIndianPhoneNumber(digitsOnly);
-      name = trimmed.replace(/[\d+\-():]+/g, '').trim();
+    const cleanedDigits = sanitizeIndianPhoneNumber(trimmed);
+    if (cleanedDigits.length === 10) {
+      mobile = cleanedDigits;
+      name = trimmed.replace(/[\d+\-():+oO]+/gi, '').trim();
       name = name.replace(/^[\s,:+|\-()"]+|[\s,:+|\-()"]+$/g, '').trim();
     }
   }

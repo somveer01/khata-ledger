@@ -154,6 +154,10 @@ export const translations = {
     contactImportFailed: 'Could not extract valid phone number or name. Please check the text.',
     detectedName: 'Detected Name',
     detectedMobile: 'Detected Mobile',
+    callCustomer: 'Call Customer',
+    callingCustomer: 'Calling Customer...',
+    noPhoneNumber: 'No phone number available',
+    invalidPhoneNumber: 'Invalid mobile number',
 
     // Transactions forms
     transactions: 'Transactions',
@@ -516,6 +520,10 @@ export const translations = {
     contactImportFailed: 'मान्य मोबाइल नंबर या नाम नहीं मिल सका। कृपया टेक्स्ट जांचें।',
     detectedName: 'पहचाना गया नाम',
     detectedMobile: 'पहचाना गया मोबाइल',
+    callCustomer: 'कॉल करें',
+    callingCustomer: 'कॉल किया जा रहा है...',
+    noPhoneNumber: 'मोबाइल नंबर उपलब्ध नहीं है',
+    invalidPhoneNumber: 'अमान्य मोबाइल नंबर',
 
     // Transactions forms
     transactions: 'लेन-देन',

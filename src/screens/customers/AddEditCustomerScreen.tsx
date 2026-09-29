@@ -27,6 +27,7 @@ import {
   isContactPickerSupported,
   pickContactFromDevice,
   parseContactText,
+  sanitizeIndianPhoneNumber,
 } from '../../utils/contacts';
 
 export const AddEditCustomerScreen: React.FC = () => {
@@ -64,7 +65,7 @@ export const AddEditCustomerScreen: React.FC = () => {
       const contact = await pickContactFromDevice();
       if (contact) {
         if (contact.name) setName(contact.name);
-        if (contact.mobile) setMobile(contact.mobile);
+        if (contact.mobile) setMobile(sanitizeIndianPhoneNumber(contact.mobile));
         showAlert(
           t('success', language),
           t('contactImportedSuccess', language),
@@ -103,7 +104,7 @@ export const AddEditCustomerScreen: React.FC = () => {
       return;
     }
     if (parsed.name) setName(parsed.name);
-    if (parsed.mobile) setMobile(parsed.mobile);
+    if (parsed.mobile) setMobile(sanitizeIndianPhoneNumber(parsed.mobile));
     setPasteModalVisible(false);
     setRawContactText('');
     showAlert(
@@ -142,12 +143,37 @@ export const AddEditCustomerScreen: React.FC = () => {
     }, [loadVillages])
   );
 
+  const handleMobileChange = (val: string) => {
+    // If user is pasting or typing with prefixes (+91, 0, o, O, spaces, dashes)
+    // or if the text is longer than 10 chars, sanitize it immediately
+    let cleanVal = val;
+    if (
+      val.startsWith('+') ||
+      val.startsWith('0') ||
+      val.startsWith('o') ||
+      val.startsWith('O') ||
+      val.includes(' ') ||
+      val.includes('-') ||
+      val.length > 10
+    ) {
+      cleanVal = sanitizeIndianPhoneNumber(val);
+    } else {
+      // Direct typing: replace letter o/O with 0 and remove non-digits
+      cleanVal = val.replace(/[oO]/g, '0').replace(/\D/g, '');
+    }
+    setMobile(cleanVal);
+    if (errors.mobile) {
+      setErrors((prev) => ({ ...prev, mobile: '' }));
+    }
+  };
+
   const validate = () => {
     const errs: Record<string, string> = {};
     if (!name.trim()) {
       errs.name = t('enterCustomerNameError', language);
     }
-    if (mobile.trim() && !/^[0-9]{10}$/.test(mobile.trim())) {
+    const cleanMobile = sanitizeIndianPhoneNumber(mobile);
+    if (mobile.trim() && cleanMobile.length !== 10) {
       errs.mobile = t('enterValidMobileError', language);
     }
     setErrors(errs);
@@ -192,12 +218,13 @@ export const AddEditCustomerScreen: React.FC = () => {
       const opBalPaise = toPaise(openingBalance || 0);
       const prevOpBalPaise = existingCustomer?.openingBalancePaise || 0;
       const opBalDiff = opBalPaise - prevOpBalPaise;
+      const cleanMobile = mobile.trim() ? sanitizeIndianPhoneNumber(mobile) : '';
 
       const customerToSave: Customer = {
         id: existingCustomer?.id || `cust_${Date.now()}`,
         businessId: business.id,
         name: name.trim(),
-        mobile: mobile.trim(),
+        mobile: cleanMobile,
         villageId: selectedVillage?.id || '',
         villageName: selectedVillage?.name || '',
         address: address.trim(),
@@ -277,9 +304,9 @@ export const AddEditCustomerScreen: React.FC = () => {
           <Input
             placeholder={language === 'hi' ? '10 अंकों का मोबाइल नंबर' : '10 digit mobile number'}
             value={mobile}
-            onChangeText={setMobile}
+            onChangeText={handleMobileChange}
             keyboardType="phone-pad"
-            maxLength={10}
+            maxLength={16}
             error={errors.mobile}
           />
 

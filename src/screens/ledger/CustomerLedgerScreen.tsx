@@ -28,6 +28,7 @@ import { PdfService } from '../../services/pdfService';
 import { ReminderService } from '../../services/reminderService';
 import { Customer, Transaction } from '../../types';
 import { confirmAction, showAlert } from '../../utils/dialog';
+import { callPhoneNumber } from '../../utils/contacts';
 import { Ionicons } from '@expo/vector-icons';
 
 export const CustomerLedgerScreen: React.FC = () => {
@@ -244,6 +245,13 @@ export const CustomerLedgerScreen: React.FC = () => {
         rightAction={
           <View style={{ flexDirection: 'row', gap: 6 }}>
             <TouchableOpacity
+              onPress={() => callPhoneNumber(customer.mobile, customer.name)}
+              style={styles.iconBtn}
+              accessibilityLabel={t('callCustomer', language)}
+            >
+              <Ionicons name="call" size={18} color="#93C5FD" />
+            </TouchableOpacity>
+            <TouchableOpacity
               onPress={() => navigation.navigate('EditCustomer', { customer })}
               style={styles.iconBtn}
               accessibilityLabel={t('editCustomer', language)}
@@ -279,6 +287,18 @@ export const CustomerLedgerScreen: React.FC = () => {
               <Text style={styles.accountOfValue}>
                 {customer.name} • <Text style={styles.villageHighlight}>{customer.villageName || '-'}</Text>
               </Text>
+              {customer.mobile ? (
+                <TouchableOpacity
+                  style={styles.callPillBtn}
+                  onPress={() => callPhoneNumber(customer.mobile, customer.name)}
+                  activeOpacity={0.7}
+                  accessibilityLabel={t('callCustomer', language)}
+                >
+                  <Ionicons name="call" size={12} color="#1D4ED8" />
+                  <Text style={styles.callPillText}>{customer.mobile}</Text>
+                  <Text style={styles.callPillSubText}>• {t('callCustomer', language)}</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
             <View style={{ alignItems: 'flex-end', gap: 6 }}>
               <Badge
@@ -591,6 +611,29 @@ const styles = StyleSheet.create({
   },
   villageHighlight: {
     color: Colors.primary,
+  },
+  callPillBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.full,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+  },
+  callPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1D4ED8',
+  },
+  callPillSubText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#3B82F6',
   },
   editCustomerBadgeBtn: {
     flexDirection: 'row',

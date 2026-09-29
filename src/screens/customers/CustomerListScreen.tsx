@@ -22,6 +22,7 @@ import { formatCurrency } from '../../utils/money';
 import { DataRepository } from '../../services/db';
 import { Customer } from '../../types';
 import { confirmAction, showAlert } from '../../utils/dialog';
+import { callPhoneNumber } from '../../utils/contacts';
 import { Ionicons } from '@expo/vector-icons';
 
 type FilterTab = 'ALL' | 'WITH_DUES' | 'ZERO_DUE';
@@ -180,9 +181,24 @@ export const CustomerListScreen: React.FC = () => {
                 <View style={styles.metaRow}>
                   <Ionicons name="location-outline" size={13} color={Colors.textSecondary} />
                   <Text style={styles.metaText}>{item.villageName || t('noVillageRecorded', language)}</Text>
-                  <Text style={styles.metaDivider}>•</Text>
-                  <Ionicons name="call-outline" size={13} color={Colors.textSecondary} />
-                  <Text style={styles.metaText}>{item.mobile}</Text>
+                  {item.mobile ? (
+                    <>
+                      <Text style={styles.metaDivider}>•</Text>
+                      <TouchableOpacity
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          callPhoneNumber(item.mobile, item.name);
+                        }}
+                        style={styles.callBadgeBtn}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                        activeOpacity={0.6}
+                        accessibilityLabel={`${t('callCustomer', language)}: ${item.mobile}`}
+                      >
+                        <Ionicons name="call" size={11} color="#1D4ED8" />
+                        <Text style={styles.callBadgeText}>{item.mobile}</Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : null}
                 </View>
               </View>
 
@@ -480,6 +496,22 @@ const styles = StyleSheet.create({
   metaDivider: {
     color: Colors.borderDark,
     marginHorizontal: 2,
+  },
+  callBadgeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  callBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1D4ED8',
   },
   balanceCol: {
     alignItems: 'flex-end',
