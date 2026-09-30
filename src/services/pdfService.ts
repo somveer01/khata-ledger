@@ -191,7 +191,7 @@ export const PdfService = {
         </table>
 
         <div class="footer">
-          Generated via Khata Book • डिजिटल खाता बही
+          Generated via Ledger • डिजिटल खाता बही
         </div>
       </body>
       </html>
@@ -266,7 +266,7 @@ export const PdfService = {
         </div>
 
         <div class="footer">
-          Generated via Khata Book • डिजिटल खाता बही
+          Generated via Ledger • डिजिटल खाता बही
         </div>
       </body>
       </html>
@@ -372,7 +372,7 @@ export const PdfService = {
         </table>
 
         <div class="footer">
-          Generated via Khata Book • डिजिटल खाता बही
+          Generated via Ledger • डिजिटल खाता बही
         </div>
       </body>
       </html>
@@ -387,7 +387,7 @@ export const PdfService = {
    * On Native: Opens Android/iOS share sheet (WhatsApp, Drive, Email, etc.),
    *            with automatic fallback to the system Print / Save-as-PDF dialog.
    */
-  async sharePdf(uri: string, customHtml?: string, title: string = 'Khata Book Statement'): Promise<void> {
+  async sharePdf(uri: string, customHtml?: string, title: string = 'Ledger Statement'): Promise<void> {
     // Prevent duplicate triggers / concurrent calls while sharing
     if (this.isSharingInProgress) {
       return;
@@ -670,7 +670,7 @@ export const PdfService = {
         </table>
 
         <div class="footer">
-          खाता बुक • Digital Khata Ledger Report • Generated on ${formatUpperDate(new Date())}
+          लेजर • Digital Ledger Report • Generated on ${formatUpperDate(new Date())}
         </div>
       </body>
       </html>

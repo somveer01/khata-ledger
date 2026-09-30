@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Khata Book",
+    "name": "Ledger",
     "slug": "khata-book",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -26,8 +26,8 @@
     },
     "web": {
       "favicon": "./assets/favicon.png",
-      "name": "Khata Book - डिजिटल बहीखाता",
-      "shortName": "KhataBook",
+      "name": "Ledger - डिजिटल बहीखाता",
+      "shortName": "Ledger",
       "themeColor": "#1E3A8A",
       "backgroundColor": "#1E3A8A",
       "display": "standalone",

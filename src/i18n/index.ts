@@ -3,7 +3,7 @@ import { SupportedLanguage } from '../types';
 export const translations = {
   en: {
     // App
-    appName: 'Khata Book',
+    appName: 'Ledger',
     tagline: 'Digital Udhaar & Customer Ledger',
 
     // Navigation
@@ -300,11 +300,11 @@ export const translations = {
     saveBusinessBtn: 'Save Business Profile',
     businessSavedSuccess: 'Business details saved successfully.',
     enterShopNameError: 'Please enter shop name',
-    versionFooter: 'Khata Book v1.0.0 • Digital Ledger for Retailers',
+    versionFooter: 'Ledger v1.0.0 • Digital Ledger for Retailers',
     appManagement: 'App Installation & Updates',
     installApp: 'Install App on Phone',
-    installAppDesc: 'Install Khata Book on your home screen for quick offline access and fullscreen mobile experience.',
-    installAppAlreadyInstalled: 'Khata Book is already installed on this device.',
+    installAppDesc: 'Install Ledger on your home screen for quick offline access and fullscreen mobile experience.',
+    installAppAlreadyInstalled: 'Ledger is already installed on this device.',
     installAppIosGuide: 'To install on iOS: Tap the Share button (📤) at the bottom of Safari and select "Add to Home Screen".',
     installAppAndroidGuide: 'To install on Android: Tap the 3-dots menu (⋮) at the top-right of Chrome and select "Install app" or "Add to Home screen".',
     updateApp: 'Check for Updates',
@@ -371,7 +371,7 @@ export const translations = {
   },
   hi: {
     // App
-    appName: 'खाता बुक',
+    appName: 'लेजर (Ledger)',
     tagline: 'डिजिटल उधार एवं ग्राहक खाता बही',
 
     // Navigation
@@ -668,11 +668,11 @@ export const translations = {
     saveBusinessBtn: 'दुकान विवरण सहेजें',
     businessSavedSuccess: 'व्यापार विवरण सुरक्षित किया गया।',
     enterShopNameError: 'कृपया दुकान का नाम दर्ज करें',
-    versionFooter: 'खाता बुक v1.0.0 • खुदरा व्यापारियों के लिए संपूर्ण बहीखाता',
+    versionFooter: 'लेजर v1.0.0 • खुदरा व्यापारियों के लिए संपूर्ण बहीखाता',
     appManagement: 'ऐप इंस्टॉलेशन एवं अपडेट',
     installApp: 'फ़ोन में ऐप इंस्टॉल करें',
-    installAppDesc: 'खाता बुक को अपने फ़ोन की होम स्क्रीन पर इंस्टॉल करें और बिना ब्राउज़र के ऐप जैसा तेज़ अनुभव पाएं।',
-    installAppAlreadyInstalled: 'खाता बुक इस डिवाइस पर पहले से इंस्टॉल है।',
+    installAppDesc: 'लेजर (Ledger) को अपने फ़ोन की होम स्क्रीन पर इंस्टॉल करें और बिना ब्राउज़र के ऐप जैसा तेज़ अनुभव पाएं।',
+    installAppAlreadyInstalled: 'लेजर (Ledger) इस डिवाइस पर पहले से इंस्टॉल है।',
     installAppIosGuide: 'iPhone/iPad पर इंस्टॉल करने के लिए: Safari ब्राउज़र में नीचे शेयर बटन (📤) दबाएं और "Add to Home Screen" चुनें।',
     installAppAndroidGuide: 'फ़ोन पर इंस्टॉल करने के लिए: Chrome में ऊपर दाईं ओर 3-डॉट्स मेनू (⋮) दबाएं और "Install app" या "होम स्क्रीन में जोड़ें" चुनें।',
     updateApp: 'अपडेट चेक करें',

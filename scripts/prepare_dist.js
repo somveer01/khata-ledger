@@ -27,7 +27,7 @@ if (fs.existsSync(indexPath)) {
     <link rel="apple-touch-icon" href="/khata-ledger/icon-192.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <meta name="apple-mobile-web-app-title" content="Khata Book">
+    <meta name="apple-mobile-web-app-title" content="Ledger">
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', function() {

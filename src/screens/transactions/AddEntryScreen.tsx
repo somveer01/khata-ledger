@@ -115,8 +115,8 @@ export const AddEntryScreen: React.FC = () => {
           showAlert(
             t('error', language), 
             language === 'hi' 
-              ? 'माइक की अनुमति नहीं मिली! कृपया मोबाइल सेटिंग्स (Settings -> Apps -> Khata Book -> Permissions) में जाकर Microphone को Allow करें।' 
-              : 'Microphone permission denied! Please allow mic in Settings -> Apps -> Khata Book -> Permissions.', 
+              ? 'माइक की अनुमति नहीं मिली! कृपया मोबाइल सेटिंग्स (Settings -> Apps -> Ledger -> Permissions) में जाकर Microphone को Allow करें।' 
+              : 'Microphone permission denied! Please allow mic in Settings -> Apps -> Ledger -> Permissions.', 
             undefined, 
             'danger'
           );
@@ -354,8 +354,8 @@ export const AddEntryScreen: React.FC = () => {
           showAlert(
             t('error', language), 
             language === 'hi' 
-              ? 'माइक की अनुमति नहीं मिली! कृपया मोबाइल सेटिंग्स (Settings -> Apps -> Khata Book -> Permissions) में जाकर Microphone को Allow करें।' 
-              : 'Microphone permission denied! Please allow mic in Settings -> Apps -> Khata Book -> Permissions.', 
+              ? 'माइक की अनुमति नहीं मिली! कृपया मोबाइल सेटिंग्स (Settings -> Apps -> Ledger -> Permissions) में जाकर Microphone को Allow करें।' 
+              : 'Microphone permission denied! Please allow mic in Settings -> Apps -> Ledger -> Permissions.', 
               undefined, 
               'danger'
             );

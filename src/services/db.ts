@@ -130,7 +130,7 @@ export const DataRepository = {
     // 4. Create new isolated business for new user
     const newBiz: Business = {
       id: targetBusinessId,
-      name: user.displayName || (email.split('@')[0] ? `${email.split('@')[0]} की दुकान` : 'खाता बुक (Khata Book)'),
+      name: user.displayName || (email.split('@')[0] ? `${email.split('@')[0]} की दुकान` : 'लेजर (Ledger)'),
       ownerName: user.displayName || email.split('@')[0] || 'दुकानदार',
       phone: '',
       currency: 'INR',

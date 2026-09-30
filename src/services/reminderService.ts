@@ -119,7 +119,7 @@ export const ReminderService = {
     try {
       await Share.share({
         message,
-        title: 'Khata Book Statement',
+        title: 'Ledger Statement',
       });
       return true;
     } catch {

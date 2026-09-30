@@ -338,7 +338,7 @@ export const SettingsScreen: React.FC = () => {
                 {language === 'hi' ? 'वर्तमान चुनी हुई दुकान:' : 'Current Active Store:'}
               </Text>
               <Text style={styles.currentStoreValue}>
-                {business?.name || 'Khata Book'} {business?.ownerName ? `(${business.ownerName})` : ''}
+                {business?.name || 'Ledger'} {business?.ownerName ? `(${business.ownerName})` : ''}
               </Text>
             </View>
 

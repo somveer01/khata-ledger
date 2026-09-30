@@ -1,6 +1,6 @@
 {
-  "name": "Khata Book - डिजिटल बहीखाता",
-  "short_name": "KhataBook",
+  "name": "Ledger - डिजिटल बहीखाता",
+  "short_name": "Ledger",
   "description": "Smart Digital Ledger for Retailers and Small Businesses",
   "start_url": "/khata-ledger/",
   "scope": "/khata-ledger/",
