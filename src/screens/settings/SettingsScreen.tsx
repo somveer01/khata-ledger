@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
   Platform,
+  Switch,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Header } from '../../components/Header';
@@ -16,11 +17,13 @@ import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
 import { Colors, Spacing, Typography, BorderRadius } from '../../constants/theme';
 import { useApp } from '../../context/AppContext';
+import { useSecurity } from '../../context/SecurityContext';
 import { t } from '../../i18n';
 import { Business, SupportedLanguage } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
 import { confirmAction, showAlert } from '../../utils/dialog';
 import { StoreSwitcherModal } from '../../components/StoreSwitcherModal';
+import { MpinSetupModal } from '../../components/MpinSetupModal';
 
 let deferredInstallPrompt: any = null;
 
@@ -51,7 +54,16 @@ export const SettingsScreen: React.FC = () => {
     availableBusinesses,
   } = useApp();
 
+  const {
+    isMpinEnabled,
+    autoLockTimeout,
+    updateAutoLockTimeout,
+    lockApp,
+  } = useSecurity();
+
   const [storeModalVisible, setStoreModalVisible] = useState(false);
+  const [mpinModalVisible, setMpinModalVisible] = useState(false);
+  const [mpinModalMode, setMpinModalMode] = useState<'setup' | 'change' | 'disable'>('setup');
   const [name, setName] = useState(business?.name || '');
   const [ownerName, setOwnerName] = useState(business?.ownerName || '');
   const [phone, setPhone] = useState(business?.phone || '');
@@ -353,6 +365,94 @@ export const SettingsScreen: React.FC = () => {
           </Card>
         )}
 
+        {/* App Security (MPIN App Lock) Card */}
+        <Card style={styles.securityCard}>
+          <View style={styles.securityHeaderRow}>
+            <View style={[styles.securityIconBox, isMpinEnabled ? styles.securityIconBoxActive : styles.securityIconBoxInactive]}>
+              <Ionicons
+                name="lock-closed"
+                size={22}
+                color={isMpinEnabled ? Colors.primary : Colors.textSecondary}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Text style={styles.sectionTitle}>{t('securityTitle', language)}</Text>
+                <Switch
+                  value={isMpinEnabled}
+                  onValueChange={(val) => {
+                    if (val) {
+                      setMpinModalMode('setup');
+                      setMpinModalVisible(true);
+                    } else {
+                      setMpinModalMode('disable');
+                      setMpinModalVisible(true);
+                    }
+                  }}
+                  trackColor={{ false: '#CBD5E1', true: '#93C5FD' }}
+                  thumbColor={isMpinEnabled ? Colors.primary : '#F1F5F9'}
+                />
+              </View>
+              <Text style={styles.securitySubText}>{t('mpinLockDesc', language)}</Text>
+            </View>
+          </View>
+
+          {isMpinEnabled && (
+            <View style={styles.securityConfigArea}>
+              <View style={styles.timeoutHeaderRow}>
+                <Ionicons name="timer-outline" size={16} color={Colors.textSecondary} />
+                <Text style={styles.timeoutLabel}>{t('autoLockTime', language)}</Text>
+              </View>
+
+              {/* Auto-Lock Timers: 30s (Default), 1 min, 5 min, Immediate */}
+              <View style={styles.timeoutChipsRow}>
+                {[
+                  { label: language === 'hi' ? '30 सेकंड (डिफ़ॉल्ट)' : '30s (Default)', seconds: 30 },
+                  { label: language === 'hi' ? '1 मिनट' : '1 min', seconds: 60 },
+                  { label: language === 'hi' ? '5 मिनट' : '5 min', seconds: 300 },
+                  { label: language === 'hi' ? 'तुरंत' : 'Immediate', seconds: 0 },
+                ].map((opt) => {
+                  const isSelected = autoLockTimeout === opt.seconds;
+                  return (
+                    <TouchableOpacity
+                      key={opt.seconds}
+                      style={[styles.timeoutChip, isSelected && styles.timeoutChipSelected]}
+                      onPress={() => updateAutoLockTimeout(opt.seconds)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.timeoutChipText, isSelected && styles.timeoutChipTextSelected]}>
+                        {opt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.md }}>
+                <Button
+                  title={t('changeMpin', language)}
+                  variant="outline"
+                  size="sm"
+                  icon={<Ionicons name="key-outline" size={16} color={Colors.primary} />}
+                  onPress={() => {
+                    setMpinModalMode('change');
+                    setMpinModalVisible(true);
+                  }}
+                  style={{ flex: 1 }}
+                />
+                <Button
+                  title={language === 'hi' ? 'अभी लॉक करें' : 'Lock Now'}
+                  variant="outline"
+                  size="sm"
+                  icon={<Ionicons name="lock-closed-outline" size={16} color={Colors.textSecondary} />}
+                  onPress={lockApp}
+                  style={{ flex: 1 }}
+                />
+              </View>
+            </View>
+          )}
+        </Card>
+
         {/* Language Selection Card (Exclusive location in settings screen) */}
         <Card style={styles.languageCard}>
           <View style={styles.langHeader}>
@@ -560,6 +660,12 @@ export const SettingsScreen: React.FC = () => {
           onClose={() => setStoreModalVisible(false)}
         />
       )}
+
+      <MpinSetupModal
+        visible={mpinModalVisible}
+        mode={mpinModalMode}
+        onClose={() => setMpinModalVisible(false)}
+      />
     </View>
   );
 };
@@ -790,5 +896,77 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.textPrimary,
     marginTop: 2,
+  },
+  securityCard: {
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#FFFFFF',
+    marginBottom: Spacing.md,
+  },
+  securityHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  securityIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  securityIconBoxActive: {
+    backgroundColor: '#EEF2FF',
+  },
+  securityIconBoxInactive: {
+    backgroundColor: '#F1F5F9',
+  },
+  securitySubText: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  securityConfigArea: {
+    marginTop: Spacing.md,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  timeoutHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: Spacing.sm,
+  },
+  timeoutLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  timeoutChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  timeoutChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+  },
+  timeoutChipSelected: {
+    borderColor: Colors.primary,
+    backgroundColor: '#EFF6FF',
+  },
+  timeoutChipText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: Colors.textSecondary,
+  },
+  timeoutChipTextSelected: {
+    color: Colors.primary,
+    fontWeight: '700',
   },
 });

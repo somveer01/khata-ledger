@@ -4,8 +4,10 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { AppProvider } from './src/context/AppContext';
+import { SecurityProvider, useSecurity } from './src/context/SecurityContext';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { CustomDialogModal } from './src/components/CustomDialogModal';
+import { MpinLockScreen } from './src/components/MpinLockScreen';
 
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
   const existing = document.getElementById('khata-web-input-focus-fix');
@@ -45,15 +47,26 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
   }
 }
 
+function AppContent() {
+  const { isLocked, isMpinEnabled } = useSecurity();
+
+  return (
+    <NavigationContainer>
+      <StatusBar style="light" />
+      <RootNavigator />
+      <CustomDialogModal />
+      {isMpinEnabled && isLocked ? <MpinLockScreen /> : null}
+    </NavigationContainer>
+  );
+}
+
 export default function App() {
   return (
     <SafeAreaProvider>
       <AppProvider>
-        <NavigationContainer>
-          <StatusBar style="light" />
-          <RootNavigator />
-          <CustomDialogModal />
-        </NavigationContainer>
+        <SecurityProvider>
+          <AppContent />
+        </SecurityProvider>
       </AppProvider>
     </SafeAreaProvider>
   );

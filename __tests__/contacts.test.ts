@@ -1,3 +1,8 @@
+jest.mock('react-native', () => ({
+  Linking: { openURL: jest.fn() },
+  Platform: { OS: 'web' },
+}));
+
 import { sanitizeIndianPhoneNumber, parseContactText } from '../src/utils/contacts';
 
 describe('Contacts Utility Tests', () => {
