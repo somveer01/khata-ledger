@@ -47,6 +47,7 @@ export const AddEditCustomerScreen: React.FC = () => {
   const [notes, setNotes] = useState(existingCustomer?.notes || '');
   const [selectedVillage, setSelectedVillage] = useState<Village | null>(null);
   const [villages, setVillages] = useState<Village[]>([]);
+  const [existingCustomers, setExistingCustomers] = useState<Customer[]>([]);
   const [villageModalVisible, setVillageModalVisible] = useState(false);
   const [newVillageName, setNewVillageName] = useState('');
   const [loading, setLoading] = useState(false);
@@ -115,10 +116,14 @@ export const AddEditCustomerScreen: React.FC = () => {
     );
   };
 
-  const loadVillages = useCallback(async () => {
+  const loadData = useCallback(async () => {
     if (!business) return;
-    const vList = await DataRepository.getVillages(business.id);
+    const [vList, cList] = await Promise.all([
+      DataRepository.getVillages(business.id),
+      DataRepository.getCustomers(business.id),
+    ]);
     setVillages(vList);
+    setExistingCustomers(cList);
 
     if (existingCustomer?.villageId) {
       const found = vList.find((v) => v.id === existingCustomer.villageId);
@@ -134,14 +139,36 @@ export const AddEditCustomerScreen: React.FC = () => {
   }, [business, existingCustomer]);
 
   useEffect(() => {
-    loadVillages();
-  }, [loadVillages, dataVersion]);
+    loadData();
+  }, [loadData, dataVersion]);
 
   useFocusEffect(
     useCallback(() => {
-      loadVillages();
-    }, [loadVillages])
+      loadData();
+    }, [loadData])
   );
+
+  const checkDuplicateCustomer = (customerName: string, village: Village | null): boolean => {
+    const normName = customerName.trim().toLowerCase();
+    const targetVillageId = (village?.id || '').trim();
+    const targetVillageName = (village?.name || '').trim().toLowerCase();
+
+    return existingCustomers.some((c) => {
+      // Exclude customer currently being edited
+      if (existingCustomer && c.id === existingCustomer.id) return false;
+
+      const cName = c.name.trim().toLowerCase();
+      if (cName !== normName) return false;
+
+      const cVillageId = (c.villageId || '').trim();
+      const cVillageName = (c.villageName || '').trim().toLowerCase();
+
+      if (targetVillageId && cVillageId) {
+        return targetVillageId === cVillageId || (targetVillageName && cVillageName && targetVillageName === cVillageName);
+      }
+      return targetVillageName === cVillageName;
+    });
+  };
 
   const handleMobileChange = (val: string) => {
     // If user is pasting or typing with prefixes (+91, 0, o, O, spaces, dashes)
@@ -169,9 +196,20 @@ export const AddEditCustomerScreen: React.FC = () => {
 
   const validate = () => {
     const errs: Record<string, string> = {};
-    if (!name.trim()) {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
       errs.name = t('enterCustomerNameError', language);
+    } else if (checkDuplicateCustomer(trimmedName, selectedVillage)) {
+      const vName = selectedVillage?.name;
+      errs.name = vName
+        ? (language === 'hi'
+            ? `गाँव "${vName}" में "${trimmedName}" नाम का ग्राहक पहले से मौजूद है।`
+            : `A customer named "${trimmedName}" already exists in village "${vName}".`)
+        : (language === 'hi'
+            ? `"${trimmedName}" नाम का ग्राहक पहले से मौजूद है।`
+            : `A customer named "${trimmedName}" already exists.`);
     }
+
     const cleanMobile = sanitizeIndianPhoneNumber(mobile);
     if (mobile.trim() && cleanMobile.length !== 10) {
       errs.mobile = t('enterValidMobileError', language);
@@ -202,6 +240,9 @@ export const AddEditCustomerScreen: React.FC = () => {
     const updated = await DataRepository.getVillages(business.id);
     setVillages(updated);
     setSelectedVillage(v);
+    if (errors.name) {
+      setErrors((prev) => ({ ...prev, name: '' }));
+    }
     setNewVillageName('');
     setVillageModalVisible(false);
   };
@@ -260,6 +301,17 @@ export const AddEditCustomerScreen: React.FC = () => {
           onDone,
           'success'
         );
+      } else {
+        const vName = selectedVillage?.name;
+        const dupMsg = vName
+          ? (language === 'hi'
+              ? `गाँव "${vName}" में "${name.trim()}" नाम का ग्राहक पहले से मौजूद है।`
+              : `A customer named "${name.trim()}" already exists in village "${vName}".`)
+          : (language === 'hi'
+              ? `"${name.trim()}" नाम का ग्राहक पहले से मौजूद है।`
+              : `A customer named "${name.trim()}" already exists.`);
+        setErrors((prev) => ({ ...prev, name: dupMsg }));
+        showAlert(t('error', language), dupMsg, undefined, 'warning');
       }
     } catch (err: any) {
       setLoading(false);
@@ -282,7 +334,12 @@ export const AddEditCustomerScreen: React.FC = () => {
             label={`${t('customerName', language)} *`}
             placeholder={language === 'hi' ? 'जैसे: शिवनन्दन' : 'e.g. Shivnandan'}
             value={name}
-            onChangeText={setName}
+            onChangeText={(val) => {
+              setName(val);
+              if (errors.name) {
+                setErrors((prev) => ({ ...prev, name: '' }));
+              }
+            }}
             error={errors.name}
             autoFocus={!isEditing}
           />
@@ -465,6 +522,9 @@ export const AddEditCustomerScreen: React.FC = () => {
                   onPress={() => {
                     setSelectedVillage(item);
                     setVillageModalVisible(false);
+                    if (errors.name) {
+                      setErrors((prev) => ({ ...prev, name: '' }));
+                    }
                   }}
                 >
                   <Ionicons

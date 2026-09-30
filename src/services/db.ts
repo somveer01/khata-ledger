@@ -392,8 +392,38 @@ export const DataRepository = {
     return [...localCustomers];
   },
 
-  async saveCustomer(customer: Customer): Promise<{ success: boolean; customer: Customer }> {
+  async saveCustomer(customer: Customer): Promise<{ success: boolean; customer: Customer; error?: string }> {
     const customers = await StorageService.getCustomers(customer.businessId);
+
+    // Duplicate check: Customer with same name AND same village (either creation or modification)
+    const normName = customer.name.trim().toLowerCase();
+    const targetVillageId = (customer.villageId || '').trim();
+    const targetVillageName = (customer.villageName || '').trim().toLowerCase();
+
+    const duplicate = customers.find((c) => {
+      // Exclude current customer when modifying
+      if (c.id === customer.id) return false;
+
+      const cName = c.name.trim().toLowerCase();
+      if (cName !== normName) return false;
+
+      const cVillageId = (c.villageId || '').trim();
+      const cVillageName = (c.villageName || '').trim().toLowerCase();
+
+      if (targetVillageId && cVillageId) {
+        return targetVillageId === cVillageId || (targetVillageName && cVillageName && targetVillageName === cVillageName);
+      }
+      return targetVillageName === cVillageName;
+    });
+
+    if (duplicate) {
+      return {
+        success: false,
+        customer,
+        error: 'DUPLICATE_CUSTOMER',
+      };
+    }
+
     const index = customers.findIndex((c) => c.id === customer.id);
     let updatedCustomer = { ...customer };
 
