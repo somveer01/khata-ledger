@@ -24,6 +24,7 @@ import { DataRepository } from '../../services/db';
 import { PdfService } from '../../services/pdfService';
 import { Customer, Village, VillageSummary } from '../../types';
 import { confirmAction, showAlert } from '../../utils/dialog';
+import { callPhoneNumber } from '../../utils/contacts';
 import { Ionicons } from '@expo/vector-icons';
 
 export const VillageDetailScreen: React.FC = () => {
@@ -333,7 +334,21 @@ export const VillageDetailScreen: React.FC = () => {
                       <Ionicons name="trash-outline" size={12} color={Colors.danger} />
                     </TouchableOpacity>
                   </View>
-                  <Text style={styles.customerMobile}>{item.mobile}</Text>
+                  {item.mobile ? (
+                    <TouchableOpacity
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        callPhoneNumber(item.mobile, item.name);
+                      }}
+                      style={styles.callBadgeBtn}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      activeOpacity={0.6}
+                      accessibilityLabel={`${t('callCustomer', language)}: ${item.name}`}
+                    >
+                      <Ionicons name="call" size={11} color="#1D4ED8" />
+                      <Text style={styles.callBadgeText}>{t('callCustomer', language)}</Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
 
                 <View style={styles.dueCol}>
@@ -579,10 +594,23 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.textPrimary,
   },
-  customerMobile: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginTop: 2,
+  callBadgeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    alignSelf: 'flex-start',
+    marginTop: 4,
+  },
+  callBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1D4ED8',
   },
   dueCol: {
     alignItems: 'flex-end',

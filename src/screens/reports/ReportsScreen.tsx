@@ -45,6 +45,7 @@ export const ReportsScreen: React.FC = () => {
   // Active Report Tab: 'DUE_REPORT' | 'TRANSACTIONS' | 'VILLAGE_REPORT'
   type ReportTab = 'DUE_REPORT' | 'TRANSACTIONS' | 'VILLAGE_REPORT';
   const [selectedReport, setSelectedReport] = useState<ReportTab>('DUE_REPORT');
+  const [expandedVillages, setExpandedVillages] = useState<Record<string, boolean>>({});
 
   // Date Filter State (defaults to Today: e.g. '2026-09-23')
   const todayStr = getTodayIST();
@@ -890,44 +891,166 @@ export const ReportsScreen: React.FC = () => {
                 </Text>
               </Card>
             ) : (
-              villages.map((v) => (
-                <TouchableOpacity
-                  key={v.villageId}
-                  activeOpacity={0.8}
-                  style={styles.villageCardDetailed}
-                  onPress={() => navigation.navigate('VillageDetail', { villageSummary: v })}
-                >
-                  <View style={styles.villageCardTop}>
-                    <View style={styles.villageCardIconBox}>
-                      <Ionicons name="business" size={20} color={Colors.warning} />
-                    </View>
-                    <View style={{ flex: 1, paddingHorizontal: Spacing.sm }}>
-                      <Text style={styles.villageCardName}>{v.villageName}</Text>
-                      <Text style={styles.villageCardSub}>
-                        {v.customerCount} {t('customersCountLabel', language)} • {v.customersWithDueCount} {t('withDuesCountLabel', language)}
-                      </Text>
-                    </View>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={styles.villageCardDue}>{formatCurrency(v.totalOutstandingPaise)}</Text>
-                      <View style={[styles.villageStatusPill, { backgroundColor: v.totalOutstandingPaise > 0 ? '#FEF2F2' : '#F0FDF4' }]}>
-                        <Text style={[styles.villageStatusPillText, { color: v.totalOutstandingPaise > 0 ? Colors.creditSale : Colors.paymentReceived }]}>
-                          {v.totalOutstandingPaise > 0 ? t('statusDue', language) : t('statusSettled', language)}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
+              villages.map((v) => {
+                const vCusts = customers.filter((c) =>
+                  v.villageId === 'other'
+                    ? !c.villageId || c.villageId === 'other'
+                    : c.villageId === v.villageId
+                );
+                const vCustsWithMobile = vCusts.filter((c) => !!c.mobile);
+                const isExpanded = !!expandedVillages[v.villageId];
 
-                  <View style={styles.villageCardBottom}>
-                    <Text style={styles.villageStatMini}>
-                      {t('debit', language)}: <Text style={{ color: Colors.creditSale, fontWeight: '700' }}>{formatCurrency(v.totalCreditPaise)}</Text>
-                    </Text>
-                    <Text style={styles.villageStatMini}>
-                      {t('credit', language)}: <Text style={{ color: Colors.paymentReceived, fontWeight: '700' }}>{formatCurrency(v.totalPaymentPaise)}</Text>
-                    </Text>
-                    <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} />
+                return (
+                  <View key={v.villageId} style={styles.villageCardDetailed}>
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      onPress={() => navigation.navigate('VillageDetail', { villageSummary: v })}
+                    >
+                      <View style={styles.villageCardTop}>
+                        <View style={styles.villageCardIconBox}>
+                          <Ionicons name="business" size={20} color={Colors.warning} />
+                        </View>
+                        <View style={{ flex: 1, paddingHorizontal: Spacing.sm }}>
+                          <Text style={styles.villageCardName}>{v.villageName}</Text>
+                          <Text style={styles.villageCardSub}>
+                            {v.customerCount} {t('customersCountLabel', language)} • {v.customersWithDueCount} {t('withDuesCountLabel', language)}
+                          </Text>
+                        </View>
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text style={styles.villageCardDue}>{formatCurrency(v.totalOutstandingPaise)}</Text>
+                          <View style={[styles.villageStatusPill, { backgroundColor: v.totalOutstandingPaise > 0 ? '#FEF2F2' : '#F0FDF4' }]}>
+                            <Text style={[styles.villageStatusPillText, { color: v.totalOutstandingPaise > 0 ? Colors.creditSale : Colors.paymentReceived }]}>
+                              {v.totalOutstandingPaise > 0 ? t('statusDue', language) : t('statusSettled', language)}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+
+                      <View style={styles.villageCardBottom}>
+                        <View style={{ flex: 1, marginRight: 8 }}>
+                          <Text style={styles.villageStatMini} numberOfLines={1}>
+                            {t('debit', language)}: <Text style={{ color: Colors.creditSale, fontWeight: '700' }}>{formatCurrency(v.totalCreditPaise)}</Text>
+                            {'  •  '}
+                            {t('credit', language)}: <Text style={{ color: Colors.paymentReceived, fontWeight: '700' }}>{formatCurrency(v.totalPaymentPaise)}</Text>
+                          </Text>
+                        </View>
+
+                        <TouchableOpacity
+                          style={styles.villageCallToggleBtn}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            setExpandedVillages((prev) => ({
+                              ...prev,
+                              [v.villageId]: !prev[v.villageId],
+                            }));
+                          }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          accessibilityLabel={language === 'hi' ? 'गाँव के ग्राहकों को कॉल करें' : 'Call customers of this village'}
+                        >
+                          <Ionicons name="call" size={12} color="#1D4ED8" />
+                          <Text style={styles.villageCallToggleText}>
+                            {language === 'hi' ? 'ग्राहक कॉल' : 'Call'} ({vCustsWithMobile.length})
+                          </Text>
+                          <Ionicons
+                            name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                            size={13}
+                            color="#1D4ED8"
+                          />
+                        </TouchableOpacity>
+                      </View>
+                    </TouchableOpacity>
+
+                    {/* Expandable Village Customer Call List */}
+                    {isExpanded && (
+                      <View style={styles.expandedVillageCustomersBox}>
+                        <View style={styles.expandedBoxHeader}>
+                          <Text style={styles.expandedBoxTitle}>
+                            {language === 'hi' ? `${v.villageName} के ग्राहक` : `Customers in ${v.villageName}`} ({vCusts.length})
+                          </Text>
+                          <TouchableOpacity
+                            onPress={() => navigation.navigate('VillageDetail', { villageSummary: v })}
+                            style={styles.openVillageDetailLink}
+                          >
+                            <Text style={styles.openVillageDetailLinkText}>
+                              {language === 'hi' ? 'पूरा खाता देखें →' : 'View Full →'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+
+                        {vCusts.length === 0 ? (
+                          <Text style={styles.emptyVillageCustText}>
+                            {language === 'hi' ? 'इस गाँव में कोई ग्राहक नहीं है।' : 'No customers in this village.'}
+                          </Text>
+                        ) : (
+                          vCusts.map((cust) => {
+                            const isCustDue = (cust.currentBalancePaise || 0) > 0;
+                            return (
+                              <TouchableOpacity
+                                key={cust.id}
+                                style={styles.villageCustRow}
+                                activeOpacity={0.7}
+                                onPress={() => navigation.navigate('CustomerLedger', { customer: cust })}
+                              >
+                                <View style={{ flex: 1, marginRight: 8 }}>
+                                  <Text style={styles.villageCustName}>{cust.name}</Text>
+                                  <Text
+                                    style={[
+                                      styles.villageCustBal,
+                                      isCustDue ? { color: Colors.creditSale } : { color: Colors.paymentReceived },
+                                    ]}
+                                  >
+                                    {formatCurrency(Math.abs(cust.currentBalancePaise || 0))}{' '}
+                                    <Text style={styles.villageCustBalTag}>
+                                      {isCustDue
+                                        ? (language === 'hi' ? 'बाकी' : 'Due')
+                                        : (cust.currentBalancePaise || 0) < 0
+                                        ? (language === 'hi' ? 'जमा' : 'Advance')
+                                        : (language === 'hi' ? 'शून्य' : 'Settled')}
+                                    </Text>
+                                  </Text>
+                                </View>
+
+                                <View style={styles.villageCustActionsRow}>
+                                  {cust.mobile ? (
+                                    <TouchableOpacity
+                                      style={styles.callReminderBtn}
+                                      onPress={(e) => {
+                                        e.stopPropagation();
+                                        callPhoneNumber(cust.mobile, cust.name);
+                                      }}
+                                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                      accessibilityLabel={`${t('callCustomer', language)}: ${cust.name}`}
+                                    >
+                                      <Ionicons name="call" size={12} color="#1D4ED8" />
+                                      <Text style={styles.callReminderText}>{t('callCustomer', language)}</Text>
+                                    </TouchableOpacity>
+                                  ) : null}
+
+                                  {cust.mobile && isCustDue ? (
+                                    <TouchableOpacity
+                                      style={styles.whatsappReminderBtn}
+                                      onPress={(e) => {
+                                        e.stopPropagation();
+                                        handleSendReminder(cust);
+                                      }}
+                                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                    >
+                                      <Ionicons name="logo-whatsapp" size={13} color="#22C55E" />
+                                      <Text style={styles.whatsappReminderText}>
+                                        {language === 'hi' ? 'तगादा' : 'Remind'}
+                                      </Text>
+                                    </TouchableOpacity>
+                                  ) : null}
+                                </View>
+                              </TouchableOpacity>
+                            );
+                          })
+                        )}
+                      </View>
+                    )}
                   </View>
-                </TouchableOpacity>
-              ))
+                );
+              })
             )}
           </View>
         )}
@@ -1200,6 +1323,88 @@ const styles = StyleSheet.create({
   villageStatMini: {
     fontSize: 11,
     color: Colors.textSecondary,
+  },
+  villageCallToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.full,
+  },
+  villageCallToggleText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1D4ED8',
+  },
+  expandedVillageCustomersBox: {
+    marginTop: Spacing.sm,
+    paddingTop: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.sm,
+  },
+  expandedBoxHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.xs,
+    paddingBottom: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  expandedBoxTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  openVillageDetailLink: {
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+  },
+  openVillageDetailLinkText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  emptyVillageCustText: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    paddingVertical: 8,
+  },
+  villageCustRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  villageCustName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+  },
+  villageCustBal: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 1,
+  },
+  villageCustBalTag: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: Colors.textSecondary,
+  },
+  villageCustActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   emptyVillageCard: {
     alignItems: 'center',
