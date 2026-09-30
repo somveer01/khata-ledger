@@ -127,7 +127,9 @@ export const SecurityProvider = ({ children }: { children: ReactNode }) => {
     }
 
     return () => {
-      sub.remove();
+      if (sub && typeof sub.remove === 'function') {
+        sub.remove();
+      }
       if (cleanupWebListener) cleanupWebListener();
     };
   }, []);

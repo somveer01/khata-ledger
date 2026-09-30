@@ -63,6 +63,21 @@ export const BorderRadius = {
 };
 
 export const Typography = {
+  fontSize: {
+    xs: 11,
+    sm: 13,
+    md: 15,
+    lg: 18,
+    xl: 20,
+    xxl: 24,
+  },
+  fontWeight: {
+    regular: '400' as const,
+    medium: '500' as const,
+    semibold: '600' as const,
+    bold: '700' as const,
+    heavy: '800' as const,
+  },
   h1: { fontSize: 24, fontWeight: '700' as const, lineHeight: 30 },
   h2: { fontSize: 20, fontWeight: '700' as const, lineHeight: 26 },
   h3: { fontSize: 16, fontWeight: '600' as const, lineHeight: 22 },

@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { Platform, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
@@ -51,12 +51,14 @@ function AppContent() {
   const { isLocked, isMpinEnabled } = useSecurity();
 
   return (
-    <NavigationContainer>
-      <StatusBar style="light" />
-      <RootNavigator />
+    <View style={{ flex: 1 }}>
+      <NavigationContainer>
+        <StatusBar style="light" />
+        <RootNavigator />
+      </NavigationContainer>
       <CustomDialogModal />
       {isMpinEnabled && isLocked ? <MpinLockScreen /> : null}
-    </NavigationContainer>
+    </View>
   );
 }
 
