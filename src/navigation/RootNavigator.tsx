@@ -11,6 +11,7 @@ import { ReceiptScreen } from '../screens/transactions/ReceiptScreen';
 import { CustomerLedgerScreen } from '../screens/ledger/CustomerLedgerScreen';
 import { ReportsScreen } from '../screens/reports/ReportsScreen';
 import { SettingsScreen } from '../screens/settings/SettingsScreen';
+import { StoreActivityScreen } from '../screens/admin/StoreActivityScreen';
 import { Colors } from '../constants/theme';
 import { useApp } from '../context/AppContext';
 import { t } from '../i18n';
@@ -31,6 +32,7 @@ const SharedScreens = (Stack: any) => (
     <Stack.Screen name="AddUdhaar" component={AddEntryScreen} />
     <Stack.Screen name="ReceivePayment" component={AddEntryScreen} />
     <Stack.Screen name="Receipt" component={ReceiptScreen} />
+    <Stack.Screen name="StoreActivity" component={StoreActivityScreen} />
   </>
 );
 

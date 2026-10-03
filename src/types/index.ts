@@ -110,3 +110,15 @@ export interface AppUser {
   displayName?: string | null;
   isGuest: boolean;
 }
+
+export interface StoreActivityStats {
+  business: Business;
+  customerCount: number;
+  villageCount: number;
+  creditSaleCount: number;
+  paymentCount: number;
+  totalTransactionCount: number;
+  lastActiveDate?: string;
+  isActive: boolean;
+  totalOutstandingPaise: CurrencyPaise;
+}

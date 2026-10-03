@@ -354,14 +354,24 @@ export const SettingsScreen: React.FC = () => {
               </Text>
             </View>
 
-            <Button
-              title={language === 'hi' ? 'दुकान बदलें (Store Switcher)' : 'Switch Store'}
-              variant="primary"
-              size="sm"
-              icon={<Ionicons name="storefront-outline" size={16} color="#FFFFFF" />}
-              onPress={() => setStoreModalVisible(true)}
-              style={{ marginTop: Spacing.sm }}
-            />
+            <View style={{ flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.sm }}>
+              <Button
+                title={language === 'hi' ? 'दुकान बदलें' : 'Switch'}
+                variant="outline"
+                size="sm"
+                icon={<Ionicons name="storefront-outline" size={16} color={Colors.primary} />}
+                onPress={() => setStoreModalVisible(true)}
+                style={{ flex: 1 }}
+              />
+              <Button
+                title={language === 'hi' ? '📊 स्टोर मॉनिटर' : '📊 Store Monitor'}
+                variant="primary"
+                size="sm"
+                icon={<Ionicons name="bar-chart-outline" size={16} color="#FFFFFF" />}
+                onPress={() => navigation.navigate('StoreActivity')}
+                style={{ flex: 1 }}
+              />
+            </View>
           </Card>
         )}
 

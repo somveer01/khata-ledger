@@ -104,3 +104,32 @@ export function getDaysDiff(d1Str: string, d2Str: string): number {
     return 0;
   }
 }
+
+/**
+ * Returns human-friendly relative time for last active date (e.g., 'आज', 'कल', '3 दिन पहले')
+ */
+export function formatRelativeActivity(dateStr?: string, language: 'hi' | 'en' = 'hi'): string {
+  if (!dateStr) return language === 'hi' ? 'कोई लेन-देन नहीं' : 'No entries yet';
+  try {
+    const d = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    if (isNaN(diffMs)) return dateStr;
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffHours < 1) {
+      return language === 'hi' ? 'अभी-अभी' : 'Just now';
+    } else if (diffDays === 0) {
+      return language === 'hi' ? `आज (${format(d, 'hh:mm a')})` : `Today (${format(d, 'hh:mm a')})`;
+    } else if (diffDays === 1) {
+      return language === 'hi' ? `कल (${format(d, 'hh:mm a')})` : `Yesterday (${format(d, 'hh:mm a')})`;
+    } else if (diffDays < 7) {
+      return language === 'hi' ? `${diffDays} दिन पहले` : `${diffDays}d ago`;
+    } else {
+      return formatDisplayDate(dateStr);
+    }
+  } catch {
+    return dateStr;
+  }
+}

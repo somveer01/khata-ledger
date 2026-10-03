@@ -11,7 +11,7 @@ import {
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './firebase';
 import { StorageService } from './storage';
-import { Business, Village, Customer, Transaction, VillageSummary, DashboardMetrics, AppUser } from '../types';
+import { Business, Village, Customer, Transaction, VillageSummary, DashboardMetrics, AppUser, StoreActivityStats } from '../types';
 import { calculateCustomerBalance, calculateVillageSummaries, calculateDashboardMetrics, calculateCustomerDueDate } from './accounting';
 import { toPaise } from '../utils/money';
 import { getBusinessIdFromEmail, isLegacyOwner, LEGACY_BUSINESS_ID, LEGACY_BUSINESS_TENANT_ID, LEGACY_OWNER_EMAIL } from '../utils/tenant';
@@ -71,6 +71,111 @@ export const DataRepository = {
       uniqueMap.set(current.id, current);
     }
     return Array.from(uniqueMap.values());
+  },
+
+  async getStoreActivityOverview(): Promise<StoreActivityStats[]> {
+    const allBusinesses = await this.getAllBusinesses();
+
+    let customersList: Customer[] = [];
+    let villagesList: Village[] = [];
+    let transactionsList: Transaction[] = [];
+
+    if (isFirebaseConfigured() && db) {
+      try {
+        const [cSnap, vSnap, tSnap] = await Promise.all([
+          getDocs(collection(db, 'customers')),
+          getDocs(collection(db, 'villages')),
+          getDocs(collection(db, 'transactions')),
+        ]);
+
+        customersList = cSnap.docs.map((d) => d.data() as Customer);
+        villagesList = vSnap.docs.map((d) => d.data() as Village);
+        transactionsList = tSnap.docs.map((d) => d.data() as Transaction);
+      } catch (err) {
+        console.warn('Firestore getStoreActivityOverview error:', err);
+      }
+    }
+
+    const now = new Date();
+    const sevenDaysAgoMs = now.getTime() - 7 * 24 * 60 * 60 * 1000;
+    const statsList: StoreActivityStats[] = [];
+
+    for (const biz of allBusinesses) {
+      // Find customers for this biz
+      let bizCustomers = customersList.filter(
+        (c) => c.businessId === biz.id || (biz.id === LEGACY_BUSINESS_ID && c.businessId === LEGACY_BUSINESS_TENANT_ID)
+      );
+      if (bizCustomers.length === 0) {
+        bizCustomers = await StorageService.getCustomers(biz.id);
+      }
+
+      // Find villages for this biz
+      let bizVillages = villagesList.filter(
+        (v) => v.businessId === biz.id || (biz.id === LEGACY_BUSINESS_ID && v.businessId === LEGACY_BUSINESS_TENANT_ID)
+      );
+      if (bizVillages.length === 0) {
+        bizVillages = await StorageService.getVillages(biz.id);
+      }
+
+      // Find transactions for this biz
+      let bizTxs = transactionsList.filter(
+        (t) => t.businessId === biz.id || (biz.id === LEGACY_BUSINESS_ID && t.businessId === LEGACY_BUSINESS_TENANT_ID)
+      );
+      if (bizTxs.length === 0) {
+        bizTxs = await StorageService.getTransactions(biz.id);
+      }
+
+      let creditSaleCount = 0;
+      let paymentCount = 0;
+      let latestTxDate: string | undefined = undefined;
+      let latestTxTimeMs = 0;
+      let totalOutstandingPaise = 0;
+
+      for (const t of bizTxs) {
+        if (t.type === 'CREDIT_SALE') {
+          creditSaleCount++;
+        } else if (t.type === 'PAYMENT') {
+          paymentCount++;
+        }
+
+        const txTimeStr = t.createdAt || t.date;
+        if (txTimeStr) {
+          const txTimeMs = new Date(txTimeStr).getTime();
+          if (!isNaN(txTimeMs) && txTimeMs > latestTxTimeMs) {
+            latestTxTimeMs = txTimeMs;
+            latestTxDate = txTimeStr;
+          }
+        }
+      }
+
+      for (const c of bizCustomers) {
+        if (c.currentBalancePaise && c.currentBalancePaise > 0) {
+          totalOutstandingPaise += c.currentBalancePaise;
+        }
+      }
+
+      const isActive = latestTxTimeMs > 0 && latestTxTimeMs >= sevenDaysAgoMs;
+
+      statsList.push({
+        business: biz,
+        customerCount: bizCustomers.length,
+        villageCount: bizVillages.length,
+        creditSaleCount,
+        paymentCount,
+        totalTransactionCount: bizTxs.length,
+        lastActiveDate: latestTxDate,
+        isActive,
+        totalOutstandingPaise,
+      });
+    }
+
+    statsList.sort((a, b) => {
+      const aTime = a.lastActiveDate ? new Date(a.lastActiveDate).getTime() : 0;
+      const bTime = b.lastActiveDate ? new Date(b.lastActiveDate).getTime() : 0;
+      return bTime - aTime;
+    });
+
+    return statsList;
   },
 
   async getOrCreateBusinessForUser(user: AppUser): Promise<Business> {

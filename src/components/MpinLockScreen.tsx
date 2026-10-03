@@ -258,7 +258,11 @@ export const MpinLockScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: '#FFFFFF',
     zIndex: 99999,
     elevation: 99999,
@@ -340,7 +344,7 @@ const styles = StyleSheet.create({
   },
   hintText: {
     fontSize: Typography.fontSize.xs,
-    color: Colors.textTertiary,
+    color: Colors.textMuted,
   },
   errorText: {
     fontSize: Typography.fontSize.sm,

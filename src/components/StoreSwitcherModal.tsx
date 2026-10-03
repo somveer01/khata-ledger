@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { Colors, Spacing, Typography, BorderRadius } from '../constants/theme';
 import { useApp } from '../context/AppContext';
 import { Business } from '../types';
@@ -19,6 +20,7 @@ interface StoreSwitcherModalProps {
 }
 
 export const StoreSwitcherModal: React.FC<StoreSwitcherModalProps> = ({ visible, onClose }) => {
+  const navigation = useNavigation<any>();
   const {
     business,
     availableBusinesses,
@@ -91,6 +93,31 @@ export const StoreSwitcherModal: React.FC<StoreSwitcherModalProps> = ({ visible,
                 : 'As Super Admin, you can access and switch between any registered store to view their ledger.'}
             </Text>
           </View>
+
+          {/* Quick Link to Store Activity Monitor */}
+          <TouchableOpacity
+            style={styles.activityBanner}
+            onPress={() => {
+              onClose();
+              navigation.navigate('StoreActivity');
+            }}
+            activeOpacity={0.8}
+          >
+            <View style={styles.activityBannerLeft}>
+              <View style={styles.activityIconBox}>
+                <Ionicons name="bar-chart" size={16} color="#FFFFFF" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.activityBannerTitle}>
+                  {language === 'hi' ? '📊 सभी दुकानों की लाइव एक्टिविटी' : '📊 Live Stores Activity & Counts'}
+                </Text>
+                <Text style={styles.activityBannerSub} numberOfLines={1}>
+                  {language === 'hi' ? 'ग्राहक, गाँव, उधारी व जमा एंट्री काउंट्स' : 'Customer, village, sale & payment counts'}
+                </Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={Colors.primary} />
+          </TouchableOpacity>
 
           {/* Store List */}
           <ScrollView style={styles.listContainer} showsVerticalScrollIndicator={false}>
@@ -254,6 +281,41 @@ const styles = StyleSheet.create({
     color: '#0F766E',
     lineHeight: 16,
     fontWeight: '500',
+  },
+  activityBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1.5,
+    borderColor: '#BFDBFE',
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.md,
+  },
+  activityBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    flex: 1,
+  },
+  activityIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activityBannerTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  activityBannerSub: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginTop: 1,
   },
   listContainer: {
     maxHeight: 340,
