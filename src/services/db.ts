@@ -11,10 +11,11 @@ import {
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './firebase';
 import { StorageService } from './storage';
-import { Business, Village, Customer, Transaction, VillageSummary, DashboardMetrics, AppUser, StoreActivityStats } from '../types';
+import { Business, Village, Customer, Transaction, VillageSummary, DashboardMetrics, AppUser, StoreActivityStats, Product } from '../types';
 import { calculateCustomerBalance, calculateVillageSummaries, calculateDashboardMetrics, calculateCustomerDueDate } from './accounting';
 import { toPaise } from '../utils/money';
 import { getBusinessIdFromEmail, isLegacyOwner, LEGACY_BUSINESS_ID, LEGACY_BUSINESS_TENANT_ID, LEGACY_OWNER_EMAIL } from '../utils/tenant';
+import { PRELOADED_TYCOON_PRODUCTS } from '../data/preloadedProducts';
 
 export const DataRepository = {
   // -------------------------------------------------------------
@@ -1180,6 +1181,126 @@ export const DataRepository = {
   },
 
   // -------------------------------------------------------------
+  // PRODUCTS / RATE MASTER
+  // -------------------------------------------------------------
+  async getProducts(businessId: string): Promise<Product[]> {
+    let localProducts = await StorageService.getProducts(businessId);
+
+    // If local cache is empty, try loading from Firestore first
+    if (isFirebaseConfigured() && db) {
+      if (localProducts.length > 0) {
+        // Fast path: return cached, sync in background
+        getDocs(query(collection(db, 'products'), where('businessId', '==', businessId)))
+          .then(async (snap) => {
+            if (!snap.empty) {
+              const list = snap.docs.map((d) => d.data() as Product);
+              await StorageService.saveProducts(businessId, list);
+            }
+          })
+          .catch((err) => console.warn('Firestore getProducts background sync error:', err));
+        return [...localProducts];
+      }
+
+      // Initial load: await Firestore
+      try {
+        const snap = await getDocs(query(collection(db, 'products'), where('businessId', '==', businessId)));
+        if (!snap.empty) {
+          const list = snap.docs.map((d) => d.data() as Product);
+          await StorageService.saveProducts(businessId, list);
+          return [...list];
+        }
+      } catch (err) {
+        console.warn('Firestore getProducts error, using local:', err);
+      }
+    }
+
+    // If still empty (new store / first time), auto-seed preloaded Tycoon products
+    if (localProducts.length === 0) {
+      localProducts = await this.seedPreloadedProducts(businessId);
+    }
+
+    return [...localProducts];
+  },
+
+  async seedPreloadedProducts(businessId: string): Promise<Product[]> {
+    const now = new Date().toISOString();
+    const seeded: Product[] = PRELOADED_TYCOON_PRODUCTS.map((p, idx) => ({
+      ...p,
+      id: `prod_seed_${idx + 1}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      businessId,
+      createdAt: now,
+      updatedAt: now,
+    }));
+
+    await StorageService.saveProducts(businessId, seeded);
+
+    // Sync to Firestore in background
+    if (isFirebaseConfigured() && db) {
+      Promise.all(
+        seeded.map((p) =>
+          setDoc(doc(db, 'products', p.id), { ...p, serverTimestamp: serverTimestamp() }, { merge: true }).catch(() => {})
+        )
+      ).catch(() => {});
+    }
+
+    return seeded;
+  },
+
+  async saveProduct(product: Product): Promise<{ success: boolean; error?: string }> {
+    const products = await StorageService.getProducts(product.businessId);
+
+    // Check duplicate (same brand name, product name, and pack size)
+    const duplicate = products.find(
+      (p) =>
+        p.id !== product.id &&
+        p.brandName.trim().toLowerCase() === product.brandName.trim().toLowerCase() &&
+        p.productName.trim().toLowerCase() === product.productName.trim().toLowerCase() &&
+        p.packSize.trim().toLowerCase() === product.packSize.trim().toLowerCase()
+    );
+    if (duplicate) {
+      return { success: false, error: 'A product with this Brand, Name and Pack Size already exists' };
+    }
+
+    const index = products.findIndex((p) => p.id === product.id);
+    if (index >= 0) {
+      products[index] = { ...product, updatedAt: new Date().toISOString() };
+    } else {
+      products.unshift({ ...product, createdAt: product.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() });
+    }
+
+    await StorageService.saveProducts(product.businessId, products);
+
+    if (isFirebaseConfigured() && db) {
+      try {
+        await setDoc(doc(db, 'products', product.id), {
+          ...product,
+          serverTimestamp: serverTimestamp(),
+        });
+      } catch (err) {
+        console.warn('Firestore saveProduct error:', err);
+      }
+    }
+
+    return { success: true };
+  },
+
+  async deleteProduct(businessId: string, productId: string): Promise<{ success: boolean; error?: string }> {
+    const products = await StorageService.getProducts(businessId);
+    const filtered = products.filter((p) => p.id !== productId);
+    await StorageService.saveProducts(businessId, filtered);
+
+    if (isFirebaseConfigured() && db) {
+      try {
+        await deleteDoc(doc(db, 'products', productId));
+      } catch (err) {
+        console.warn('Firestore deleteProduct error:', err);
+      }
+    }
+
+    return { success: true };
+  },
+
+  // -------------------------------------------------------------
   // CLEAR ALL DATA (Reset)
   // -------------------------------------------------------------
   async clearAllData(businessId: string): Promise<void> {
@@ -1188,12 +1309,13 @@ export const DataRepository = {
     await StorageService.saveCustomers(businessId, []);
     await StorageService.saveVillages(businessId, []);
     await StorageService.saveTransactions(businessId, []);
+    await StorageService.saveProducts(businessId, []);
     await StorageService.clearAllLocalAuthAndUsers();
 
     // 2. If Firebase is active, delete records from Firestore
     if (isFirebaseConfigured() && db) {
       try {
-        const collections = ['customers', 'villages', 'transactions'];
+        const collections = ['customers', 'villages', 'transactions', 'products'];
         for (const colName of collections) {
           const snap = await getDocs(query(collection(db, colName), where('businessId', '==', businessId)));
           const deletes = snap.docs.map((docSnap) => deleteDoc(docSnap.ref));
@@ -1205,3 +1327,4 @@ export const DataRepository = {
     }
   },
 };
+

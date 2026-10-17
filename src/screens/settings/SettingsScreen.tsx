@@ -375,6 +375,42 @@ export const SettingsScreen: React.FC = () => {
           </Card>
         )}
 
+        {/* Product Master & Rate Card (Accessible to All Retailers) */}
+        <Card style={styles.productMasterCard}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.md }}>
+            <View
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 22,
+                backgroundColor: '#DCFCE7',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Ionicons name="cube" size={24} color="#16A34A" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.sectionTitle, { color: '#166534' }]}>
+                {language === 'hi' ? '📦 उत्पाद एवं रेट मास्टर' : '📦 Product Rate Master'}
+              </Text>
+              <Text style={{ fontSize: 11, color: '#15803D', marginTop: 2 }}>
+                {language === 'hi'
+                  ? 'खरीद दर (बिना GST / GST सहित) और बिक्री दर प्रबंधित करें'
+                  : 'Manage purchase & selling rates with live GST & margin'}
+              </Text>
+            </View>
+          </View>
+          <Button
+            title={language === 'hi' ? 'उत्पाद सूची एवं दरें खोलें' : 'Open Rate Master'}
+            variant="primary"
+            size="sm"
+            icon={<Ionicons name="list" size={16} color="#FFFFFF" />}
+            onPress={() => navigation.navigate('ProductList')}
+            style={{ marginTop: Spacing.md, backgroundColor: '#16A34A' }}
+          />
+        </Card>
+
         {/* App Security (MPIN App Lock) Card */}
         <Card style={styles.securityCard}>
           <View style={styles.securityHeaderRow}>
@@ -692,6 +728,12 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#E5E7EB',
     backgroundColor: '#FFFFFF',
+    marginBottom: Spacing.md,
+  },
+  productMasterCard: {
+    borderWidth: 1.5,
+    borderColor: '#86EFAC',
+    backgroundColor: '#F0FDF4',
     marginBottom: Spacing.md,
   },
   accountHeaderRow: {

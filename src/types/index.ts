@@ -122,3 +122,33 @@ export interface StoreActivityStats {
   isActive: boolean;
   totalOutstandingPaise: CurrencyPaise;
 }
+
+export type ProductCategory =
+  | 'PESTICIDE'
+  | 'INSECTICIDE'
+  | 'FUNGICIDE'
+  | 'HERBICIDE'
+  | 'SEED'
+  | 'FERTILIZER'
+  | 'OTHER';
+
+export interface Product {
+  id: string;
+  businessId: string;
+  brandName: string;
+  productName: string;
+  technicalName?: string;
+  category: ProductCategory;
+  packSize: string; // e.g. "400 ML", "1 KG", "1 Litre"
+  casePacking?: string; // e.g. "400ML*20 PCS", "10 LIT"
+  unit?: string; // "Bottle", "Pouch", "Bag", "Litre", "Kg", "Unit"
+  billingRatePaise: CurrencyPaise; // purchase price without GST
+  gstPercent: number; // e.g. 18, 12, 5, 0
+  withGstRatePaise: CurrencyPaise; // billingRate + GST
+  marginPercent?: number; // profit margin % over withGstRate
+  sellingRatePaise: CurrencyPaise; // customer selling price
+  notes?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}

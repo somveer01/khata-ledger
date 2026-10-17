@@ -168,6 +168,16 @@ export const DashboardScreen: React.FC = () => {
           </TouchableOpacity>
 
           <TouchableOpacity
+            style={[styles.gridCard, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' }]}
+            onPress={() => navigation.navigate('ProductList')}
+          >
+            <Ionicons name="cube" size={22} color="#16A34A" />
+            <Text style={[styles.gridCardTitle, { color: '#166534', fontWeight: '700' }]}>
+              {language === 'hi' ? 'रेट मास्टर' : 'Rate Master'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={styles.gridCard}
             onPress={() => navigation.navigate('VillagesTab')}
           >

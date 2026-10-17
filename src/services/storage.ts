@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Business, Village, Customer, Transaction, AppUser } from '../types';
+import { Business, Village, Customer, Transaction, AppUser, Product } from '../types';
 
 const STORAGE_KEYS = {
   CURRENT_BUSINESS: '@khata_book_current_business',
@@ -7,6 +7,7 @@ const STORAGE_KEYS = {
   VILLAGES: '@khata_book_villages',
   CUSTOMERS: '@khata_book_customers',
   TRANSACTIONS: '@khata_book_transactions',
+  PRODUCTS: '@khata_book_products',
   PENDING_SYNC: '@khata_book_pending_sync',
   APP_LANGUAGE: '@khata_book_language',
   CURRENT_USER: '@khata_book_current_user',
@@ -127,6 +128,24 @@ export const StorageService = {
     await AsyncStorage.setItem(key, JSON.stringify(transactions));
   },
 
+  // Products
+  async getProducts(businessId: string): Promise<Product[]> {
+    const key = `${STORAGE_KEYS.PRODUCTS}_${businessId}`;
+    if (memoryCache.has(key)) {
+      return [...memoryCache.get(key)];
+    }
+    const raw = await AsyncStorage.getItem(key);
+    const list = raw ? JSON.parse(raw) : [];
+    memoryCache.set(key, list);
+    return [...list];
+  },
+
+  async saveProducts(businessId: string, products: Product[]): Promise<void> {
+    const key = `${STORAGE_KEYS.PRODUCTS}_${businessId}`;
+    memoryCache.set(key, [...products]);
+    await AsyncStorage.setItem(key, JSON.stringify(products));
+  },
+
   // Pending Sync
   async getPendingSyncCount(businessId: string): Promise<number> {
     const raw = await AsyncStorage.getItem(`${STORAGE_KEYS.PENDING_SYNC}_${businessId}`);
@@ -139,16 +158,19 @@ export const StorageService = {
     const vKey = `${STORAGE_KEYS.VILLAGES}_${businessId}`;
     const cKey = `${STORAGE_KEYS.CUSTOMERS}_${businessId}`;
     const tKey = `${STORAGE_KEYS.TRANSACTIONS}_${businessId}`;
+    const pKey = `${STORAGE_KEYS.PRODUCTS}_${businessId}`;
     const sKey = `${STORAGE_KEYS.PENDING_SYNC}_${businessId}`;
 
     memoryCache.delete(vKey);
     memoryCache.delete(cKey);
     memoryCache.delete(tKey);
+    memoryCache.delete(pKey);
     memoryCache.delete(sKey);
 
     await AsyncStorage.removeItem(vKey);
     await AsyncStorage.removeItem(cKey);
     await AsyncStorage.removeItem(tKey);
+    await AsyncStorage.removeItem(pKey);
     await AsyncStorage.removeItem(sKey);
   },
 
