@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
   Platform,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Header } from '../../components/Header';
 import { Card } from '../../components/Card';
@@ -51,6 +51,12 @@ export const StoreActivityScreen: React.FC = () => {
     loadStats();
   }, [loadStats]);
 
+  useFocusEffect(
+    useCallback(() => {
+      loadStats();
+    }, [loadStats])
+  );
+
   const onRefresh = async () => {
     setRefreshing(true);
     await loadStats();
@@ -61,7 +67,10 @@ export const StoreActivityScreen: React.FC = () => {
     setSwitchingId(targetBiz.id);
     try {
       await switchBusiness(targetBiz);
-      navigation.navigate('MainTabs', { screen: 'DashboardTab' });
+      if (navigation.canGoBack()) {
+        navigation.popToTop?.();
+      }
+      navigation.navigate('DashboardTab');
     } finally {
       setSwitchingId(null);
     }
