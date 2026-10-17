@@ -46,11 +46,11 @@ export const CustomerLedgerScreen: React.FC = () => {
   const [txModalVisible, setTxModalVisible] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
 
-  const loadLedger = useCallback(async () => {
+  const loadLedger = useCallback(async (force = false) => {
     if (!business || !customerParam) return;
     const [txs, allCusts] = await Promise.all([
-      DataRepository.getTransactions(business.id, customerParam.id),
-      DataRepository.getCustomers(business.id),
+      DataRepository.getTransactions(business.id, customerParam.id, force),
+      DataRepository.getCustomers(business.id, force),
     ]);
     setTransactions(txs);
 
@@ -74,7 +74,7 @@ export const CustomerLedgerScreen: React.FC = () => {
   const onRefresh = async () => {
     setRefreshing(true);
     await refreshAllData();
-    await loadLedger();
+    await loadLedger(true);
     setRefreshing(false);
   };
 

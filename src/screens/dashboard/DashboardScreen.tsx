@@ -40,12 +40,12 @@ export const DashboardScreen: React.FC = () => {
   const [topDueCustomers, setTopDueCustomers] = useState<Customer[]>([]);
   const [allCustomers, setAllCustomers] = useState<Customer[]>([]);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (force = false) => {
     if (!business) return;
     const [custs, txs, villages] = await Promise.all([
-      DataRepository.getCustomers(business.id),
-      DataRepository.getTransactions(business.id),
-      DataRepository.getVillages(business.id),
+      DataRepository.getCustomers(business.id, force),
+      DataRepository.getTransactions(business.id, undefined, force),
+      DataRepository.getVillages(business.id, force),
     ]);
 
     const m = calculateDashboardMetrics(custs, txs, villages.length);
@@ -74,7 +74,7 @@ export const DashboardScreen: React.FC = () => {
   const onRefresh = async () => {
     setRefreshing(true);
     await refreshAllData();
-    await loadData();
+    await loadData(true);
     setRefreshing(false);
   };
 

@@ -101,6 +101,36 @@ export const DataRepository = {
     const sevenDaysAgoMs = now.getTime() - 7 * 24 * 60 * 60 * 1000;
     const statsList: StoreActivityStats[] = [];
 
+    // Auto-discover any stores present in customers or transactions that might not have a business document
+    const knownBizIds = new Set(allBusinesses.map((b) => b.id));
+    knownBizIds.add(LEGACY_BUSINESS_TENANT_ID);
+
+    const candidateIds = new Set<string>();
+    customersList.forEach((c) => {
+      if (c.businessId) candidateIds.add(c.businessId);
+    });
+    transactionsList.forEach((t) => {
+      if (t.businessId) candidateIds.add(t.businessId);
+    });
+
+    for (const bId of candidateIds) {
+      if (!knownBizIds.has(bId) && bId !== 'biz_guest') {
+        knownBizIds.add(bId);
+        const derivedEmail = bId.startsWith('biz_') ? bId.replace('biz_', '').replace(/_/g, '.') : '';
+        const syntheticBiz: Business = {
+          id: bId,
+          name: `दुकान (${derivedEmail.split('@')[0] || bId})`,
+          ownerName: derivedEmail ? derivedEmail.split('@')[0] : 'दुकानदार',
+          phone: '',
+          currency: 'INR',
+          ownerEmail: derivedEmail.includes('@') ? derivedEmail : undefined,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        allBusinesses.push(syntheticBiz);
+      }
+    }
+
     for (const biz of allBusinesses) {
       // Find customers for this biz
       let bizCustomers = customersList.filter(
@@ -266,7 +296,7 @@ export const DataRepository = {
   // -------------------------------------------------------------
   // VILLAGES
   // -------------------------------------------------------------
-  async getVillages(businessId: string): Promise<Village[]> {
+  async getVillages(businessId: string, forceRefresh = false): Promise<Village[]> {
     let localVillages = await StorageService.getVillages(businessId);
 
     // If local cache is empty and this is the legacy owner, check legacy key
@@ -279,7 +309,7 @@ export const DataRepository = {
     }
 
     if (isFirebaseConfigured() && db) {
-      if (localVillages.length > 0) {
+      if (!forceRefresh && localVillages.length > 0) {
         // Fast path: return cached data immediately and sync in background
         getDocs(query(collection(db, 'villages'), where('businessId', '==', businessId)))
           .then(async (snap) => {
@@ -302,7 +332,7 @@ export const DataRepository = {
         return [...localVillages];
       }
 
-      // Initial load when cache is empty: await Firestore
+      // Initial load when cache is empty or forceRefresh: await Firestore
       try {
         const snap = await getDocs(query(collection(db, 'villages'), where('businessId', '==', businessId)));
         if (!snap.empty) {
@@ -428,7 +458,7 @@ export const DataRepository = {
   // -------------------------------------------------------------
   // CUSTOMERS
   // -------------------------------------------------------------
-  async getCustomers(businessId: string): Promise<Customer[]> {
+  async getCustomers(businessId: string, forceRefresh = false): Promise<Customer[]> {
     let localCustomers = await StorageService.getCustomers(businessId);
 
     // If local cache is empty and this is the legacy owner, check legacy key
@@ -441,7 +471,7 @@ export const DataRepository = {
     }
 
     if (isFirebaseConfigured() && db) {
-      if (localCustomers.length > 0) {
+      if (!forceRefresh && localCustomers.length > 0) {
         // Fast path: return cached customers immediately and sync in background
         getDocs(query(collection(db, 'customers'), where('businessId', '==', businessId)))
           .then(async (snap) => {
@@ -473,13 +503,22 @@ export const DataRepository = {
         return [...localCustomers]; // Clone to ensure React re-renders on mutation
       }
 
-      // Initial load when cache is empty: await Firestore
+      // Initial load when cache is empty or forceRefresh: await Firestore
       try {
         const snap = await getDocs(query(collection(db, 'customers'), where('businessId', '==', businessId)));
         if (!snap.empty) {
           const list = snap.docs.map((d) => d.data() as Customer);
-          await StorageService.saveCustomers(businessId, list);
-          return [...list];
+          const mergedMap = new Map<string, Customer>();
+          localCustomers.forEach((c) => mergedMap.set(c.id, c));
+          list.forEach((c) => {
+            const existing = mergedMap.get(c.id);
+            if (!existing || new Date(c.updatedAt).getTime() >= new Date(existing.updatedAt).getTime()) {
+              mergedMap.set(c.id, c);
+            }
+          });
+          const mergedList = Array.from(mergedMap.values());
+          await StorageService.saveCustomers(businessId, mergedList);
+          return [...mergedList];
         } else if (businessId === LEGACY_BUSINESS_TENANT_ID) {
           const legSnap = await getDocs(query(collection(db, 'customers'), where('businessId', '==', LEGACY_BUSINESS_ID)));
           if (!legSnap.empty) {
@@ -603,7 +642,7 @@ export const DataRepository = {
   // -------------------------------------------------------------
   // TRANSACTIONS & BALANCE RECONCILIATION
   // -------------------------------------------------------------
-  async getTransactions(businessId: string, customerId?: string): Promise<Transaction[]> {
+  async getTransactions(businessId: string, customerId?: string, forceRefresh = false): Promise<Transaction[]> {
     const localTx = await StorageService.getTransactions(businessId);
     if (isFirebaseConfigured() && db) {
       let q = query(collection(db, 'transactions'), where('businessId', '==', businessId));
@@ -611,7 +650,7 @@ export const DataRepository = {
         q = query(collection(db, 'transactions'), where('businessId', '==', businessId), where('customerId', '==', customerId));
       }
 
-      if (localTx.length > 0) {
+      if (!forceRefresh && localTx.length > 0) {
         // Fast path: return cached transactions immediately and sync in background
         getDocs(q)
           .then(async (snap) => {
@@ -622,13 +661,7 @@ export const DataRepository = {
               // Safely merge based on ID to retain newly created local txs that are not in Firestore yet
               const mergedMap = new Map<string, Transaction>();
               allLocal.forEach((t) => mergedMap.set(t.id, t));
-              // Note: for transactions, they are rarely edited after creation except for deletion,
-              // but if edited, updatedAt should ideally be used. For safety, since they are immutable in this basic app,
-              // we can just overwrite, but we MUST keep local txs that don't exist in Firestore yet.
               list.forEach((t) => {
-                const existing = mergedMap.get(t.id);
-                // Keep local if it exists and Firestore one doesn't have an updatedAt or is older.
-                // Assuming transactions are append-only mostly, just set it.
                 mergedMap.set(t.id, t); 
               });
               
@@ -643,16 +676,23 @@ export const DataRepository = {
         return [...localTx]; // clone
       }
 
-      // Initial load when cache is empty: await Firestore
+      // Initial load when cache is empty or forceRefresh: await Firestore
       try {
         const snap = await getDocs(q);
         if (!snap.empty) {
           const list = snap.docs.map((d) => d.data() as Transaction);
-          await StorageService.saveTransactions(businessId, list);
+          const allLocal = await StorageService.getTransactions(businessId);
+          const mergedMap = new Map<string, Transaction>();
+          allLocal.forEach((t) => mergedMap.set(t.id, t));
+          list.forEach((t) => {
+            mergedMap.set(t.id, t);
+          });
+          const mergedList = Array.from(mergedMap.values());
+          await StorageService.saveTransactions(businessId, mergedList);
           if (customerId) {
-            return list.filter((t) => t.customerId === customerId); // filter creates a new array
+            return mergedList.filter((t) => t.customerId === customerId); // filter creates a new array
           }
-          return [...list]; // clone
+          return [...mergedList]; // clone
         }
       } catch (err) {
         console.warn('Firestore getTransactions error, using local:', err);
@@ -1183,12 +1223,12 @@ export const DataRepository = {
   // -------------------------------------------------------------
   // PRODUCTS / RATE MASTER
   // -------------------------------------------------------------
-  async getProducts(businessId: string): Promise<Product[]> {
+  async getProducts(businessId: string, forceRefresh = false): Promise<Product[]> {
     let localProducts = await StorageService.getProducts(businessId);
 
     // If local cache is empty, try loading from Firestore first
     if (isFirebaseConfigured() && db) {
-      if (localProducts.length > 0) {
+      if (!forceRefresh && localProducts.length > 0) {
         // Fast path: return cached, sync in background
         getDocs(query(collection(db, 'products'), where('businessId', '==', businessId)))
           .then(async (snap) => {
@@ -1201,7 +1241,7 @@ export const DataRepository = {
         return [...localProducts];
       }
 
-      // Initial load: await Firestore
+      // Initial load or forceRefresh: await Firestore
       try {
         const snap = await getDocs(query(collection(db, 'products'), where('businessId', '==', businessId)));
         if (!snap.empty) {

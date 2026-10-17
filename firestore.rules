@@ -36,6 +36,12 @@ service cloud.firestore {
       allow update, delete: if isAuthenticated();
     }
 
+    // Products / Rate Master collection
+    match /products/{productId} {
+      allow read: if true; // Retailers and guests can view products/rates
+      allow create, update, delete: if isAuthenticated(); // Only logged-in users can add/edit/delete
+    }
+
     // Users collection
     match /users/{userId} {
       allow read: if true;
@@ -43,3 +49,4 @@ service cloud.firestore {
     }
   }
 }
+

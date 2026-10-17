@@ -37,9 +37,9 @@ export const CustomerListScreen: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (force = false) => {
     if (!business) return;
-    const cList = await DataRepository.getCustomers(business.id);
+    const cList = await DataRepository.getCustomers(business.id, force);
     setCustomers(cList);
   }, [business]);
 
@@ -55,7 +55,7 @@ export const CustomerListScreen: React.FC = () => {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadData();
+    await loadData(true);
     setRefreshing(false);
   };
 

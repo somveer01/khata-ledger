@@ -45,9 +45,9 @@ export const ProductListScreen: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [sortBy, setSortBy] = useState<'NAME' | 'SELLING_RATE' | 'MARGIN'>('NAME');
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (force = false) => {
     if (!business) return;
-    const list = await DataRepository.getProducts(business.id);
+    const list = await DataRepository.getProducts(business.id, force);
     setProducts(list);
   }, [business]);
 
@@ -63,7 +63,7 @@ export const ProductListScreen: React.FC = () => {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadData();
+    await loadData(true);
     setRefreshing(false);
   };
 
