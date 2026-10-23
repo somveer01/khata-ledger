@@ -1,6 +1,6 @@
 import { Linking, Share, Platform } from 'react-native';
-import { Customer, Business, SupportedLanguage } from '../types';
-import { formatCurrency } from '../utils/money';
+import { Customer, Business, SupportedLanguage, Transaction } from '../types';
+import { formatCurrency, toRupees, amountInWords } from '../utils/money';
 import { formatUpperDate } from '../utils/date';
 
 export const ReminderService = {
@@ -83,6 +83,95 @@ export const ReminderService = {
       `Remaining Due: *${balanceStr}*\n\n` +
       `Contact: ${business.phone}\n` +
       `Thank you for your payment!`
+    );
+  },
+
+  /**
+   * Generates a date-wise / period-wise customer ledger bill for WhatsApp
+   */
+  generateCustomerDateBillMessage(
+    business: Business,
+    customer: Customer,
+    fromDate: string,
+    toDate: string,
+    customerTxs: Transaction[],
+    previousBalancePaise: number,
+    lang: SupportedLanguage = 'hi'
+  ): string {
+    let creditTotal = 0;
+    let paymentTotal = 0;
+    for (const tx of customerTxs) {
+      if (tx.type === 'CREDIT_SALE') creditTotal += tx.amountPaise;
+      else if (tx.type === 'PAYMENT') paymentTotal += tx.amountPaise;
+    }
+
+    const finalClosingDuePaise = previousBalancePaise + (creditTotal - paymentTotal);
+
+    const periodStr =
+      fromDate === toDate
+        ? formatUpperDate(fromDate)
+        : `${formatUpperDate(fromDate)} से ${formatUpperDate(toDate)}`;
+
+    const entriesList = customerTxs
+      .map((tx, idx) => {
+        const isSale = tx.type === 'CREDIT_SALE';
+        const typeTag = isSale ? '🔴 उधार (+)' : '🟢 जमा (-)';
+        const descPart = tx.description ? `\n   विवरण: ${tx.description}` : '';
+        const qtyPart = tx.quantity
+          ? ` [मात्रा: ${tx.quantity} ${tx.unit || ''}${tx.ratePaise ? ` @ ₹${toRupees(tx.ratePaise)}` : ''}]`
+          : '';
+        return `${idx + 1}. ➔ *${formatCurrency(tx.amountPaise)}* ${typeTag}${descPart}${qtyPart}`;
+      })
+      .join('\n\n');
+
+    const entriesSection = entriesList
+      ? lang === 'hi'
+        ? `*📝 इस अवधि का लेन-देन (${customerTxs.length} प्रविष्टि):*\n\n${entriesList}\n`
+        : `*📝 Transactions in Period (${customerTxs.length}):*\n\n${entriesList}\n`
+      : lang === 'hi'
+      ? `*(इस अवधि में कोई नई प्रविष्टि नहीं)*\n`
+      : `*(No transactions in this period)*\n`;
+
+    const custLoc = customer.villageName ? ` (${customer.villageName})` : '';
+
+    if (lang === 'hi') {
+      return (
+        `*${business.name}* 🏪\n` +
+        `*खाता बही पर्ची / रसीद* 📋\n\n` +
+        `ग्राहक: *${customer.name}*${custLoc}\n` +
+        `📅 दिनांक: *${periodStr}*\n` +
+        `─────────────────────\n` +
+        `🟣 *1. पिछला बकाया:* *${formatCurrency(previousBalancePaise)}*\n` +
+        `─────────────────────\n` +
+        entriesSection +
+        `─────────────────────\n` +
+        `➕ आज का कुल उधार: *+ ${formatCurrency(creditTotal)}*\n` +
+        `➖ आज की कुल जमा: *- ${formatCurrency(paymentTotal)}*\n` +
+        `═════════════════════\n` +
+        `⭐ *कुल अंतिम बकाया: ${formatCurrency(finalClosingDuePaise)}*\n` +
+        `_अक्षरों में: ${amountInWords(finalClosingDuePaise)}_\n` +
+        (business.upiId ? `\n💳 UPI भुगतान लिंक: ${business.upiId}\n` : '') +
+        `\n📞 संपर्क: ${business.phone}\nडिजिटल खाता बही • धन्यवाद! 🙏`
+      );
+    }
+
+    return (
+      `*${business.name}* 🏪\n` +
+      `*Customer Statement / Bill* 📋\n\n` +
+      `Customer: *${customer.name}*${custLoc}\n` +
+      `📅 Period: *${periodStr}*\n` +
+      `─────────────────────\n` +
+      `🟣 *1. Previous Due:* *${formatCurrency(previousBalancePaise)}*\n` +
+      `─────────────────────\n` +
+      entriesSection +
+      `─────────────────────\n` +
+      `➕ New Udhaar (+): *+ ${formatCurrency(creditTotal)}*\n` +
+      `➖ Received Jama (-): *- ${formatCurrency(paymentTotal)}*\n` +
+      `═════════════════════\n` +
+      `⭐ *Net Closing Due: ${formatCurrency(finalClosingDuePaise)}*\n` +
+      `_In Words: ${amountInWords(finalClosingDuePaise)}_\n` +
+      (business.upiId ? `\n💳 UPI Payment: ${business.upiId}\n` : '') +
+      `\n📞 Contact: ${business.phone}\nThank you! 🙏`
     );
   },
 

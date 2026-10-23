@@ -58,6 +58,18 @@ export const ReportsScreen: React.FC = () => {
   const [viewYear, setViewYear] = useState<number>(new Date().getFullYear());
   const [viewMonth, setViewMonth] = useState<number>(new Date().getMonth());
 
+  // Customer-wise Date Bill States
+  const [txViewMode, setTxViewMode] = useState<'BY_CUSTOMER' | 'ALL_ENTRIES'>('BY_CUSTOMER');
+  const [selectedCustBill, setSelectedCustBill] = useState<{
+    customer: Customer;
+    txs: Transaction[];
+    creditTotal: number;
+    paymentTotal: number;
+    previousBalancePaise: number;
+    finalClosingDuePaise: number;
+  } | null>(null);
+  const [exportingCustomerPdfId, setExportingCustomerPdfId] = useState<string | null>(null);
+
   const loadData = useCallback(async () => {
     if (!business) return;
     const [c, tx, v] = await Promise.all([
@@ -115,6 +127,53 @@ export const ReportsScreen: React.FC = () => {
       filteredTxs: sorted,
     };
   }, [transactions, fromDate, toDate]);
+
+  // Group period transactions by customer with their individual previous balance & closing balance
+  const customerPeriodBreakdown = useMemo(() => {
+    const custMap = new Map<string, {
+      customer: Customer;
+      txs: Transaction[];
+      creditTotal: number;
+      paymentTotal: number;
+      previousBalancePaise: number;
+      finalClosingDuePaise: number;
+    }>();
+
+    for (const tx of periodStats.filteredTxs) {
+      const cust = customerMap.get(tx.customerId);
+      if (!cust) continue;
+
+      if (!custMap.has(tx.customerId)) {
+        // Calculate this customer's previous balance before fromDate
+        const prevTxs = transactions.filter(
+          (t) => t.customerId === cust.id && !t.isReversed && t.date.substring(0, 10) < fromDate
+        );
+        const netPrevTxs = prevTxs.reduce((sum, t) => {
+          if (t.type === 'CREDIT_SALE') return sum + t.amountPaise;
+          if (t.type === 'PAYMENT') return sum - t.amountPaise;
+          return sum;
+        }, 0);
+        const prevBal = Math.max(0, (cust.openingBalancePaise || 0) + netPrevTxs);
+
+        custMap.set(tx.customerId, {
+          customer: cust,
+          txs: [],
+          creditTotal: 0,
+          paymentTotal: 0,
+          previousBalancePaise: prevBal,
+          finalClosingDuePaise: prevBal,
+        });
+      }
+
+      const entry = custMap.get(tx.customerId)!;
+      entry.txs.push(tx);
+      if (tx.type === 'CREDIT_SALE') entry.creditTotal += tx.amountPaise;
+      else if (tx.type === 'PAYMENT') entry.paymentTotal += tx.amountPaise;
+      entry.finalClosingDuePaise = entry.previousBalancePaise + (entry.creditTotal - entry.paymentTotal);
+    }
+
+    return Array.from(custMap.values()).sort((a, b) => b.creditTotal - a.creditTotal);
+  }, [periodStats.filteredTxs, customerMap, transactions, fromDate]);
 
   type DueFilterMode = 'ALL' | 'OVERDUE' | 'IN_PERIOD' | 'TODAY';
   const [dueFilter, setDueFilter] = useState<DueFilterMode>('ALL');
@@ -380,6 +439,65 @@ export const ReportsScreen: React.FC = () => {
           `\n📞 Contact: ${business.phone}\nThank you! 🙏`;
 
     await ReminderService.shareToWhatsApp(message);
+  };
+
+  const handleShareCustomerWhatsApp = async (item: {
+    customer: Customer;
+    txs: Transaction[];
+    previousBalancePaise: number;
+  }) => {
+    if (!business) return;
+    const msg = ReminderService.generateCustomerDateBillMessage(
+      business,
+      item.customer,
+      fromDate,
+      toDate,
+      item.txs,
+      item.previousBalancePaise,
+      language
+    );
+
+    if (item.customer.mobile) {
+      await ReminderService.sendViaWhatsApp(item.customer.mobile, msg);
+    } else {
+      await ReminderService.shareToWhatsApp(msg);
+    }
+  };
+
+  const handleExportCustomerPdf = async (item: {
+    customer: Customer;
+    txs: Transaction[];
+    creditTotal: number;
+    paymentTotal: number;
+    previousBalancePaise: number;
+  }) => {
+    if (!business || exportingCustomerPdfId) return;
+    setExportingCustomerPdfId(item.customer.id);
+    try {
+      const uri = await PdfService.generateCustomerDateBillPdf(
+        business,
+        item.customer,
+        fromDate,
+        toDate,
+        item.txs,
+        item.creditTotal,
+        item.paymentTotal,
+        item.previousBalancePaise
+      );
+      await PdfService.sharePdf(uri, undefined, `${item.customer.name}_Bill_${fromDate}`);
+    } catch (err: any) {
+      const msg = String(err?.message || '');
+      if (
+        !msg.includes('canceled') &&
+        !msg.includes('cancelled') &&
+        !msg.includes('rejected') &&
+        !msg.includes('dismissed')
+      ) {
+        Alert.alert(t('error', language), msg);
+      }
+    } finally {
+      setTimeout(() => setExportingCustomerPdfId(null), 700);
+    }
   };
 
   // Date Preset Handlers
@@ -888,12 +1006,66 @@ export const ReportsScreen: React.FC = () => {
               </View>
             </Card>
 
-            {/* Transactions list in Selected Date Range */}
+            {/* Transactions list in Selected Date Range with Customer-wise Toggle */}
             <Card style={styles.transactionsCard}>
               <View style={styles.txCardHeader}>
-                <Text style={styles.txCardTitle}>
-                  {t('transactionsInPeriod', language)} ({periodStats.txCount})
-                </Text>
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <Text style={styles.txCardTitle}>
+                    {txViewMode === 'BY_CUSTOMER'
+                      ? (language === 'hi'
+                          ? `ग्राहक अनुसार बिल पर्ची (${customerPeriodBreakdown.length})`
+                          : `Customer Bills (${customerPeriodBreakdown.length})`)
+                      : (language === 'hi'
+                          ? `सभी प्रविष्टियाँ (${periodStats.txCount})`
+                          : `All Entries (${periodStats.txCount})`)}
+                  </Text>
+                  <Text style={{ fontSize: 10, color: Colors.textSecondary, marginTop: 1 }}>
+                    {formatUpperDate(fromDate)} {fromDate !== toDate ? `— ${formatUpperDate(toDate)}` : ''}
+                  </Text>
+                </View>
+
+                {/* View Mode Toggle (Customer-wise vs All Entries) */}
+                <View style={styles.viewModeToggleRow}>
+                  <TouchableOpacity
+                    style={[styles.viewModeBtn, txViewMode === 'BY_CUSTOMER' && styles.viewModeBtnActive]}
+                    onPress={() => setTxViewMode('BY_CUSTOMER')}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons
+                      name="people"
+                      size={13}
+                      color={txViewMode === 'BY_CUSTOMER' ? '#FFFFFF' : Colors.textSecondary}
+                    />
+                    <Text
+                      style={[
+                        styles.viewModeBtnText,
+                        txViewMode === 'BY_CUSTOMER' && styles.viewModeBtnTextActive,
+                      ]}
+                    >
+                      {language === 'hi' ? 'ग्राहक-वार' : 'Customers'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.viewModeBtn, txViewMode === 'ALL_ENTRIES' && styles.viewModeBtnActive]}
+                    onPress={() => setTxViewMode('ALL_ENTRIES')}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons
+                      name="list"
+                      size={13}
+                      color={txViewMode === 'ALL_ENTRIES' ? '#FFFFFF' : Colors.textSecondary}
+                    />
+                    <Text
+                      style={[
+                        styles.viewModeBtnText,
+                        txViewMode === 'ALL_ENTRIES' && styles.viewModeBtnTextActive,
+                      ]}
+                    >
+                      {language === 'hi' ? 'प्रविष्टियाँ' : 'Entries'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
 
               {periodStats.filteredTxs.length === 0 ? (
@@ -906,17 +1078,160 @@ export const ReportsScreen: React.FC = () => {
                     {formatUpperDate(fromDate)} {fromDate !== toDate ? `— ${formatUpperDate(toDate)}` : ''}
                   </Text>
                 </View>
+              ) : txViewMode === 'BY_CUSTOMER' ? (
+                /* Customer-Wise Grouped Bills */
+                customerPeriodBreakdown.map((item) => {
+                  const cust = item.customer;
+                  const isExportingPdf = exportingCustomerPdfId === cust.id;
+                  return (
+                    <View key={cust.id} style={styles.custBillCard}>
+                      {/* Customer Info Header */}
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        style={styles.custBillCardHeader}
+                        onPress={() => setSelectedCustBill(item)}
+                      >
+                        <View style={styles.custBillAvatar}>
+                          <Text style={styles.custBillAvatarText}>{cust.name.charAt(0)}</Text>
+                        </View>
+                        <View style={{ flex: 1, paddingHorizontal: Spacing.sm }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text style={styles.custBillName}>{cust.name}</Text>
+                            <View style={styles.txCountBadge}>
+                              <Text style={styles.txCountBadgeText}>
+                                {item.txs.length} {language === 'hi' ? 'प्रविष्टि' : 'tx'}
+                              </Text>
+                            </View>
+                          </View>
+                          <Text style={styles.custBillSub}>
+                            {cust.villageName || t('noVillageRecorded', language)}
+                            {cust.mobile ? ` • ${cust.mobile}` : ''}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.previewIconBtn}
+                          onPress={() => setSelectedCustBill(item)}
+                        >
+                          <Ionicons name="eye-outline" size={15} color={Colors.primary} />
+                          <Text style={styles.previewIconBtnText}>
+                            {language === 'hi' ? 'पर्ची देखें' : 'View'}
+                          </Text>
+                        </TouchableOpacity>
+                      </TouchableOpacity>
+
+                      {/* Accounting summary mini table */}
+                      <View style={styles.custBillSummaryBox}>
+                        <View style={styles.custBillSummaryRow}>
+                          <Text style={styles.custBillSummaryLabel}>
+                            🟣 {language === 'hi' ? '1. पिछला बकाया:' : '1. Previous Due:'}
+                          </Text>
+                          <Text style={styles.custBillPrevVal}>
+                            {formatCurrency(item.previousBalancePaise)}
+                          </Text>
+                        </View>
+
+                        {item.creditTotal > 0 && (
+                          <View style={styles.custBillSummaryRow}>
+                            <Text style={styles.custBillSummaryLabel}>
+                              ➕ {language === 'hi' ? 'आज का उधार:' : 'Today Udhaar:'}
+                            </Text>
+                            <Text style={[styles.custBillSummaryVal, { color: Colors.creditSale }]}>
+                              + {formatCurrency(item.creditTotal)}
+                            </Text>
+                          </View>
+                        )}
+
+                        {item.paymentTotal > 0 && (
+                          <View style={styles.custBillSummaryRow}>
+                            <Text style={styles.custBillSummaryLabel}>
+                              ➖ {language === 'hi' ? 'आज की जमा:' : 'Today Jama:'}
+                            </Text>
+                            <Text style={[styles.custBillSummaryVal, { color: Colors.paymentReceived }]}>
+                              - {formatCurrency(item.paymentTotal)}
+                            </Text>
+                          </View>
+                        )}
+
+                        <View style={[styles.custBillSummaryRow, styles.custBillClosingRow]}>
+                          <Text style={styles.custBillClosingLabel}>
+                            ⭐ {language === 'hi' ? 'कुल अंतिम बकाया:' : 'Net Total Due:'}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.custBillClosingVal,
+                              {
+                                color:
+                                  item.finalClosingDuePaise >= 0
+                                    ? Colors.creditSale
+                                    : Colors.paymentReceived,
+                              },
+                            ]}
+                          >
+                            {formatCurrency(item.finalClosingDuePaise)}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Action Buttons Row */}
+                      <View style={styles.custBillActionsRow}>
+                        <TouchableOpacity
+                          style={styles.custBillWhatsAppBtn}
+                          activeOpacity={0.8}
+                          onPress={() => handleShareCustomerWhatsApp(item)}
+                        >
+                          <Ionicons name="logo-whatsapp" size={15} color="#FFFFFF" />
+                          <Text style={styles.custBillWhatsAppBtnText}>
+                            {language === 'hi' ? 'WhatsApp भेजें' : 'WhatsApp'}
+                          </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.custBillPdfBtn}
+                          activeOpacity={0.8}
+                          disabled={isExportingPdf}
+                          onPress={() => handleExportCustomerPdf(item)}
+                        >
+                          <Ionicons name="document-text-outline" size={14} color={Colors.primary} />
+                          <Text style={styles.custBillPdfBtnText}>
+                            {isExportingPdf
+                              ? language === 'hi'
+                                ? 'बन रहा है...'
+                                : 'PDF...'
+                              : language === 'hi'
+                              ? 'PDF पर्ची'
+                              : 'PDF Bill'}
+                          </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.custBillLedgerLinkBtn}
+                          activeOpacity={0.8}
+                          onPress={() => navigation.navigate('CustomerLedger', { customer: cust })}
+                        >
+                          <Text style={styles.custBillLedgerLinkText}>
+                            {language === 'hi' ? 'खाता →' : 'Ledger →'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })
               ) : (
+                /* Flat All Entries in Period */
                 periodStats.filteredTxs.map((tx) => {
                   const isSale = tx.type === 'CREDIT_SALE';
                   const cust = customerMap.get(tx.customerId);
+                  const custItem = customerPeriodBreakdown.find((b) => b.customer.id === tx.customerId);
+
                   return (
                     <TouchableOpacity
                       key={tx.id}
                       style={styles.periodTxRow}
                       activeOpacity={0.7}
                       onPress={() => {
-                        if (cust) {
+                        if (custItem) {
+                          setSelectedCustBill(custItem);
+                        } else if (cust) {
                           navigation.navigate('CustomerLedger', { customer: cust });
                         }
                       }}
@@ -929,15 +1244,37 @@ export const ReportsScreen: React.FC = () => {
                         <Text style={styles.txDesc} numberOfLines={1}>
                           {tx.description} {cust?.villageName ? `• ${cust.villageName}` : ''}
                         </Text>
+                        {tx.quantity ? (
+                          <Text style={{ fontSize: 10, color: Colors.textSecondary, marginTop: 1 }}>
+                            {tx.quantity} {tx.unit || ''} {tx.ratePaise ? `@ ₹${toRupees(tx.ratePaise)}` : ''}
+                          </Text>
+                        ) : null}
                       </View>
-                      <View style={{ alignItems: 'flex-end' }}>
-                        <Text style={[styles.txAmount, { color: isSale ? Colors.creditSale : Colors.paymentReceived }]}>
+                      <View style={{ alignItems: 'flex-end', marginRight: 6 }}>
+                        <Text
+                          style={[
+                            styles.txAmount,
+                            { color: isSale ? Colors.creditSale : Colors.paymentReceived },
+                          ]}
+                        >
                           {isSale ? '+' : '-'} {formatCurrency(tx.amountPaise)}
                         </Text>
                         <Text style={styles.txTypeTag}>
                           {isSale ? (language === 'hi' ? 'उधार' : 'Credit') : (language === 'hi' ? 'जमा' : 'Jama')}
                         </Text>
                       </View>
+                      {custItem ? (
+                        <TouchableOpacity
+                          style={styles.entryQuickWhatsAppBtn}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            handleShareCustomerWhatsApp(custItem);
+                          }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Ionicons name="logo-whatsapp" size={15} color="#16A34A" />
+                        </TouchableOpacity>
+                      ) : null}
                     </TouchableOpacity>
                   );
                 })
@@ -1269,6 +1606,193 @@ export const ReportsScreen: React.FC = () => {
                 }}
               >
                 <Text style={styles.modalQuickBtnText}>{t('presetToday', language)} ({formatUpperDate(todayStr)})</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* CUSTOMER BILL PREVIEW MODAL */}
+      {/* ========================================================================= */}
+      <Modal
+        visible={!!selectedCustBill}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSelectedCustBill(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.billModalContent}>
+            {/* Modal Header */}
+            <View style={styles.billModalHeader}>
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <Text style={styles.billModalTitle}>
+                  {language === 'hi' ? 'ग्राहक खाता पर्ची / रसीद' : 'Customer Ledger Bill'}
+                </Text>
+                <Text style={styles.billModalSub} numberOfLines={1}>
+                  {selectedCustBill?.customer.name}
+                  {selectedCustBill?.customer.villageName ? ` (${selectedCustBill.customer.villageName})` : ''}
+                  {selectedCustBill?.customer.mobile ? ` • ${selectedCustBill.customer.mobile}` : ''}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setSelectedCustBill(null)}
+                style={styles.modalCloseBtn}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close" size={22} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Modal Scrollable Body */}
+            <ScrollView style={styles.billModalBody} showsVerticalScrollIndicator={false}>
+              {/* Period banner */}
+              <View style={styles.billPeriodBanner}>
+                <Ionicons name="calendar-outline" size={13} color={Colors.primary} />
+                <Text style={styles.billPeriodBannerText}>
+                  {language === 'hi' ? 'तारीख / अवधि:' : 'Period:'}{' '}
+                  <Text style={{ fontWeight: '800', color: Colors.primary }}>
+                    {fromDate === toDate
+                      ? formatUpperDate(fromDate)
+                      : `${formatUpperDate(fromDate)} से ${formatUpperDate(toDate)}`}
+                  </Text>
+                </Text>
+              </View>
+
+              {/* 1. Previous Balance */}
+              <View style={styles.billPrevBalanceBox}>
+                <View>
+                  <Text style={styles.billPrevBalanceLabel}>
+                    🟣 {language === 'hi' ? '1. पिछला बकाया' : '1. Previous Due'}
+                  </Text>
+                  <Text style={styles.billPrevBalanceSub}>
+                    {formatUpperDate(fromDate)} {language === 'hi' ? 'से पूर्व का शेष' : 'opening balance'}
+                  </Text>
+                </View>
+                <Text style={styles.billPrevBalanceVal}>
+                  {formatCurrency(selectedCustBill?.previousBalancePaise || 0)}
+                </Text>
+              </View>
+
+              {/* 2. Itemized transactions */}
+              <Text style={styles.billEntriesHeading}>
+                📝 {language === 'hi' ? 'इस अवधि का लेन-देन' : 'Transactions in Period'} ({selectedCustBill?.txs.length || 0})
+              </Text>
+
+              {selectedCustBill?.txs.map((tx, idx) => {
+                const isSale = tx.type === 'CREDIT_SALE';
+                return (
+                  <View key={tx.id} style={styles.billEntryRow}>
+                    <View style={{ flex: 1, paddingRight: 8 }}>
+                      <Text style={styles.billEntryDesc}>
+                        {idx + 1}. {tx.description || (isSale ? (language === 'hi' ? 'उधार बिक्री' : 'Credit Sale') : (language === 'hi' ? 'जमा भुगतान' : 'Payment'))}
+                      </Text>
+                      {tx.quantity ? (
+                        <Text style={styles.billEntryQty}>
+                          {language === 'hi' ? 'मात्रा' : 'Qty'}: {tx.quantity} {tx.unit || ''}{tx.ratePaise ? ` @ ₹${toRupees(tx.ratePaise)}` : ''}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={[styles.billEntryAmount, { color: isSale ? Colors.creditSale : Colors.paymentReceived }]}>
+                        {isSale ? '+' : '-'} {formatCurrency(tx.amountPaise)}
+                      </Text>
+                      <Text style={styles.billEntryTag}>
+                        {isSale ? (language === 'hi' ? 'उधार' : 'Udhaar') : (language === 'hi' ? 'जमा' : 'Jama')}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })}
+
+              {/* 3. Accounting totals */}
+              <View style={styles.billTotalsCard}>
+                <View style={styles.billTotalRow}>
+                  <Text style={styles.billTotalLabel}>
+                    ➕ {language === 'hi' ? 'आज का नया उधार:' : 'New Udhaar:'}
+                  </Text>
+                  <Text style={[styles.billTotalVal, { color: Colors.creditSale }]}>
+                    + {formatCurrency(selectedCustBill?.creditTotal || 0)}
+                  </Text>
+                </View>
+                <View style={styles.billTotalRow}>
+                  <Text style={styles.billTotalLabel}>
+                    ➖ {language === 'hi' ? 'आज की जमा राशि:' : 'Received Jama:'}
+                  </Text>
+                  <Text style={[styles.billTotalVal, { color: Colors.paymentReceived }]}>
+                    - {formatCurrency(selectedCustBill?.paymentTotal || 0)}
+                  </Text>
+                </View>
+
+                <View style={styles.billGrandTotalDivider} />
+
+                <View style={styles.billTotalRow}>
+                  <Text style={styles.billGrandTotalLabel}>
+                    ⭐ {language === 'hi' ? 'कुल अंतिम बकाया:' : 'Net Closing Due:'}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.billGrandTotalVal,
+                      {
+                        color:
+                          (selectedCustBill?.finalClosingDuePaise || 0) >= 0
+                            ? Colors.creditSale
+                            : Colors.paymentReceived,
+                      },
+                    ]}
+                  >
+                    {formatCurrency(selectedCustBill?.finalClosingDuePaise || 0)}
+                  </Text>
+                </View>
+
+                <View style={styles.billWordsBox}>
+                  <Text style={styles.billWordsLabel}>
+                    {language === 'hi' ? 'शब्दों में:' : 'In Words:'}
+                  </Text>
+                  <Text style={styles.billWordsVal}>
+                    {amountInWords(selectedCustBill?.finalClosingDuePaise || 0)}
+                  </Text>
+                </View>
+              </View>
+            </ScrollView>
+
+            {/* Modal Actions Footer */}
+            <View style={styles.billModalFooter}>
+              <TouchableOpacity
+                style={styles.billModalWhatsAppBtn}
+                activeOpacity={0.8}
+                onPress={() => {
+                  if (selectedCustBill) {
+                    handleShareCustomerWhatsApp(selectedCustBill);
+                  }
+                }}
+              >
+                <Ionicons name="logo-whatsapp" size={17} color="#FFFFFF" />
+                <Text style={styles.billModalWhatsAppBtnText}>
+                  {language === 'hi' ? 'WhatsApp भेजें' : 'WhatsApp'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.billModalPdfBtn}
+                activeOpacity={0.8}
+                disabled={exportingCustomerPdfId === selectedCustBill?.customer.id}
+                onPress={() => {
+                  if (selectedCustBill) {
+                    handleExportCustomerPdf(selectedCustBill);
+                  }
+                }}
+              >
+                <Ionicons name="document-text-outline" size={16} color={Colors.primary} />
+                <Text style={styles.billModalPdfBtnText}>
+                  {exportingCustomerPdfId === selectedCustBill?.customer.id
+                    ? language === 'hi'
+                      ? 'बन रहा है...'
+                      : 'PDF...'
+                    : language === 'hi'
+                    ? 'PDF पर्ची'
+                    : 'PDF Bill'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -2158,5 +2682,418 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: Colors.primary,
+  },
+  /* Customer-wise Date Bill Styles */
+  viewModeToggleRow: {
+    flexDirection: 'row',
+    backgroundColor: '#F1F5F9',
+    borderRadius: BorderRadius.md,
+    padding: 2,
+    gap: 2,
+  },
+  viewModeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.sm,
+  },
+  viewModeBtnActive: {
+    backgroundColor: Colors.primary,
+  },
+  viewModeBtnText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  viewModeBtnTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  custBillCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    padding: Spacing.sm,
+    marginBottom: Spacing.sm,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  custBillCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingBottom: Spacing.xs,
+  },
+  custBillAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.full,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  custBillAvatarText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: Colors.primary,
+  },
+  custBillName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  txCountBadge: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  txCountBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+  },
+  custBillSub: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginTop: 1,
+  },
+  previewIconBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  previewIconBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  custBillSummaryBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: Spacing.xs,
+    marginTop: 4,
+  },
+  custBillSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 3,
+    paddingHorizontal: 4,
+  },
+  custBillSummaryLabel: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    fontWeight: '600',
+  },
+  custBillPrevVal: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#7C3AED',
+  },
+  custBillSummaryVal: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  custBillClosingRow: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: BorderRadius.sm,
+    marginTop: 2,
+    paddingVertical: 5,
+    paddingHorizontal: 6,
+  },
+  custBillClosingLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+  },
+  custBillClosingVal: {
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  custBillActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: Spacing.sm,
+    paddingTop: 4,
+  },
+  custBillWhatsAppBtn: {
+    flex: 1.2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#16A34A',
+    paddingVertical: 7,
+    borderRadius: BorderRadius.md,
+  },
+  custBillWhatsAppBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  custBillPdfBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: '#F0F9FF',
+    borderWidth: 1.2,
+    borderColor: '#BAE6FD',
+    paddingVertical: 6,
+    borderRadius: BorderRadius.md,
+  },
+  custBillPdfBtnText: {
+    color: Colors.primary,
+    fontWeight: '700',
+    fontSize: 11,
+  },
+  custBillLedgerLinkBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.md,
+    backgroundColor: '#F1F5F9',
+  },
+  custBillLedgerLinkText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+  },
+  entryQuickWhatsAppBtn: {
+    padding: 6,
+    backgroundColor: '#DCFCE7',
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  /* Bill Preview Modal Styles */
+  billModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: BorderRadius.xl,
+    width: '94%',
+    maxHeight: '88%',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  billModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    backgroundColor: '#F8FAFC',
+  },
+  billModalTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+  },
+  billModalSub: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  billModalBody: {
+    padding: Spacing.md,
+  },
+  billPeriodBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#EFF6FF',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    marginBottom: Spacing.sm,
+  },
+  billPeriodBannerText: {
+    fontSize: 11,
+    color: Colors.textPrimary,
+  },
+  billPrevBalanceBox: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#FAF5FF',
+    borderWidth: 1,
+    borderColor: '#E9D5FF',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.sm,
+  },
+  billPrevBalanceLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#7C3AED',
+  },
+  billPrevBalanceSub: {
+    fontSize: 9,
+    color: '#6B21A8',
+    marginTop: 1,
+  },
+  billPrevBalanceVal: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#7C3AED',
+  },
+  billEntriesHeading: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    marginTop: Spacing.xs,
+    marginBottom: Spacing.xs,
+  },
+  billEntryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  billEntryDesc: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  billEntryQty: {
+    fontSize: 10,
+    color: Colors.textSecondary,
+    marginTop: 1,
+  },
+  billEntryAmount: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  billEntryTag: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+    textTransform: 'uppercase',
+  },
+  billTotalsCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: Spacing.sm,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  billTotalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  billTotalLabel: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    fontWeight: '600',
+  },
+  billTotalVal: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  billGrandTotalDivider: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginVertical: 4,
+  },
+  billGrandTotalLabel: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+  },
+  billGrandTotalVal: {
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  billWordsBox: {
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  billWordsLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+    textTransform: 'uppercase',
+  },
+  billWordsVal: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    marginTop: 1,
+  },
+  billModalFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    backgroundColor: '#F8FAFC',
+  },
+  billModalWhatsAppBtn: {
+    flex: 1.2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#16A34A',
+    paddingVertical: 10,
+    borderRadius: BorderRadius.md,
+  },
+  billModalWhatsAppBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  billModalPdfBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: '#F0F9FF',
+    borderWidth: 1.2,
+    borderColor: '#BAE6FD',
+    paddingVertical: 9,
+    borderRadius: BorderRadius.md,
+  },
+  billModalPdfBtnText: {
+    color: Colors.primary,
+    fontWeight: '700',
+    fontSize: 12,
   },
 });

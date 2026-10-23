@@ -490,6 +490,257 @@ export const PdfService = {
   },
 
   /**
+   * Generates an individual customer's date/period bill statement PDF with UPI QR code.
+   */
+  async generateCustomerDateBillPdf(
+    business: Business,
+    customer: Customer,
+    fromDateStr: string,
+    toDateStr: string,
+    transactions: Transaction[],
+    creditTotalPaise: number,
+    paymentTotalPaise: number,
+    previousBalancePaise: number = 0
+  ): Promise<string> {
+    const netPeriodDiff = creditTotalPaise - paymentTotalPaise;
+    const finalClosingDuePaise = previousBalancePaise + netPeriodDiff;
+
+    const cleanPhone = (business.phone || '').replace(/[^0-9]/g, '').slice(-10);
+    const upiIdToUse = (business.upiId || (cleanPhone ? `${cleanPhone}@upi` : '')).trim();
+    const amountRupees = (Math.max(0, finalClosingDuePaise) / 100).toFixed(2);
+    const upiPayString = upiIdToUse
+      ? `upi://pay?pa=${encodeURIComponent(upiIdToUse)}&pn=${encodeURIComponent(business.name)}&am=${amountRupees}&cu=INR`
+      : '';
+    const qrCodeUrl = upiPayString
+      ? `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(upiPayString)}`
+      : '';
+
+    let rowsHtml = '';
+    // Row 0: Previous balance
+    rowsHtml += `
+      <tr style="background: #fdf4ff; border-bottom: 1.5px solid #e9d5ff;">
+        <td style="font-weight: 700; color: #7c3aed;">${formatUpperDate(fromDateStr)}</td>
+        <td style="font-weight: 800; color: #7c3aed;">
+          🟣 पिछला बकाया (Previous Balance)
+          <div style="font-size: 9px; font-weight: normal; color: #6b21a8;">इस अवधि से पूर्व का शेष बकाया</div>
+        </td>
+        <td class="right" style="color: #7c3aed; font-weight: 800;">${formatCurrency(previousBalancePaise)}</td>
+        <td class="right" style="color: #64748b;">-</td>
+      </tr>
+    `;
+
+    for (const tx of transactions) {
+      const isSale = tx.type === 'CREDIT_SALE';
+      const debitStr = isSale ? formatCurrency(tx.amountPaise) : '-';
+      const creditStr = !isSale ? formatCurrency(tx.amountPaise) : '-';
+      const qtyInfo = tx.quantity
+        ? `<div style="font-size: 10px; color: #64748b;">मात्रा: ${tx.quantity} ${tx.unit || ''} ${tx.ratePaise ? `@ ₹${toRupees(tx.ratePaise)}` : ''}</div>`
+        : '';
+
+      rowsHtml += `
+        <tr>
+          <td>${formatUpperDate(tx.date)}</td>
+          <td>
+            <strong>${tx.description || (isSale ? 'उधार बिक्री' : 'जमा राशि')}</strong>
+            ${qtyInfo}
+          </td>
+          <td class="right" style="color: #dc2626; font-weight: 700;">${debitStr}</td>
+          <td class="right" style="color: #16a34a; font-weight: 700;">${creditStr}</td>
+        </tr>
+      `;
+    }
+
+    const periodStr =
+      fromDateStr === toDateStr
+        ? formatUpperDate(fromDateStr)
+        : `${formatUpperDate(fromDateStr)} से ${formatUpperDate(toDateStr)}`;
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>खाता पर्ची - ${customer.name}</title>
+        <style>
+          @page { size: A4; margin: 12mm; }
+          body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #0f172a; margin: 20px; background: #ffffff; }
+          .header { text-align: center; border-bottom: 2px solid #1e3a8a; padding-bottom: 12px; margin-bottom: 14px; }
+          .biz-name { font-size: 24px; font-weight: 800; color: #1e3a8a; letter-spacing: 0.5px; }
+          .biz-info { font-size: 11px; color: #475569; margin-top: 4px; line-height: 1.5; }
+          .report-title { font-size: 15px; font-weight: 800; margin-top: 8px; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px; }
+          .period-tag { display: inline-block; background: #e0e7ff; color: #1e3a8a; padding: 4px 14px; border-radius: 4px; font-weight: 700; font-size: 12px; margin-top: 6px; border: 1px solid #c7d2fe; }
+
+          .cust-banner { display: flex; justify-content: space-between; background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 6px; padding: 10px 14px; margin-top: 10px; font-size: 12px; }
+          .cust-name { font-size: 15px; font-weight: 800; color: #0f172a; }
+          .cust-meta { font-size: 11px; color: #64748b; margin-top: 2px; }
+
+          table.statement-table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 11px; }
+          table.statement-table th { background: #1e3a8a; color: #ffffff; padding: 10px 8px; font-weight: 700; text-align: left; }
+          table.statement-table th.right { text-align: right; }
+          table.statement-table td { padding: 8px 8px; border-bottom: 1px solid #e2e8f0; }
+          table.statement-table tbody tr:nth-child(even) td { background: #f8fafc; }
+
+          .bottom-section { display: flex; gap: 16px; margin-top: 18px; align-items: stretch; }
+          .summary-card { flex: 1.4; background: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; justify-content: space-between; }
+          .qr-card { flex: 1; max-width: 220px; background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 12px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+
+          .qr-img { width: 130px; height: 130px; border-radius: 6px; border: 1px solid #cbd5e1; background: #ffffff; padding: 4px; display: block; margin: 6px auto; }
+          .words-box { margin-top: 10px; padding: 8px 10px; background: #f1f5f9; border-radius: 6px; border-left: 4px solid #1e3a8a; font-size: 11px; }
+
+          .footer-sign-row { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 24px; padding-top: 12px; border-top: 1px solid #e2e8f0; font-size: 10px; color: #64748b; }
+          .sign-box { text-align: center; min-width: 170px; }
+          .sign-line { height: 36px; }
+          .sign-text { border-top: 1.5px solid #0f172a; padding-top: 4px; font-weight: 800; color: #0f172a; font-size: 11px; }
+
+          @media print {
+            .no-print { display: none !important; }
+            body { margin: 0; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="biz-name">${business.name}</div>
+          <div class="biz-info">${business.address || ''} | संपर्क: ${business.phone}</div>
+          <div class="report-title">ग्राहक खाता पर्ची / बिल विवरण</div>
+          <div class="period-tag">दिनांक / अवधि: ${periodStr}</div>
+        </div>
+
+        <div class="cust-banner">
+          <div>
+            <div class="cust-name">${customer.name}</div>
+            <div class="cust-meta">
+              ${customer.villageName ? `गाँव: ${customer.villageName} • ` : ''}
+              ${customer.mobile ? `मोबाइल: ${customer.mobile}` : ''}
+            </div>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 700;">तारीख</div>
+            <div style="font-weight: 800; color: #1e3a8a;">${periodStr}</div>
+          </div>
+        </div>
+
+        <table class="statement-table">
+          <thead>
+            <tr>
+              <th style="width: 15%;">तारीख / Date</th>
+              <th style="width: 55%;">विवरण / Particulars</th>
+              <th class="right" style="width: 15%;">उधार (+)</th>
+              <th class="right" style="width: 15%;">जमा (-)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+          <tfoot>
+            <tr style="background: #f1f5f9; font-weight: bold; border-top: 2px solid #1e3a8a; border-bottom: 2px solid #1e3a8a;">
+              <td colspan="2" style="padding: 10px 8px; font-size: 11px; text-align: right; color: #0f172a; font-weight: 800;">
+                इस अवधि का कुल योग:
+              </td>
+              <td style="padding: 10px 8px; font-size: 11px; text-align: right; color: #dc2626; font-weight: 800;">
+                + ${formatCurrency(creditTotalPaise)}
+              </td>
+              <td style="padding: 10px 8px; font-size: 11px; text-align: right; color: #16a34a; font-weight: 800;">
+                - ${formatCurrency(paymentTotalPaise)}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+
+        <!-- Grand Total Net Summary & QR Code Section -->
+        <div class="bottom-section">
+          <div class="summary-card">
+            <div>
+              <div style="font-size: 12px; font-weight: 800; color: #1e3a8a; border-bottom: 1.5px solid #e2e8f0; padding-bottom: 6px; margin-bottom: 8px; text-transform: uppercase;">
+                खाता सारांश व कुल हिसाब (Account Summary)
+              </div>
+
+              <table style="width: 100%; border-collapse: collapse; margin-top: 0; font-size: 11px;">
+                <tbody>
+                  <tr style="border-bottom: 1px dashed #e2e8f0;">
+                    <td style="padding: 5px 0; color: #475569;">1. पुराना पिछला बकाया (${formatUpperDate(fromDateStr)} से पहले का बकाया):</td>
+                    <td style="padding: 5px 0; text-align: right; font-weight: 700; color: #7c3aed;">
+                      ${formatCurrency(previousBalancePaise)}
+                    </td>
+                  </tr>
+                  <tr style="border-bottom: 1px dashed #e2e8f0;">
+                    <td style="padding: 5px 0; color: #475569;">2. (+) इस अवधि का नया उधार:</td>
+                    <td style="padding: 5px 0; text-align: right; font-weight: 700; color: #dc2626;">
+                      + ${formatCurrency(creditTotalPaise)}
+                    </td>
+                  </tr>
+                  <tr style="border-bottom: 1px dashed #e2e8f0;">
+                    <td style="padding: 5px 0; color: #475569;">3. (-) इस अवधि में प्राप्त जमा:</td>
+                    <td style="padding: 5px 0; text-align: right; font-weight: 700; color: #16a34a;">
+                      - ${formatCurrency(paymentTotalPaise)}
+                    </td>
+                  </tr>
+                  <tr style="background: #f8fafc; border-top: 2px solid #1e3a8a; border-bottom: 2px solid #1e3a8a;">
+                    <td style="padding: 9px 4px; font-size: 12px; font-weight: 800; color: #0f172a;">
+                      कुल अंतिम बकाया (Net Balance Due):
+                    </td>
+                    <td style="padding: 9px 4px; font-size: 15px; text-align: right; font-weight: 900; color: ${finalClosingDuePaise >= 0 ? '#b91c1c' : '#16a34a'};">
+                      ${formatCurrency(finalClosingDuePaise)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="words-box">
+              <div style="font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 2px;">
+                कुल बाकी राशि शब्दों में:
+              </div>
+              <div style="font-size: 11px; font-weight: 800; color: #0f172a; line-height: 1.4;">
+                ${amountInWords(finalClosingDuePaise)}
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: UPI Payment QR Code Card -->
+          <div class="qr-card">
+            <div style="font-size: 11px; font-weight: 800; color: #1e3a8a; text-transform: uppercase;">
+              📲 UPI से पेमेंट करें
+            </div>
+            ${
+              qrCodeUrl
+                ? `<img src="${qrCodeUrl}" alt="Scan UPI QR" class="qr-img" />`
+                : `<div style="width:130px; height:130px; background:#e2e8f0; display:flex; align-items:center; justify-content:center; margin:6px auto; border-radius:6px; font-size:10px; color:#64748b;">UPI ID जोड़ें</div>`
+            }
+            <div style="font-size: 9px; font-weight: 700; color: #475569; margin-top: 4px;">
+              GPay • PhonePe • Paytm • BHIM
+            </div>
+            ${
+              upiIdToUse
+                ? `<div style="font-size: 10px; font-weight: 800; color: #0f172a; margin-top: 2px;">${upiIdToUse}</div>`
+                : ''
+            }
+            <div style="font-size: 12px; font-weight: 900; color: #16a34a; margin-top: 4px;">
+              ₹${amountRupees}
+            </div>
+          </div>
+        </div>
+
+        <!-- Footer with Signatory Block -->
+        <div class="footer-sign-row">
+          <div>
+            * यह एक कंप्यूटर जनरेटेड अधिकृत पर्ची है।<br/>
+            तारीख: ${formatDisplayDate(new Date())} • डिजिटल खाता बही
+          </div>
+          <div class="sign-box">
+            <div class="sign-line"></div>
+            <div class="sign-text">अधिकृत हस्ताक्षर / मुहर</div>
+            <div style="font-size: 9px; color: #64748b; margin-top: 2px;">${business.name}</div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    return await this._processHtmlToUri(html, `${customer.name}_Bill_${fromDateStr}`);
+  },
+
+  /**
    * Shares or prints a generated PDF file.
    * On Web: Opens browser native print dialog with the exact styled statement.
    * On Native: Opens Android/iOS share sheet (WhatsApp, Drive, Email, etc.),
