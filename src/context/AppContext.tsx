@@ -75,6 +75,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     StorageService.clearMemoryCache();
     await StorageService.setCurrentBusiness(targetBiz);
     setBusiness(targetBiz);
+    DataRepository.syncLocalDataToFirestore(targetBiz.id).catch(() => {});
     await refreshAllData();
   };
 
@@ -112,6 +113,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       }
 
       setBusiness(currentBiz);
+      DataRepository.syncLocalDataToFirestore(currentBiz.id).catch(() => {});
       const count = await StorageService.getPendingSyncCount(currentBiz.id);
       setPendingSyncCount(count);
     } catch (err) {
@@ -137,6 +139,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setDataVersion((v) => v + 1);
     if (business) {
       setIsSyncing(true);
+      DataRepository.syncLocalDataToFirestore(business.id).catch(() => {});
       const count = await StorageService.getPendingSyncCount(business.id);
       setPendingSyncCount(count);
       setIsSyncing(false);
@@ -176,6 +179,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       } else {
         setAvailableBusinesses([]);
       }
+      DataRepository.syncLocalDataToFirestore(userBiz.id).catch(() => {});
       await refreshAllData();
     }
     return res;
@@ -195,6 +199,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       } else {
         setAvailableBusinesses([]);
       }
+      DataRepository.syncLocalDataToFirestore(userBiz.id).catch(() => {});
       await refreshAllData();
     }
     return res;

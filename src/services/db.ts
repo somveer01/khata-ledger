@@ -7,7 +7,8 @@ import {
   query, 
   where, 
   serverTimestamp, 
-  runTransaction 
+  runTransaction,
+  writeBatch 
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './firebase';
 import { StorageService } from './storage';
@@ -16,6 +17,32 @@ import { calculateCustomerBalance, calculateVillageSummaries, calculateDashboard
 import { toPaise } from '../utils/money';
 import { getBusinessIdFromEmail, isLegacyOwner, LEGACY_BUSINESS_ID, LEGACY_BUSINESS_TENANT_ID, LEGACY_OWNER_EMAIL } from '../utils/tenant';
 import { PRELOADED_TYCOON_PRODUCTS } from '../data/preloadedProducts';
+
+/**
+ * Strips all `undefined` fields from an object recursively.
+ * Cloud Firestore setDoc/fTx.set crashes synchronously with:
+ * "Function DocumentReference.set() called with invalid data. Unsupported field value: undefined"
+ */
+export function cleanForFirestore<T extends Record<string, any>>(obj: T): Record<string, any> {
+  const result: Record<string, any> = {};
+  for (const key of Object.keys(obj)) {
+    const val = obj[key];
+    if (val !== undefined) {
+      if (
+        val !== null &&
+        typeof val === 'object' &&
+        !Array.isArray(val) &&
+        !(val instanceof Date) &&
+        typeof (val as any).toMillis !== 'function'
+      ) {
+        result[key] = cleanForFirestore(val);
+      } else {
+        result[key] = val;
+      }
+    }
+  }
+  return result;
+}
 
 export const DataRepository = {
   // -------------------------------------------------------------
@@ -83,6 +110,11 @@ export const DataRepository = {
 
     if (isFirebaseConfigured() && db) {
       try {
+        const curBiz = await StorageService.getCurrentBusiness();
+        if (curBiz) {
+          await this.syncLocalDataToFirestore(curBiz.id).catch(() => {});
+        }
+
         const [cSnap, vSnap, tSnap] = await Promise.all([
           getDocs(collection(db, 'customers')),
           getDocs(collection(db, 'villages')),
@@ -153,7 +185,10 @@ export const DataRepository = {
         (t) => t.businessId === biz.id || (biz.id === LEGACY_BUSINESS_ID && t.businessId === LEGACY_BUSINESS_TENANT_ID)
       );
       if (bizTxs.length === 0) {
-        bizTxs = await StorageService.getTransactions(biz.id);
+        const curBiz = await StorageService.getCurrentBusiness();
+        if (curBiz && (curBiz.id === biz.id || (biz.id === LEGACY_BUSINESS_ID && curBiz.id === LEGACY_BUSINESS_TENANT_ID))) {
+          bizTxs = await StorageService.getTransactions(biz.id);
+        }
       }
 
       let creditSaleCount = 0;
@@ -282,11 +317,11 @@ export const DataRepository = {
     await StorageService.saveBusiness(business);
     if (isFirebaseConfigured() && db) {
       try {
-        await setDoc(doc(db, 'businesses', business.id), {
+        await setDoc(doc(db, 'businesses', business.id), cleanForFirestore({
           ...business,
           updatedAt: new Date().toISOString(),
           serverTimestamp: serverTimestamp(),
-        });
+        }));
       } catch (err) {
         console.warn('Firestore saveBusiness error:', err);
       }
@@ -390,10 +425,10 @@ export const DataRepository = {
 
     if (isFirebaseConfigured() && db) {
       try {
-        await setDoc(doc(db, 'villages', village.id), {
+        await setDoc(doc(db, 'villages', village.id), cleanForFirestore({
           ...village,
           serverTimestamp: serverTimestamp(),
-        });
+        }));
       } catch (err) {
         console.warn('Firestore saveVillage error:', err);
       }
@@ -605,10 +640,10 @@ export const DataRepository = {
 
     if (isFirebaseConfigured() && db) {
       try {
-        await setDoc(doc(db, 'customers', customer.id), {
+        await setDoc(doc(db, 'customers', customer.id), cleanForFirestore({
           ...updatedCustomer,
           serverTimestamp: serverTimestamp(),
-        });
+        }));
       } catch (err) {
         console.warn('Firestore saveCustomer error:', err);
       }
@@ -642,6 +677,33 @@ export const DataRepository = {
   // -------------------------------------------------------------
   // TRANSACTIONS & BALANCE RECONCILIATION
   // -------------------------------------------------------------
+  async syncLocalDataToFirestore(businessId: string): Promise<void> {
+    if (!isFirebaseConfigured() || !db) return;
+    try {
+      const localTxs = await StorageService.getTransactions(businessId);
+      if (localTxs.length === 0) return;
+
+      const snap = await getDocs(query(collection(db, 'transactions'), where('businessId', '==', businessId)));
+      const remoteIds = new Set(snap.docs.map((d) => d.id));
+
+      const unsynced = localTxs.filter((t) => !remoteIds.has(t.id));
+      if (unsynced.length > 0) {
+        for (const tx of unsynced) {
+          await setDoc(
+            doc(db, 'transactions', tx.id),
+            cleanForFirestore({
+              ...tx,
+              serverTimestamp: serverTimestamp(),
+            }),
+            { merge: true }
+          );
+        }
+      }
+    } catch (err) {
+      console.warn('syncLocalDataToFirestore error:', err);
+    }
+  },
+
   async getTransactions(businessId: string, customerId?: string, forceRefresh = false): Promise<Transaction[]> {
     const localTx = await StorageService.getTransactions(businessId);
     if (isFirebaseConfigured() && db) {
@@ -654,17 +716,31 @@ export const DataRepository = {
         // Fast path: return cached transactions immediately and sync in background
         getDocs(q)
           .then(async (snap) => {
+            const allLocal = await StorageService.getTransactions(businessId);
+            const remoteIds = new Set(snap.docs.map((d) => d.id));
+
+            // Auto-sync any local transactions not yet in Firestore
+            const unsynced = allLocal.filter((t) => !remoteIds.has(t.id));
+            if (unsynced.length > 0) {
+              for (const tx of unsynced) {
+                setDoc(
+                  doc(db, 'transactions', tx.id),
+                  cleanForFirestore({
+                    ...tx,
+                    serverTimestamp: serverTimestamp(),
+                  }),
+                  { merge: true }
+                ).catch(() => {});
+              }
+            }
+
             if (!snap.empty) {
               const list = snap.docs.map((d) => d.data() as Transaction);
-              const allLocal = await StorageService.getTransactions(businessId);
-              
-              // Safely merge based on ID to retain newly created local txs that are not in Firestore yet
               const mergedMap = new Map<string, Transaction>();
               allLocal.forEach((t) => mergedMap.set(t.id, t));
               list.forEach((t) => {
                 mergedMap.set(t.id, t); 
               });
-              
               await StorageService.saveTransactions(businessId, Array.from(mergedMap.values()));
             }
           })
@@ -679,21 +755,36 @@ export const DataRepository = {
       // Initial load when cache is empty or forceRefresh: await Firestore
       try {
         const snap = await getDocs(q);
-        if (!snap.empty) {
-          const list = snap.docs.map((d) => d.data() as Transaction);
-          const allLocal = await StorageService.getTransactions(businessId);
-          const mergedMap = new Map<string, Transaction>();
-          allLocal.forEach((t) => mergedMap.set(t.id, t));
-          list.forEach((t) => {
-            mergedMap.set(t.id, t);
-          });
-          const mergedList = Array.from(mergedMap.values());
-          await StorageService.saveTransactions(businessId, mergedList);
-          if (customerId) {
-            return mergedList.filter((t) => t.customerId === customerId); // filter creates a new array
+        const allLocal = await StorageService.getTransactions(businessId);
+        const remoteIds = new Set(snap.docs.map((d) => d.id));
+
+        // Auto-sync any local transactions not yet in Firestore
+        const unsynced = allLocal.filter((t) => !remoteIds.has(t.id));
+        if (unsynced.length > 0) {
+          for (const tx of unsynced) {
+            await setDoc(
+              doc(db, 'transactions', tx.id),
+              cleanForFirestore({
+                ...tx,
+                serverTimestamp: serverTimestamp(),
+              }),
+              { merge: true }
+            ).catch(() => {});
           }
-          return [...mergedList]; // clone
         }
+
+        const list = snap.docs.map((d) => d.data() as Transaction);
+        const mergedMap = new Map<string, Transaction>();
+        allLocal.forEach((t) => mergedMap.set(t.id, t));
+        list.forEach((t) => {
+          mergedMap.set(t.id, t);
+        });
+        const mergedList = Array.from(mergedMap.values());
+        await StorageService.saveTransactions(businessId, mergedList);
+        if (customerId) {
+          return mergedList.filter((t) => t.customerId === customerId); // filter creates a new array
+        }
+        return [...mergedList]; // clone
       } catch (err) {
         console.warn('Firestore getTransactions error, using local:', err);
       }
@@ -788,26 +879,26 @@ export const DataRepository = {
     // Persist to Cloud Firestore if connected
     if (isFirebaseConfigured() && db) {
       try {
-        await runTransaction(db, async (fTx) => {
-          const txRef = doc(db, 'transactions', finalizedTx.id);
-          const custRef = doc(db, 'customers', customer.id);
-          fTx.set(txRef, {
-            ...finalizedTx,
-            serverTimestamp: serverTimestamp(),
-          });
-          fTx.set(
-            custRef,
-            {
-              currentBalancePaise: newBalance,
-              totalCreditPaise: customer.totalCreditPaise,
-              totalPaymentPaise: customer.totalPaymentPaise,
-              transactionCount: customer.transactionCount,
-              dueDate: customer.dueDate || null,
-              updatedAt: new Date().toISOString(),
-            },
-            { merge: true }
-          );
-        });
+        const txRef = doc(db, 'transactions', finalizedTx.id);
+        const custRef = doc(db, 'customers', customer.id);
+        const batch = writeBatch(db);
+        batch.set(txRef, cleanForFirestore({
+          ...finalizedTx,
+          serverTimestamp: serverTimestamp(),
+        }));
+        batch.set(
+          custRef,
+          cleanForFirestore({
+            currentBalancePaise: newBalance,
+            totalCreditPaise: customer.totalCreditPaise,
+            totalPaymentPaise: customer.totalPaymentPaise,
+            transactionCount: customer.transactionCount,
+            dueDate: customer.dueDate || null,
+            updatedAt: new Date().toISOString(),
+          }),
+          { merge: true }
+        );
+        await batch.commit();
       } catch (err) {
         console.warn('Firestore transaction sync error (queued locally):', err);
       }
@@ -868,26 +959,26 @@ export const DataRepository = {
 
     if (isFirebaseConfigured() && db) {
       try {
-        await runTransaction(db, async (fTx) => {
-          const txRef = doc(db, 'transactions', updatedTx.id);
-          const custRef = doc(db, 'customers', customer.id);
-          fTx.set(txRef, {
-            ...updatedTx,
-            serverTimestamp: serverTimestamp(),
-          });
-          fTx.set(
-            custRef,
-            {
-              currentBalancePaise: netOutstandingPaise,
-              totalCreditPaise: customer.totalCreditPaise,
-              totalPaymentPaise: customer.totalPaymentPaise,
-              transactionCount: customer.transactionCount,
-              dueDate: customer.dueDate || null,
-              updatedAt: new Date().toISOString(),
-            },
-            { merge: true }
-          );
-        });
+        const txRef = doc(db, 'transactions', updatedTx.id);
+        const custRef = doc(db, 'customers', customer.id);
+        const batch = writeBatch(db);
+        batch.set(txRef, cleanForFirestore({
+          ...updatedTx,
+          serverTimestamp: serverTimestamp(),
+        }));
+        batch.set(
+          custRef,
+          cleanForFirestore({
+            currentBalancePaise: netOutstandingPaise,
+            totalCreditPaise: customer.totalCreditPaise,
+            totalPaymentPaise: customer.totalPaymentPaise,
+            transactionCount: customer.transactionCount,
+            dueDate: customer.dueDate || null,
+            updatedAt: new Date().toISOString(),
+          }),
+          { merge: true }
+        );
+        await batch.commit();
       } catch (err) {
         console.warn('Firestore updateTransaction error:', err);
       }
@@ -940,10 +1031,10 @@ export const DataRepository = {
         await deleteDoc(doc(db, 'transactions', transactionId));
         if (custIndex >= 0) {
           const customer = customers[custIndex];
-          await setDoc(doc(db, 'customers', customer.id), {
+          await setDoc(doc(db, 'customers', customer.id), cleanForFirestore({
             ...customer,
             serverTimestamp: serverTimestamp(),
-          });
+          }));
         }
       } catch (err) {
         console.warn('Firestore deleteTransaction error:', err);
@@ -1278,7 +1369,7 @@ export const DataRepository = {
     if (isFirebaseConfigured() && db) {
       Promise.all(
         seeded.map((p) =>
-          setDoc(doc(db, 'products', p.id), { ...p, serverTimestamp: serverTimestamp() }, { merge: true }).catch(() => {})
+          setDoc(doc(db, 'products', p.id), cleanForFirestore({ ...p, serverTimestamp: serverTimestamp() }), { merge: true }).catch(() => {})
         )
       ).catch(() => {});
     }
@@ -1312,10 +1403,10 @@ export const DataRepository = {
 
     if (isFirebaseConfigured() && db) {
       try {
-        await setDoc(doc(db, 'products', product.id), {
+        await setDoc(doc(db, 'products', product.id), cleanForFirestore({
           ...product,
           serverTimestamp: serverTimestamp(),
-        });
+        }));
       } catch (err) {
         console.warn('Firestore saveProduct error:', err);
       }
