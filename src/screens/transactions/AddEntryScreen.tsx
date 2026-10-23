@@ -24,7 +24,8 @@ import { t } from '../../i18n';
 import { toPaise, toRupees, formatCurrency } from '../../utils/money';
 import { getTodayIST, formatDisplayDate, addDaysToDate } from '../../utils/date';
 import { DataRepository } from '../../services/db';
-import { Customer, Transaction, PaymentMethod } from '../../types';
+import { Customer, Transaction, PaymentMethod, Product } from '../../types';
+import { ProductPickerModal } from '../../components/ProductPickerModal';
 import { confirmAction, showAlert } from '../../utils/dialog';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -51,6 +52,27 @@ export const AddEntryScreen: React.FC = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customerModalVisible, setCustomerModalVisible] = useState(false);
   const [searchCust, setSearchCust] = useState('');
+  const [productPickerVisible, setProductPickerVisible] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+
+  const handleSelectProduct = (prod: Product) => {
+    setSelectedProduct(prod);
+    const parts = [prod.brandName, prod.productName, prod.packSize].filter(Boolean);
+    setDescription(parts.join(' '));
+    if (prod.unit) {
+      setUnit(prod.unit);
+    }
+    if (prod.sellingRatePaise) {
+      setRate((prod.sellingRatePaise / 100).toString());
+    }
+    if (!quantity || quantity === '0') {
+      setQuantity('1');
+    }
+  };
+
+  const handleClearSelectedProduct = () => {
+    setSelectedProduct(null);
+  };
 
   // Common fields
   const [date, setDate] = useState(
@@ -876,10 +898,69 @@ export const AddEntryScreen: React.FC = () => {
                 </Text>
               </View>
 
-              {/* Particulars / Goods */}
+                            {/* Particulars / Goods Section with Dual Option (Type or Pick) */}
+              <View style={styles.itemHeaderRow}>
+                <Text style={styles.fieldLabel}>{t('itemDescription', language)} *</Text>
+                <TouchableOpacity
+                  style={styles.pickFromMasterBtn}
+                  onPress={() => setProductPickerVisible(true)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="cube" size={13} color="#FFFFFF" />
+                  <Text style={styles.pickFromMasterBtnText}>
+                    {language === 'hi' ? '📋 रेट मास्टर से चुनें' : '📋 Pick from Catalog'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Highlight Card when product is selected from Rate Master */}
+              {selectedProduct && (
+                <View style={styles.selectedProductCard}>
+                  <View style={styles.selectedProdHeader}>
+                    <View style={styles.selectedProdIconBox}>
+                      <Ionicons name="cube" size={16} color="#16A34A" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <Text style={styles.selectedProdName}>{selectedProduct.productName}</Text>
+                        {selectedProduct.brandName ? (
+                          <View style={styles.selectedProdBrand}>
+                            <Text style={styles.selectedProdBrandText}>{selectedProduct.brandName}</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      <Text style={styles.selectedProdMeta}>
+                        {selectedProduct.packSize ? `${selectedProduct.packSize} • ` : ''}
+                        {language === 'hi' ? 'दर' : 'Rate'}: ₹{toRupees(selectedProduct.sellingRatePaise)}/{selectedProduct.unit || 'नग'}
+                      </Text>
+                    </View>
+
+                    <TouchableOpacity
+                      style={styles.changeProductBtn}
+                      onPress={() => setProductPickerVisible(true)}
+                    >
+                      <Text style={styles.changeProductBtnText}>
+                        {language === 'hi' ? 'बदलें' : 'Change'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.clearProductBtn}
+                      onPress={handleClearSelectedProduct}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="close-circle" size={20} color={Colors.textMuted} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
               <Input
-                label={`${t('itemDescription', language)} *`}
-                placeholder={language === 'hi' ? (isListening ? 'सुन रहा हूँ... बोलिए' : 'उदा: धान (Dhan), यूरिया (Urea)') : (isListening ? 'Listening...' : 'e.g. Rice seeds, Fertilizer')}
+                placeholder={
+                  language === 'hi'
+                    ? (isListening ? 'सुन रहा हूँ... बोलिए' : 'सामान का नाम लिखें या ऊपर 📋 बटन से चुनें')
+                    : (isListening ? 'Listening...' : 'Type item name or pick from catalog')
+                }
                 value={description}
                 onChangeText={setDescription}
                 rightElement={
@@ -1287,11 +1368,103 @@ export const AddEntryScreen: React.FC = () => {
           </View>
         </View>
       </Modal>
+
+      {/* Product Rate Master Picker Modal */}
+      <ProductPickerModal
+        visible={productPickerVisible}
+        onClose={() => setProductPickerVisible(false)}
+        onSelectProduct={handleSelectProduct}
+        selectedProductId={selectedProduct?.id}
+        onAddNewProduct={() => navigation.navigate('AddEditProduct')}
+      />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
+  itemHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  pickFromMasterBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#16A34A',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: BorderRadius.full,
+    shadowColor: '#16A34A',
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  pickFromMasterBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  selectedProductCard: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  selectedProdHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  selectedProdIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#DCFCE7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectedProdName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#166534',
+  },
+  selectedProdBrand: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: BorderRadius.sm,
+  },
+  selectedProdBrandText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#15803D',
+  },
+  selectedProdMeta: {
+    fontSize: 11,
+    color: '#166534',
+    marginTop: 2,
+  },
+  changeProductBtn: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.sm,
+  },
+  changeProductBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#15803D',
+  },
+  clearProductBtn: {
+    padding: 2,
+  },
   screen: {
     flex: 1,
     backgroundColor: Colors.background,
