@@ -284,7 +284,8 @@ export const PdfService = {
     toDateStr: string,
     transactions: (Transaction & { customerName?: string; villageName?: string })[],
     creditTotalPaise: number,
-    paymentTotalPaise: number
+    paymentTotalPaise: number,
+    previousBalancePaise: number = 0
   ): Promise<string> {
     const netDiff = creditTotalPaise - paymentTotalPaise;
 
@@ -338,6 +339,10 @@ export const PdfService = {
         </div>
 
         <div class="summary-grid">
+          <div class="summary-box">
+            <div style="font-size: 10px; color: #64748b;">पिछला बकाया (Prev. Balance)</div>
+            <div style="font-size: 14px; font-weight: bold; color: #7c3aed;">${formatCurrency(previousBalancePaise)}</div>
+          </div>
           <div class="summary-box">
             <div style="font-size: 10px; color: #64748b;">कुल उधार (Total Udhaar)</div>
             <div style="font-size: 14px; font-weight: bold; color: #dc2626;">${formatCurrency(creditTotalPaise)}</div>

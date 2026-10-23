@@ -260,13 +260,31 @@ export const ReportsScreen: React.FC = () => {
         customerName: customerMap.get(tx.customerId)?.name || 'Customer',
         villageName: customerMap.get(tx.customerId)?.villageName,
       }));
+
+      // Calculate previous balance: opening balance of all customers + net transactions before fromDate
+      const totalOpeningBalancePaise = customers.reduce(
+        (sum, c) => sum + (c.openingBalancePaise || 0),
+        0
+      );
+
+      const netTxsBeforeDatePaise = transactions
+        .filter((tx) => !tx.isReversed && tx.date.substring(0, 10) < fromDate)
+        .reduce((sum, tx) => {
+          if (tx.type === 'CREDIT_SALE') return sum + tx.amountPaise;
+          if (tx.type === 'PAYMENT') return sum - tx.amountPaise;
+          return sum;
+        }, 0);
+
+      const previousBalancePaise = Math.max(0, totalOpeningBalancePaise + netTxsBeforeDatePaise);
+
       const uri = await PdfService.generateDateRangeReportPdf(
         business,
         fromDate,
         toDate,
         txWithDetails,
         periodStats.creditTotal,
-        periodStats.paymentTotal
+        periodStats.paymentTotal,
+        Math.max(0, previousBalancePaise)
       );
       await PdfService.sharePdf(uri, undefined, `Transactions_${fromDate}_to_${toDate}`);
     } catch (err: any) {
