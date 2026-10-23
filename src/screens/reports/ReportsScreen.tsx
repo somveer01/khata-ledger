@@ -302,54 +302,6 @@ export const ReportsScreen: React.FC = () => {
     }
   };
 
-  const handleShareTxWhatsApp = async (tx: Transaction) => {
-    if (!business) return;
-    const cust = customerMap.get(tx.customerId);
-    if (!cust) return;
-    if (!cust.mobile) {
-      Alert.alert(
-        t('error', language),
-        language === 'hi' ? 'इस ग्राहक का मोबाइल नंबर उपलब्ध नहीं है!' : 'Customer mobile number not available!'
-      );
-      return;
-    }
-    const isSale = tx.type === 'CREDIT_SALE';
-    const typeText = isSale
-      ? (language === 'hi' ? 'उधार बिक्री' : 'Credit Sale')
-      : (language === 'hi' ? 'जमा भुगतान' : 'Payment Received');
-    const amountStr = formatCurrency(tx.amountPaise);
-    const balanceStr = formatCurrency(cust.currentBalancePaise || 0);
-
-    const message =
-      language === 'hi'
-        ? `*${business.name}* 🏪\n` +
-          `*लेनदेन विवरण (${typeText})*\n\n` +
-          `दिनांक: ${formatDisplayDate(tx.date)}\n` +
-          `ग्राहक: *${cust.name}*\n` +
-          (cust.villageName ? `गाँव: *${cust.villageName}*\n` : '') +
-          `सामान/विवरण: *${tx.description || '-'}*\n` +
-          (tx.quantity ? `मात्रा: ${tx.quantity} ${tx.unit || ''} @ ₹${toRupees(tx.ratePaise || 0)}\n` : '') +
-          `रकम: *${amountStr}*\n` +
-          `═════════════════════\n` +
-          `*वर्तमान कुल बकाया: ${balanceStr}*\n` +
-          (business.upiId ? `\n💳 UPI भुगतान लिंक: ${business.upiId}\n` : '') +
-          `\nसंपर्क: ${business.phone}\nधन्यवाद!`
-        : `*${business.name}* 🏪\n` +
-          `*Transaction Receipt (${typeText})*\n\n` +
-          `Date: ${formatDisplayDate(tx.date)}\n` +
-          `Customer: *${cust.name}*\n` +
-          (cust.villageName ? `Village: *${cust.villageName}*\n` : '') +
-          `Particulars: *${tx.description || '-'}*\n` +
-          (tx.quantity ? `Qty: ${tx.quantity} ${tx.unit || ''} @ ₹${toRupees(tx.ratePaise || 0)}\n` : '') +
-          `Amount: *${amountStr}*\n` +
-          `═════════════════════\n` +
-          `*Current Outstanding Balance: ${balanceStr}*\n` +
-          (business.upiId ? `\n💳 Pay via UPI: ${business.upiId}\n` : '') +
-          `\nContact: ${business.phone}\nThank you!`;
-
-    await ReminderService.sendViaWhatsApp(cust.mobile, message);
-  };
-
   const handleShareDateRangeWhatsApp = async () => {
     if (!business) return;
 
@@ -978,7 +930,7 @@ export const ReportsScreen: React.FC = () => {
                           {tx.description} {cust?.villageName ? `• ${cust.villageName}` : ''}
                         </Text>
                       </View>
-                      <View style={{ alignItems: 'flex-end', marginRight: cust?.mobile ? 6 : 0 }}>
+                      <View style={{ alignItems: 'flex-end' }}>
                         <Text style={[styles.txAmount, { color: isSale ? Colors.creditSale : Colors.paymentReceived }]}>
                           {isSale ? '+' : '-'} {formatCurrency(tx.amountPaise)}
                         </Text>
@@ -986,18 +938,6 @@ export const ReportsScreen: React.FC = () => {
                           {isSale ? (language === 'hi' ? 'उधार' : 'Credit') : (language === 'hi' ? 'जमा' : 'Jama')}
                         </Text>
                       </View>
-
-                      {/* Quick WhatsApp Share Button directly to this Client */}
-                      {cust?.mobile ? (
-                        <TouchableOpacity
-                          style={styles.txWhatsAppBtn}
-                          activeOpacity={0.7}
-                          onPress={() => handleShareTxWhatsApp(tx)}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          <Ionicons name="logo-whatsapp" size={18} color="#16A34A" />
-                        </TouchableOpacity>
-                      ) : null}
                     </TouchableOpacity>
                   );
                 })
@@ -1786,15 +1726,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 12,
-  },
-  txWhatsAppBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#DCFCE7',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 6,
   },
   emptyPeriodBox: {
     paddingVertical: Spacing.xl,
