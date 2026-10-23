@@ -594,10 +594,6 @@ export const ReportsScreen: React.FC = () => {
 
   const activeCompareDate = targetDateField === 'FROM' ? fromDate : toDate;
 
-  const dateRangeHeading = fromDate === toDate
-    ? `${t('periodSummaryTitleCustom', language)} (${formatUpperDate(fromDate)})`
-    : `${t('periodSummaryTitleCustom', language)} (${formatUpperDate(fromDate)} - ${formatUpperDate(toDate)})`;
-
   return (
     <View style={styles.screen}>
       <Header
@@ -941,69 +937,6 @@ export const ReportsScreen: React.FC = () => {
                   <Text style={styles.presetChipText}>{t('presetLastMonth', language)}</Text>
                 </TouchableOpacity>
               </ScrollView>
-            </Card>
-
-            {/* Period Summary Card */}
-            <Card style={styles.periodSummaryCard}>
-              <View style={styles.periodSummaryHeader}>
-                <View style={{ flex: 1, marginRight: 8 }}>
-                  <Text style={styles.periodHeading}>
-                    {dateRangeHeading}
-                  </Text>
-                </View>
-
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  {/* WhatsApp Summary Share Button */}
-                  <TouchableOpacity
-                    style={styles.whatsAppSummaryBtn}
-                    onPress={handleShareDateRangeWhatsApp}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons name="logo-whatsapp" size={15} color="#FFFFFF" />
-                    <Text style={styles.whatsAppSummaryBtnText}>
-                      WhatsApp
-                    </Text>
-                  </TouchableOpacity>
-
-                  {/* PDF Export button */}
-                  <Button
-                    title={t('pdfShareBtn', language)}
-                    onPress={handleExportDateRangePdf}
-                    loading={exportingDateRange}
-                    size="sm"
-                    variant="outline"
-                    icon={<Ionicons name="document-text-outline" size={14} color={Colors.primaryForeground} />}
-                    style={styles.pdfPeriodBtn}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.statsRow}>
-                <View style={styles.statBox}>
-                  <Text style={styles.statLabel}>{t('totalCreditLabel', language)}</Text>
-                  <Text style={[styles.statVal, { color: Colors.creditSale }]}>
-                    {formatCurrency(periodStats.creditTotal)}
-                  </Text>
-                </View>
-
-                <View style={styles.statBox}>
-                  <Text style={styles.statLabel}>{t('totalJamaLabel', language)}</Text>
-                  <Text style={[styles.statVal, { color: Colors.paymentReceived }]}>
-                    {formatCurrency(periodStats.paymentTotal)}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.divider} />
-
-              <View style={styles.netRow}>
-                <Text style={styles.netLabel}>
-                  {t('totalTxCountLabel', language)}: <Text style={{ fontWeight: '700', color: '#F8FAFC' }}>{periodStats.txCount}</Text>
-                </Text>
-                <Text style={styles.netVal}>
-                  {t('netDifferenceLabel', language)}: {formatCurrency(periodStats.netDiff)}
-                </Text>
-              </View>
             </Card>
 
             {/* Transactions list in Selected Date Range with Customer-wise Toggle */}
