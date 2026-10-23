@@ -15,7 +15,7 @@ import { Button } from '../../components/Button';
 import { Colors, Spacing, Typography, BorderRadius } from '../../constants/theme';
 import { useApp } from '../../context/AppContext';
 import { t } from '../../i18n';
-import { formatCurrency, toRupees } from '../../utils/money';
+import { formatCurrency, toRupees, amountInWords } from '../../utils/money';
 import { getTodayIST, formatUpperDate, formatDisplayDate } from '../../utils/date';
 import { DataRepository } from '../../services/db';
 import { PdfService } from '../../services/pdfService';
@@ -374,34 +374,60 @@ export const ReportsScreen: React.FC = () => {
         ? formatUpperDate(fromDate)
         : `${formatUpperDate(fromDate)} से ${formatUpperDate(toDate)}`;
 
+    // Build itemized list of all transactions in this selected date/period
+    const entriesList = periodStats.filteredTxs.map((tx, idx) => {
+      const cust = customerMap.get(tx.customerId);
+      const isSale = tx.type === 'CREDIT_SALE';
+      const typeTag = isSale ? '🔴 उधार (+)' : '🟢 जमा (-)';
+      const custName = cust?.name ? `*${cust.name}*${cust.villageName ? ` (${cust.villageName})` : ''}` : 'ग्राहक';
+      const descPart = tx.description ? `\n   विवरण: ${tx.description}` : '';
+      const qtyPart = tx.quantity ? ` [मात्रा: ${tx.quantity} ${tx.unit || ''}${tx.ratePaise ? ` @ ₹${toRupees(tx.ratePaise)}` : ''}]` : '';
+
+      return `${idx + 1}. ${custName} ➔ *${formatCurrency(tx.amountPaise)}* ${typeTag}${descPart}${qtyPart}`;
+    }).join('\n\n');
+
+    const entriesSection = entriesList
+      ? (language === 'hi'
+          ? `*📝 इस अवधि का लेनदेन विवरण (${periodStats.filteredTxs.length}):*\n\n${entriesList}\n`
+          : `*📝 Transactions in Period (${periodStats.filteredTxs.length}):*\n\n${entriesList}\n`)
+      : (language === 'hi'
+          ? `*(इस अवधि में कोई लेनदेन प्रविष्टि नहीं)*\n`
+          : `*(No transactions in this period)*\n`);
+
     const message =
       language === 'hi'
         ? `*${business.name}* 🏪\n` +
-          `*वित्तीय लेनदेन सारांश रिपोर्ट*\n\n` +
-          `📅 अवधि: ${periodStr}\n` +
+          `*दैनिक खाता बही व लेनदेन रिपोर्ट* 📋\n\n` +
+          `📅 अवधि: *${periodStr}*\n` +
           `─────────────────────\n` +
-          `1. पिछला बकाया: *${formatCurrency(previousBalancePaise)}*\n` +
-          `2. कुल नया उधार (+): *+ ${formatCurrency(periodStats.creditTotal)}*\n` +
-          `3. कुल प्राप्त जमा (-): *- ${formatCurrency(periodStats.paymentTotal)}*\n` +
+          `🟣 *1. पिछला बकाया:* *${formatCurrency(previousBalancePaise)}*\n` +
+          `─────────────────────\n` +
+          entriesSection +
+          `─────────────────────\n` +
+          `➕ कुल नया उधार: *+ ${formatCurrency(periodStats.creditTotal)}*\n` +
+          `➖ कुल प्राप्त जमा: *- ${formatCurrency(periodStats.paymentTotal)}*\n` +
           `═════════════════════\n` +
-          `*कुल अंतिम बाकी: ${formatCurrency(finalClosingDuePaise)}*\n` +
-          `📝 कुल प्रविष्टियाँ: ${periodStats.txCount}\n` +
-          (business.upiId ? `\n💳 UPI भुगतान: ${business.upiId}\n` : '') +
-          `\nसंपर्क: ${business.phone}\nडिजिटल खाता बही • धन्यवाद!`
+          `⭐ *कुल अंतिम बकाया: ${formatCurrency(finalClosingDuePaise)}*\n` +
+          `_अक्षरों में: ${amountInWords(finalClosingDuePaise)}_\n` +
+          (business.upiId ? `\n💳 UPI भुगतान लिंक: ${business.upiId}\n` : '') +
+          `\n📞 संपर्क: ${business.phone}\nडिजिटल खाता बही • धन्यवाद! 🙏`
         : `*${business.name}* 🏪\n` +
-          `*Financial Statement Summary*\n\n` +
-          `📅 Period: ${periodStr}\n` +
+          `*Daily Ledger & Transactions Report* 📋\n\n` +
+          `📅 Period: *${periodStr}*\n` +
           `─────────────────────\n` +
-          `1. Previous Due: *${formatCurrency(previousBalancePaise)}*\n` +
-          `2. Total New Udhaar (+): *+ ${formatCurrency(periodStats.creditTotal)}*\n` +
-          `3. Total Received Jama (-): *- ${formatCurrency(periodStats.paymentTotal)}*\n` +
+          `🟣 *1. Previous Due:* *${formatCurrency(previousBalancePaise)}*\n` +
+          `─────────────────────\n` +
+          entriesSection +
+          `─────────────────────\n` +
+          `➕ Total New Udhaar (+): *+ ${formatCurrency(periodStats.creditTotal)}*\n` +
+          `➖ Total Received Jama (-): *- ${formatCurrency(periodStats.paymentTotal)}*\n` +
           `═════════════════════\n` +
-          `*Net Closing Due: ${formatCurrency(finalClosingDuePaise)}*\n` +
-          `📝 Total Entries: ${periodStats.txCount}\n` +
+          `⭐ *Net Closing Due: ${formatCurrency(finalClosingDuePaise)}*\n` +
+          `_In Words: ${amountInWords(finalClosingDuePaise)}_\n` +
           (business.upiId ? `\n💳 UPI Payment: ${business.upiId}\n` : '') +
-          `\nContact: ${business.phone}\nThank you!`;
+          `\n📞 Contact: ${business.phone}\nThank you! 🙏`;
 
-    await ReminderService.shareGeneral(message);
+    await ReminderService.shareToWhatsApp(message);
   };
 
   // Date Preset Handlers

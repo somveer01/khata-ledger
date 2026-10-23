@@ -126,4 +126,30 @@ export const ReminderService = {
       return false;
     }
   },
+
+  /**
+   * Opens WhatsApp directly with contact picker to share a message
+   */
+  async shareToWhatsApp(message: string): Promise<boolean> {
+    const encoded = encodeURIComponent(message);
+    const url = `whatsapp://send?text=${encoded}`;
+    const webFallback = `https://api.whatsapp.com/send?text=${encoded}`;
+
+    try {
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.open(webFallback, '_blank');
+        return true;
+      }
+      const canOpen = await Linking.canOpenURL(url);
+      if (canOpen) {
+        await Linking.openURL(url);
+        return true;
+      } else {
+        await Linking.openURL(webFallback);
+        return true;
+      }
+    } catch {
+      return this.shareGeneral(message);
+    }
+  },
 };
