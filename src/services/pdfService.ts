@@ -3,7 +3,7 @@ import * as Sharing from 'expo-sharing';
 import { Paths, File } from 'expo-file-system';
 import { Platform } from 'react-native';
 import { Customer, Transaction, Business, VillageSummary } from '../types';
-import { formatCurrency, toRupees } from '../utils/money';
+import { formatCurrency, toRupees, amountInWords } from '../utils/money';
 import { formatDisplayDate, formatUpperDate } from '../utils/date';
 import { computeLedgerWithRunningBalances } from './accounting';
 
@@ -287,7 +287,8 @@ export const PdfService = {
     paymentTotalPaise: number,
     previousBalancePaise: number = 0
   ): Promise<string> {
-    const netDiff = creditTotalPaise - paymentTotalPaise;
+    const netPeriodDiff = creditTotalPaise - paymentTotalPaise;
+    const finalClosingDuePaise = previousBalancePaise + netPeriodDiff;
 
     let rowsHtml = '';
     for (const tx of transactions) {
@@ -318,11 +319,11 @@ export const PdfService = {
         <style>
           body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #0f172a; margin: 24px; }
           .header { text-align: center; border-bottom: 2px solid #1e3a8a; padding-bottom: 12px; margin-bottom: 16px; }
-          .biz-name { font-size: 20px; font-weight: bold; color: #1e3a8a; }
+          .biz-name { font-size: 22px; font-weight: bold; color: #1e3a8a; }
           .report-title { font-size: 16px; font-weight: bold; margin-top: 8px; }
-          .period-tag { display: inline-block; background: #e0e7ff; color: #3730a3; padding: 4px 10px; border-radius: 4px; font-weight: 600; font-size: 12px; margin-top: 6px; }
-          .summary-grid { display: flex; justify-content: space-between; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-top: 14px; }
-          .summary-box { text-align: center; flex: 1; border-right: 1px solid #cbd5e1; }
+          .period-tag { display: inline-block; background: #e0e7ff; color: #3730a3; padding: 4px 12px; border-radius: 4px; font-weight: 700; font-size: 12px; margin-top: 6px; }
+          .summary-grid { display: flex; justify-content: space-between; background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-top: 14px; gap: 8px; }
+          .summary-box { text-align: center; flex: 1; border-right: 1px solid #cbd5e1; padding: 4px; }
           .summary-box:last-child { border-right: none; }
           table { width: 100%; border-collapse: collapse; margin-top: 16px; }
           th { background: #1e3a8a; color: white; padding: 10px 8px; font-size: 12px; text-align: left; }
@@ -333,31 +334,27 @@ export const PdfService = {
       <body>
         <div class="header">
           <div class="biz-name">${business.name}</div>
-          <div style="font-size: 11px; color: #64748b;">${business.address || ''} | Contact: ${business.phone}</div>
+          <div style="font-size: 11px; color: #64748b; margin-top: 2px;">${business.address || ''} | Contact: ${business.phone}</div>
           <div class="report-title">लेनदेन विवरण रिपोर्ट (Financial Statement)</div>
-          <div class="period-tag">${formatUpperDate(fromDateStr)} to ${formatUpperDate(toDateStr)}</div>
+          <div class="period-tag">${formatUpperDate(fromDateStr)} से ${formatUpperDate(toDateStr)} तक</div>
         </div>
 
         <div class="summary-grid">
           <div class="summary-box">
-            <div style="font-size: 10px; color: #64748b;">पिछला बकाया (Prev. Balance)</div>
-            <div style="font-size: 14px; font-weight: bold; color: #7c3aed;">${formatCurrency(previousBalancePaise)}</div>
+            <div style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase;">1. पिछला बकाया (Prev. Balance)</div>
+            <div style="font-size: 14px; font-weight: 800; color: #7c3aed; margin-top: 4px;">${formatCurrency(previousBalancePaise)}</div>
           </div>
           <div class="summary-box">
-            <div style="font-size: 10px; color: #64748b;">कुल उधार (Total Udhaar)</div>
-            <div style="font-size: 14px; font-weight: bold; color: #dc2626;">${formatCurrency(creditTotalPaise)}</div>
+            <div style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase;">2. कुल नया उधार (+) (Total Udhaar)</div>
+            <div style="font-size: 14px; font-weight: 800; color: #dc2626; margin-top: 4px;">+ ${formatCurrency(creditTotalPaise)}</div>
           </div>
           <div class="summary-box">
-            <div style="font-size: 10px; color: #64748b;">कुल जमा (Total Jama)</div>
-            <div style="font-size: 14px; font-weight: bold; color: #16a34a;">${formatCurrency(paymentTotalPaise)}</div>
+            <div style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase;">3. कुल प्राप्त जमा (-) (Total Jama)</div>
+            <div style="font-size: 14px; font-weight: 800; color: #16a34a; margin-top: 4px;">- ${formatCurrency(paymentTotalPaise)}</div>
           </div>
           <div class="summary-box">
-            <div style="font-size: 10px; color: #64748b;">शुद्ध अंतर (Net Diff)</div>
-            <div style="font-size: 14px; font-weight: bold; color: #1e3a8a;">${formatCurrency(netDiff)}</div>
-          </div>
-          <div class="summary-box">
-            <div style="font-size: 10px; color: #64748b;">कुल प्रविष्टियाँ (Total Txs)</div>
-            <div style="font-size: 14px; font-weight: bold;">${transactions.length}</div>
+            <div style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase;">4. कुल अंतिम बकाया (=) (Net Due)</div>
+            <div style="font-size: 15px; font-weight: 900; color: ${finalClosingDuePaise >= 0 ? '#b91c1c' : '#16a34a'}; margin-top: 4px;">${formatCurrency(finalClosingDuePaise)}</div>
           </div>
         </div>
 
@@ -372,12 +369,72 @@ export const PdfService = {
             </tr>
           </thead>
           <tbody>
-            ${rowsHtml || '<tr><td colspan="5" style="text-align:center; padding:16px; color:#64748b;">No transactions in this period</td></tr>'}
+            ${rowsHtml || '<tr><td colspan="5" style="text-align:center; padding:16px; color:#64748b;">इस अवधि में कोई लेनदेन नहीं हुआ</td></tr>'}
           </tbody>
+          <tfoot>
+            <tr style="background: #f1f5f9; font-weight: bold; border-top: 2px solid #1e3a8a; border-bottom: 2px solid #cbd5e1;">
+              <td colspan="3" style="padding: 10px 8px; font-size: 11px; text-align: right; color: #0f172a; font-weight: 800;">
+                कुल योग (Period Total):
+              </td>
+              <td style="padding: 10px 8px; font-size: 11px; text-align: right; color: #dc2626; font-weight: 800;">
+                ${formatCurrency(creditTotalPaise)}
+              </td>
+              <td style="padding: 10px 8px; font-size: 11px; text-align: right; color: #16a34a; font-weight: 800;">
+                ${formatCurrency(paymentTotalPaise)}
+              </td>
+            </tr>
+          </tfoot>
         </table>
 
+        <!-- Grand Total Net Summary Box with Words -->
+        <div style="margin-top: 20px; background: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 14px 16px;">
+          <div style="font-size: 12px; font-weight: 800; color: #1e3a8a; border-bottom: 1.5px solid #e2e8f0; padding-bottom: 6px; margin-bottom: 10px; text-transform: uppercase;">
+            खाता सारांश व कुल बकाया (Net Statement Summary)
+          </div>
+
+          <table style="width: 100%; border-collapse: collapse; margin-top: 0;">
+            <tbody>
+              <tr style="border-bottom: 1px dashed #e2e8f0;">
+                <td style="padding: 6px 0; font-size: 12px; color: #475569;">1. पिछला बकाया (${formatUpperDate(fromDateStr)} से पहले का बकाया):</td>
+                <td style="padding: 6px 0; font-size: 12px; text-align: right; font-weight: 700; color: #7c3aed;">
+                  ${formatCurrency(previousBalancePaise)}
+                </td>
+              </tr>
+              <tr style="border-bottom: 1px dashed #e2e8f0;">
+                <td style="padding: 6px 0; font-size: 12px; color: #475569;">2. (+) इस अवधि का नया उधार (Add Period Udhaar):</td>
+                <td style="padding: 6px 0; font-size: 12px; text-align: right; font-weight: 700; color: #dc2626;">
+                  + ${formatCurrency(creditTotalPaise)}
+                </td>
+              </tr>
+              <tr style="border-bottom: 1px dashed #e2e8f0;">
+                <td style="padding: 6px 0; font-size: 12px; color: #475569;">3. (-) इस अवधि में प्राप्त कुल जमा (Less Period Jama):</td>
+                <td style="padding: 6px 0; font-size: 12px; text-align: right; font-weight: 700; color: #16a34a;">
+                  - ${formatCurrency(paymentTotalPaise)}
+                </td>
+              </tr>
+              <tr style="background: #f8fafc; border-top: 2px solid #1e3a8a; border-bottom: 2px solid #1e3a8a;">
+                <td style="padding: 10px 4px; font-size: 13px; font-weight: 800; color: #0f172a;">
+                  कुल अंतिम बाकी (Net Total Outstanding):
+                </td>
+                <td style="padding: 10px 4px; font-size: 16px; text-align: right; font-weight: 900; color: ${finalClosingDuePaise >= 0 ? '#b91c1c' : '#16a34a'};">
+                  ${formatCurrency(finalClosingDuePaise)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div style="margin-top: 12px; padding: 10px 12px; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0; border-left: 4px solid #1e3a8a;">
+            <div style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 2px;">
+              कुल बकाया राशि शब्दों में (Total Due in Words):
+            </div>
+            <div style="font-size: 12px; font-weight: 800; color: #0f172a; line-height: 1.4;">
+              ${amountInWords(finalClosingDuePaise)}
+            </div>
+          </div>
+        </div>
+
         <div class="footer">
-          Generated via Ledger • डिजिटल खाता बही
+          Generated via Ledger • डिजिटल खाता बही • ${formatDisplayDate(new Date())}
         </div>
       </body>
       </html>
