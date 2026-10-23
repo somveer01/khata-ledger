@@ -15,7 +15,7 @@ export const translations = {
     navSettings: 'Settings',
 
     // Financial actions & headings
-    addEntry: 'Add Sale Entry',
+    addEntry: 'Sale',
     addSaleEntry: 'Save Entry',
     editSaleEntry: 'Edit Sale Entry',
     addEntrySubtitle: 'Record credit sale or payment collection',
@@ -23,7 +23,7 @@ export const translations = {
     creditEntryTab: 'Sale / Udhaar',
     addSaleEntryTab: 'Sale / Udhaar',
     paymentEntryTab: 'Payment / Jama',
-    giveCredit: 'Add Sale Entry',
+    giveCredit: 'Sale',
     giveCreditDesc: 'Goods sold on credit',
     receivedPaymentAtSale: 'Receive Payment Amount',
     receivedPaymentAtSaleHelper: 'Amount paid by customer at time of sale (Cash/UPI)',
@@ -416,7 +416,7 @@ export const translations = {
     navSettings: 'सेटिंग्स',
 
     // Financial actions & headings
-    addEntry: 'बिक्री प्रविष्टि (Add Sale Entry)',
+    addEntry: 'Sale',
     addSaleEntry: 'सेव एंट्री',
     editSaleEntry: 'बिक्री प्रविष्टि बदलें (Edit Sale Entry)',
     addEntrySubtitle: 'उधार सामान या प्राप्त भुगतान दर्ज करें',
@@ -424,7 +424,7 @@ export const translations = {
     creditEntryTab: 'बिक्री (उधार)',
     addSaleEntryTab: 'बिक्री (उधार)',
     paymentEntryTab: 'जमा (भुगतान)',
-    giveCredit: 'बिक्री प्रविष्टि (Add Sale Entry)',
+    giveCredit: 'Sale',
     giveCreditDesc: 'सामान उधार दिया (नाम)',
     receivedPaymentAtSale: 'प्राप्त भुगतान राशि (नगद/जमा)',
     receivedPaymentAtSaleHelper: 'बिक्री के समय ग्राहक द्वारा दी गई राशि (नकद/UPI)',
