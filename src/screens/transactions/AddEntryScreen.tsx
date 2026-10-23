@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { ExpoSpeechRecognitionModule } from 'expo-speech-recognition';
 import {
   View,
@@ -55,10 +55,35 @@ export const AddEntryScreen: React.FC = () => {
   const [productPickerVisible, setProductPickerVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
+  const formatCleanProductDescription = (prod: Product): string => {
+    const brand = (prod.brandName || '').trim();
+    let name = (prod.productName || '').trim();
+    const pack = (prod.packSize || '').trim();
+
+    const nameLower = name.toLowerCase();
+    const brandLower = brand.toLowerCase();
+    const packClean = pack.toLowerCase().replace(/\s+/g, '');
+    const nameClean = nameLower.replace(/\s+/g, '');
+
+    let result = name;
+
+    // Prepend brand if not already in product name
+    if (brand && !nameLower.includes(brandLower)) {
+      result = `${brand} ${result}`;
+    }
+
+    // Append pack size if not already in product name
+    if (pack && !nameClean.includes(packClean)) {
+      result = `${result} ${pack}`;
+    }
+
+    return result.trim();
+  };
+
   const handleSelectProduct = (prod: Product) => {
     setSelectedProduct(prod);
-    const parts = [prod.brandName, prod.productName, prod.packSize].filter(Boolean);
-    setDescription(parts.join(' '));
+    const cleanDesc = formatCleanProductDescription(prod);
+    setDescription(cleanDesc);
     if (prod.unit) {
       setUnit(prod.unit);
     }
@@ -748,6 +773,13 @@ export const AddEntryScreen: React.FC = () => {
   ];
 
   const commonUnits = ['kg', 'bag', 'litre', 'pkt', 'pc', 'quintal'];
+  const availableUnits = useMemo(() => {
+    const base = ['kg', 'bag', 'litre', 'pkt', 'pc', 'Bottle', 'quintal'];
+    if (unit && !base.includes(unit)) {
+      return [unit, ...base];
+    }
+    return base;
+  }, [unit]);
 
   const filteredModalCusts = customers.filter(
     (c) =>
@@ -979,7 +1011,9 @@ export const AddEntryScreen: React.FC = () => {
                 <View style={styles.quantitiesGrid}>
                   {/* Qty Box */}
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.subColLabel}>{t('quantity', language)}</Text>
+                    <Text style={styles.subColLabel} numberOfLines={1}>
+                      {language === 'hi' ? 'मात्रा (Qty)' : 'Quantity'}
+                    </Text>
                     <Input
                       placeholder="0"
                       value={quantity}
@@ -990,9 +1024,11 @@ export const AddEntryScreen: React.FC = () => {
                     />
                   </View>
 
-                  {/* Unit Box */}
+                  {/* Unit Box - Strictly Single Line */}
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.subColLabel}>{t('unit', language)}</Text>
+                    <Text style={styles.subColLabel} numberOfLines={1}>
+                      {language === 'hi' ? 'इकाई (Unit)' : 'Unit'}
+                    </Text>
                     <Input
                       placeholder="kg"
                       value={unit}
@@ -1004,7 +1040,9 @@ export const AddEntryScreen: React.FC = () => {
 
                   {/* Rate Box */}
                   <View style={{ flex: 1.2 }}>
-                    <Text style={styles.subColLabel}>{t('ratePerUnit', language)}</Text>
+                    <Text style={styles.subColLabel} numberOfLines={1}>
+                      {language === 'hi' ? 'दर (Rate ₹)' : 'Rate (₹)'}
+                    </Text>
                     <Input
                       placeholder="₹ 0.00"
                       value={rate}
@@ -1018,7 +1056,7 @@ export const AddEntryScreen: React.FC = () => {
 
                 {/* Quick Unit Chips */}
                 <View style={styles.unitChipsRow}>
-                  {commonUnits.map((u) => (
+                  {availableUnits.map((u: string) => (
                     <TouchableOpacity
                       key={u}
                       style={[styles.unitChip, unit === u && styles.activeUnitChip]}
@@ -1277,29 +1315,29 @@ export const AddEntryScreen: React.FC = () => {
             onChangeText={setNotes}
           />
 
-          {/* Submit Action Button with Clean Conditional Label (NO empty brackets) */}
+          {/* Submit Action Button - "सेव एंट्री" with checkmark icon */}
           <Button
             title={
               isEditing
                 ? mode === 'CREDIT'
-                  ? `${t('updateEntryBtn', language)} (₹${finalCreditAmount})`
-                  : `${t('updateEntryBtn', language)} (₹${paymentAmount})`
+                  ? (language === 'hi' ? `अपडेट एंट्री (₹${finalCreditAmount})` : `Update Entry (₹${finalCreditAmount})`)
+                  : (language === 'hi' ? `अपडेट एंट्री (₹${paymentAmount})` : `Update Entry (₹${paymentAmount})`)
                 : mode === 'CREDIT'
                 ? finalCreditAmount && parseFloat(finalCreditAmount) > 0
-                  ? `${t('addSaleEntry', language)} (₹${finalCreditAmount})`
-                  : t('addSaleEntry', language)
+                  ? (language === 'hi' ? `सेव एंट्री (₹${finalCreditAmount})` : `Save Entry (₹${finalCreditAmount})`)
+                  : (language === 'hi' ? 'सेव एंट्री' : 'Save Entry')
                 : paymentAmount && parseFloat(paymentAmount) > 0
-                ? `${t('recordPaymentBtn', language)} (₹${paymentAmount})`
-                : t('recordPaymentBtn', language)
+                ? (language === 'hi' ? `जमा सुरक्षित करें (₹${paymentAmount})` : `Save Payment (₹${paymentAmount})`)
+                : (language === 'hi' ? 'जमा सुरक्षित करें' : 'Save Payment')
             }
             onPress={handleSaveEntry}
             loading={loading}
-            variant={mode === 'CREDIT' ? 'danger' : 'success'}
+            variant={mode === 'CREDIT' ? 'success' : 'success'}
             size="lg"
-            style={styles.saveBtn}
+            style={[styles.saveBtn, mode === 'CREDIT' ? styles.submitCreditBtn : styles.submitPaymentBtn]}
             icon={
               <Ionicons
-                name={isEditing ? 'save-outline' : (mode === 'CREDIT' ? 'add-circle-outline' : 'checkmark-circle-outline')}
+                name={isEditing ? 'save-outline' : (mode === 'CREDIT' ? 'checkmark-circle-outline' : 'checkmark-done-circle-outline')}
                 size={22}
                 color={Colors.textInverse}
               />
@@ -1585,16 +1623,40 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: Spacing.sm,
   },
-  subColLabel: {
-    fontSize: 11,
+    subColLabel: {
+    fontSize: 12,
     fontWeight: '700',
-    color: Colors.textSecondary,
-    marginBottom: 4,
+    color: '#475569',
+    marginBottom: 6,
+    height: 18,
+    lineHeight: 18,
+    textAlign: 'center',
   },
   compactInput: {
-    height: 42,
-    fontSize: 14,
+    textAlign: 'center',
+    fontWeight: '700',
+    fontSize: 16,
+    height: 48,
+    backgroundColor: '#FFFFFF',
+    borderRadius: BorderRadius.md,
   },
+  submitBtn: {
+    marginTop: Spacing.lg,
+    height: 52,
+    borderRadius: BorderRadius.lg,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 5,
+    elevation: 4,
+  },
+  submitCreditBtn: {
+    backgroundColor: '#059669',
+  },
+  submitPaymentBtn: {
+    backgroundColor: '#16A34A',
+  },
+
   unitChipsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
