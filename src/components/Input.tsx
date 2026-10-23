@@ -54,7 +54,16 @@ export const Input: React.FC<InputProps> = ({
           placeholderTextColor={Colors.textMuted}
           style={[
             styles.input,
-            Platform.OS === 'web' ? ({ outlineStyle: 'none', outline: 'none' } as any) : null,
+            Platform.OS === 'web'
+              ? ({
+                  outlineStyle: 'none',
+                  outline: 'none',
+                  minWidth: 0,
+                  width: '100%',
+                  maxWidth: '100%',
+                  boxSizing: 'border-box',
+                } as any)
+              : null,
             style,
           ]}
           onFocus={(e) => {
@@ -82,6 +91,8 @@ export const Input: React.FC<InputProps> = ({
 const styles = StyleSheet.create({
   container: {
     marginBottom: Spacing.md,
+    width: '100%',
+    minWidth: 0,
   },
   label: {
     fontSize: 13,
@@ -98,6 +109,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     paddingHorizontal: Spacing.md,
     minHeight: 48,
+    width: '100%',
+    minWidth: 0,
+    overflow: 'hidden',
   },
   inputFocused: {
     borderColor: Colors.primary,
@@ -123,6 +137,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.textPrimary,
     paddingVertical: Platform.OS === 'android' ? 6 : 8,
+    minWidth: 0,
+    width: '100%',
   },
   errorText: {
     fontSize: 12,

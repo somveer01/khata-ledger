@@ -1013,7 +1013,7 @@ export const AddEntryScreen: React.FC = () => {
               <View style={styles.quantitiesCard}>
                 <View style={styles.quantitiesGrid}>
                   {/* Qty Box */}
-                  <View style={{ flex: 1 }}>
+                  <View style={styles.gridColQty}>
                     <Text style={styles.subColLabel} numberOfLines={1}>
                       {language === 'hi' ? 'मात्रा (Qty)' : 'Quantity'}
                     </Text>
@@ -1022,14 +1022,14 @@ export const AddEntryScreen: React.FC = () => {
                       value={quantity}
                       onChangeText={setQuantity}
                       keyboardType="numeric"
-                      containerStyle={{ marginBottom: 0 }}
+                      containerStyle={styles.compactColContainer}
                       inputWrapperStyle={styles.compactInputWrapper}
                       style={styles.compactInput}
                     />
                   </View>
 
                   {/* Unit Box - Strictly Single Line */}
-                  <View style={{ flex: 1.1 }}>
+                  <View style={styles.gridColUnit}>
                     <Text style={styles.subColLabel} numberOfLines={1}>
                       {language === 'hi' ? 'इकाई (Unit)' : 'Unit'}
                     </Text>
@@ -1037,14 +1037,14 @@ export const AddEntryScreen: React.FC = () => {
                       placeholder="kg"
                       value={unit}
                       onChangeText={setUnit}
-                      containerStyle={{ marginBottom: 0 }}
+                      containerStyle={styles.compactColContainer}
                       inputWrapperStyle={styles.compactInputWrapper}
                       style={styles.compactInput}
                     />
                   </View>
 
                   {/* Rate Box */}
-                  <View style={{ flex: 1.3 }}>
+                  <View style={styles.gridColRate}>
                     <Text style={styles.subColLabel} numberOfLines={1}>
                       {language === 'hi' ? 'दर (Rate ₹)' : 'Rate (₹)'}
                     </Text>
@@ -1053,7 +1053,7 @@ export const AddEntryScreen: React.FC = () => {
                       value={rate}
                       onChangeText={setRate}
                       keyboardType="numeric"
-                      containerStyle={{ marginBottom: 0 }}
+                      containerStyle={styles.compactColContainer}
                       inputWrapperStyle={styles.compactInputWrapper}
                       style={styles.compactInput}
                     />
@@ -1621,32 +1621,56 @@ const styles = StyleSheet.create({
   quantitiesCard: {
     backgroundColor: '#F8FAFC',
     borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
+    borderColor: '#E2E8F0',
+    borderRadius: BorderRadius.lg,
+    padding: 10,
     marginBottom: Spacing.md,
   },
   quantitiesGrid: {
     flexDirection: 'row',
-    gap: Spacing.sm,
+    alignItems: 'flex-start',
+    width: '100%',
   },
-    subColLabel: {
-    fontSize: 12,
+  gridColQty: {
+    flex: 1,
+    minWidth: 0,
+    marginRight: 6,
+  },
+  gridColUnit: {
+    flex: 1.15,
+    minWidth: 0,
+    marginRight: 6,
+  },
+  gridColRate: {
+    flex: 1.25,
+    minWidth: 0,
+  },
+  compactColContainer: {
+    marginBottom: 0,
+    width: '100%',
+    minWidth: 0,
+  },
+  subColLabel: {
+    fontSize: 11,
     fontWeight: '700',
     color: '#475569',
     marginBottom: 6,
     height: 18,
     lineHeight: 18,
     textAlign: 'center',
+    width: '100%',
   },
   compactInputWrapper: {
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
     height: 48,
     minHeight: 48,
     borderRadius: BorderRadius.md,
     backgroundColor: '#FFFFFF',
     borderWidth: 1.5,
     borderColor: '#CBD5E1',
+    width: '100%',
+    minWidth: 0,
+    overflow: 'hidden',
   },
   descriptionInputWrapper: {
     backgroundColor: '#FFFFFF',
@@ -1659,10 +1683,15 @@ const styles = StyleSheet.create({
   compactInput: {
     textAlign: 'center',
     fontWeight: '700',
-    fontSize: 16,
+    fontSize: 14,
     height: 48,
+    minHeight: 46,
+    width: '100%',
+    minWidth: 0,
+    maxWidth: '100%',
     backgroundColor: '#FFFFFF',
-    borderRadius: BorderRadius.md,
+    paddingHorizontal: 0,
+    marginHorizontal: 0,
   },
   submitBtn: {
     marginTop: Spacing.lg,
