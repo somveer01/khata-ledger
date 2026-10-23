@@ -62,6 +62,18 @@ export const StoreActivityScreen: React.FC = () => {
     await loadStats();
   };
 
+  const handleOpenRateMaster = async (targetBiz: Business) => {
+    if (targetBiz.id !== business?.id) {
+      setSwitchingId(targetBiz.id);
+      try {
+        await switchBusiness(targetBiz);
+      } finally {
+        setSwitchingId(null);
+      }
+    }
+    navigation.navigate('ProductList');
+  };
+
   const handleSwitchStore = async (targetBiz: Business) => {
     if (targetBiz.id === business?.id) return;
     setSwitchingId(targetBiz.id);
@@ -181,15 +193,29 @@ export const StoreActivityScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* Last Active Timestamp Strip */}
+        {/* Last Active Timestamp Strip & Products count */}
         <View style={styles.lastActiveRow}>
-          <Ionicons name="time-outline" size={13} color={Colors.textSecondary} />
-          <Text style={styles.lastActiveLabel}>
-            {language === 'hi' ? 'आखिरी गतिविधि:' : 'Last Activity:'}
-          </Text>
-          <Text style={styles.lastActiveValue}>
-            {formatRelativeActivity(item.lastActiveDate, language === 'hi' ? 'hi' : 'en')}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flex: 1 }}>
+            <Ionicons name="time-outline" size={13} color={Colors.textSecondary} />
+            <Text style={styles.lastActiveLabel}>
+              {language === 'hi' ? 'गतिविधि:' : 'Active:'}
+            </Text>
+            <Text style={styles.lastActiveValue} numberOfLines={1}>
+              {formatRelativeActivity(item.lastActiveDate, language === 'hi' ? 'hi' : 'en')}
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            style={styles.productBadge}
+            onPress={() => handleOpenRateMaster(item.business)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="cube" size={12} color="#16A34A" />
+            <Text style={styles.productBadgeText}>
+              {language === 'hi' ? 'उत्पाद:' : 'Rates:'} {item.productCount ?? 0}
+            </Text>
+            <Ionicons name="chevron-forward" size={12} color="#16A34A" />
+          </TouchableOpacity>
         </View>
 
         {/* 4 Counter Metrics Grid */}
@@ -627,6 +653,22 @@ const styles = StyleSheet.create({
   },
   statusPillInactiveText: {
     color: '#92400E',
+  },
+  productBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  productBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#166534',
   },
   statusPillEmptyText: {
     color: '#64748B',

@@ -121,6 +121,7 @@ export interface StoreActivityStats {
   lastActiveDate?: string;
   isActive: boolean;
   totalOutstandingPaise: CurrencyPaise;
+  productCount?: number;
 }
 
 export type ProductCategory =

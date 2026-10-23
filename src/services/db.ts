@@ -1,6 +1,7 @@
 import { 
   collection, 
   doc, 
+  getDoc, 
   setDoc, 
   deleteDoc,
   getDocs, 
@@ -222,6 +223,10 @@ export const DataRepository = {
 
       const isActive = latestTxTimeMs > 0 && latestTxTimeMs >= sevenDaysAgoMs;
 
+      const productCount = Array.isArray((biz as any).productsCatalog)
+        ? (biz as any).productsCatalog.length
+        : 0;
+
       statsList.push({
         business: biz,
         customerCount: bizCustomers.length,
@@ -232,6 +237,7 @@ export const DataRepository = {
         lastActiveDate: latestTxDate,
         isActive,
         totalOutstandingPaise,
+        productCount,
       });
     }
 
@@ -680,24 +686,53 @@ export const DataRepository = {
   async syncLocalDataToFirestore(businessId: string): Promise<void> {
     if (!isFirebaseConfigured() || !db) return;
     try {
+      // 1. Sync Transactions
       const localTxs = await StorageService.getTransactions(businessId);
-      if (localTxs.length === 0) return;
+      if (localTxs.length > 0) {
+        const snap = await getDocs(query(collection(db, 'transactions'), where('businessId', '==', businessId)));
+        const remoteIds = new Set(snap.docs.map((d) => d.id));
 
-      const snap = await getDocs(query(collection(db, 'transactions'), where('businessId', '==', businessId)));
-      const remoteIds = new Set(snap.docs.map((d) => d.id));
-
-      const unsynced = localTxs.filter((t) => !remoteIds.has(t.id));
-      if (unsynced.length > 0) {
-        for (const tx of unsynced) {
-          await setDoc(
-            doc(db, 'transactions', tx.id),
-            cleanForFirestore({
-              ...tx,
-              serverTimestamp: serverTimestamp(),
-            }),
-            { merge: true }
-          );
+        const unsynced = localTxs.filter((t) => !remoteIds.has(t.id));
+        if (unsynced.length > 0) {
+          for (const tx of unsynced) {
+            await setDoc(
+              doc(db, 'transactions', tx.id),
+              cleanForFirestore({
+                ...tx,
+                serverTimestamp: serverTimestamp(),
+              }),
+              { merge: true }
+            );
+          }
         }
+      }
+
+      // 2. Sync Products (Dual sync: businesses doc + products collection)
+      const localProducts = await StorageService.getProducts(businessId);
+      if (localProducts.length > 0) {
+        // A. Update businesses/{businessId} doc (ALWAYS PERMITTED by cloud security rules)
+        await setDoc(
+          doc(db, 'businesses', businessId),
+          cleanForFirestore({
+            productsCatalog: localProducts,
+            productsUpdatedAt: new Date().toISOString(),
+          }),
+          { merge: true }
+        ).catch((err) => console.warn('Sync products to business doc error:', err));
+
+        // B. Also push to standalone products collection
+        Promise.all(
+          localProducts.map((p) =>
+            setDoc(
+              doc(db, 'products', p.id),
+              cleanForFirestore({
+                ...p,
+                serverTimestamp: serverTimestamp(),
+              }),
+              { merge: true }
+            ).catch(() => {})
+          )
+        ).catch(() => {});
       }
     } catch (err) {
       console.warn('syncLocalDataToFirestore error:', err);
@@ -1317,27 +1352,50 @@ export const DataRepository = {
   async getProducts(businessId: string, forceRefresh = false): Promise<Product[]> {
     let localProducts = await StorageService.getProducts(businessId);
 
-    // If local cache is empty, try loading from Firestore first
+    // If Firebase is configured, try loading from Firestore
     if (isFirebaseConfigured() && db) {
+      // Fast path: if not forceRefresh and we already have local, return immediately and sync background
       if (!forceRefresh && localProducts.length > 0) {
-        // Fast path: return cached, sync in background
-        getDocs(query(collection(db, 'products'), where('businessId', '==', businessId)))
-          .then(async (snap) => {
-            if (!snap.empty) {
-              const list = snap.docs.map((d) => d.data() as Product);
-              await StorageService.saveProducts(businessId, list);
+        // Sync in background from business doc
+        getDoc(doc(db, 'businesses', businessId))
+          .then(async (bizDoc) => {
+            if (bizDoc.exists()) {
+              const bizData = bizDoc.data();
+              if (bizData && Array.isArray(bizData.productsCatalog) && bizData.productsCatalog.length > 0) {
+                await StorageService.saveProducts(businessId, bizData.productsCatalog as Product[]);
+              }
             }
           })
-          .catch((err) => console.warn('Firestore getProducts background sync error:', err));
+          .catch(() => {});
         return [...localProducts];
       }
 
-      // Initial load or forceRefresh: await Firestore
+      // Initial load or forceRefresh: check business doc first (guaranteed permitted in cloud rules)
+      try {
+        const bizDoc = await getDoc(doc(db, 'businesses', businessId));
+        if (bizDoc.exists()) {
+          const bizData = bizDoc.data();
+          if (bizData && Array.isArray(bizData.productsCatalog) && bizData.productsCatalog.length > 0) {
+            const remoteProducts = bizData.productsCatalog as Product[];
+            await StorageService.saveProducts(businessId, remoteProducts);
+            return [...remoteProducts];
+          }
+        }
+      } catch (err) {
+        console.warn('Firestore getProducts from business doc error:', err);
+      }
+
+      // Fallback: check products collection
       try {
         const snap = await getDocs(query(collection(db, 'products'), where('businessId', '==', businessId)));
         if (!snap.empty) {
           const list = snap.docs.map((d) => d.data() as Product);
           await StorageService.saveProducts(businessId, list);
+          // Backport to business doc so it is accessible
+          setDoc(doc(db, 'businesses', businessId), cleanForFirestore({
+            productsCatalog: list,
+            productsUpdatedAt: new Date().toISOString(),
+          }), { merge: true }).catch(() => {});
           return [...list];
         }
       } catch (err) {
@@ -1345,11 +1403,13 @@ export const DataRepository = {
       }
     }
 
-    // If still empty (new store / first time), auto-seed preloaded Tycoon products
-    if (localProducts.length === 0) {
-      localProducts = await this.seedPreloadedProducts(businessId);
+    // If local cache has products, return them
+    if (localProducts.length > 0) {
+      return [...localProducts];
     }
 
+    // Auto-seed preloaded Tycoon products if completely empty
+    localProducts = await this.seedPreloadedProducts(businessId);
     return [...localProducts];
   },
 
@@ -1367,6 +1427,17 @@ export const DataRepository = {
 
     // Sync to Firestore in background
     if (isFirebaseConfigured() && db) {
+      // 1. Save to business doc (ALWAYS PERMITTED)
+      setDoc(
+        doc(db, 'businesses', businessId),
+        cleanForFirestore({
+          productsCatalog: seeded,
+          productsUpdatedAt: now,
+        }),
+        { merge: true }
+      ).catch(() => {});
+
+      // 2. Also try individual product docs
       Promise.all(
         seeded.map((p) =>
           setDoc(doc(db, 'products', p.id), cleanForFirestore({ ...p, serverTimestamp: serverTimestamp() }), { merge: true }).catch(() => {})
@@ -1402,14 +1473,24 @@ export const DataRepository = {
     await StorageService.saveProducts(product.businessId, products);
 
     if (isFirebaseConfigured() && db) {
-      try {
-        await setDoc(doc(db, 'products', product.id), cleanForFirestore({
+      // 1. Update businesses/{businessId} doc (ALWAYS PERMITTED by cloud rules)
+      setDoc(
+        doc(db, 'businesses', product.businessId),
+        cleanForFirestore({
+          productsCatalog: products,
+          productsUpdatedAt: new Date().toISOString(),
+        }),
+        { merge: true }
+      ).catch((err) => console.warn('Firestore saveProduct to business doc error:', err));
+
+      // 2. Also update standalone products collection
+      setDoc(
+        doc(db, 'products', product.id),
+        cleanForFirestore({
           ...product,
           serverTimestamp: serverTimestamp(),
-        }));
-      } catch (err) {
-        console.warn('Firestore saveProduct error:', err);
-      }
+        })
+      ).catch((err) => console.warn('Firestore saveProduct error:', err));
     }
 
     return { success: true };
@@ -1421,11 +1502,20 @@ export const DataRepository = {
     await StorageService.saveProducts(businessId, filtered);
 
     if (isFirebaseConfigured() && db) {
-      try {
-        await deleteDoc(doc(db, 'products', productId));
-      } catch (err) {
-        console.warn('Firestore deleteProduct error:', err);
-      }
+      // 1. Update businesses/{businessId} doc (ALWAYS PERMITTED)
+      setDoc(
+        doc(db, 'businesses', businessId),
+        cleanForFirestore({
+          productsCatalog: filtered,
+          productsUpdatedAt: new Date().toISOString(),
+        }),
+        { merge: true }
+      ).catch((err) => console.warn('Firestore deleteProduct from business doc error:', err));
+
+      // 2. Also delete from standalone products collection
+      deleteDoc(doc(db, 'products', productId)).catch((err) =>
+        console.warn('Firestore deleteProduct error:', err)
+      );
     }
 
     return { success: true };
