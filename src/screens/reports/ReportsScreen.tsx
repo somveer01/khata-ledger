@@ -15,8 +15,8 @@ import { Button } from '../../components/Button';
 import { Colors, Spacing, Typography, BorderRadius } from '../../constants/theme';
 import { useApp } from '../../context/AppContext';
 import { t } from '../../i18n';
-import { formatCurrency } from '../../utils/money';
-import { getTodayIST, formatUpperDate } from '../../utils/date';
+import { formatCurrency, toRupees } from '../../utils/money';
+import { getTodayIST, formatUpperDate, formatDisplayDate } from '../../utils/date';
 import { DataRepository } from '../../services/db';
 import { PdfService } from '../../services/pdfService';
 import { ReminderService } from '../../services/reminderService';
@@ -300,6 +300,108 @@ export const ReportsScreen: React.FC = () => {
     } finally {
       setTimeout(() => setExportingDateRange(false), 700);
     }
+  };
+
+  const handleShareTxWhatsApp = async (tx: Transaction) => {
+    if (!business) return;
+    const cust = customerMap.get(tx.customerId);
+    if (!cust) return;
+    if (!cust.mobile) {
+      Alert.alert(
+        t('error', language),
+        language === 'hi' ? 'इस ग्राहक का मोबाइल नंबर उपलब्ध नहीं है!' : 'Customer mobile number not available!'
+      );
+      return;
+    }
+    const isSale = tx.type === 'CREDIT_SALE';
+    const typeText = isSale
+      ? (language === 'hi' ? 'उधार बिक्री' : 'Credit Sale')
+      : (language === 'hi' ? 'जमा भुगतान' : 'Payment Received');
+    const amountStr = formatCurrency(tx.amountPaise);
+    const balanceStr = formatCurrency(cust.currentBalancePaise || 0);
+
+    const message =
+      language === 'hi'
+        ? `*${business.name}* 🏪\n` +
+          `*लेनदेन विवरण (${typeText})*\n\n` +
+          `दिनांक: ${formatDisplayDate(tx.date)}\n` +
+          `ग्राहक: *${cust.name}*\n` +
+          (cust.villageName ? `गाँव: *${cust.villageName}*\n` : '') +
+          `सामान/विवरण: *${tx.description || '-'}*\n` +
+          (tx.quantity ? `मात्रा: ${tx.quantity} ${tx.unit || ''} @ ₹${toRupees(tx.ratePaise || 0)}\n` : '') +
+          `रकम: *${amountStr}*\n` +
+          `═════════════════════\n` +
+          `*वर्तमान कुल बकाया: ${balanceStr}*\n` +
+          (business.upiId ? `\n💳 UPI भुगतान लिंक: ${business.upiId}\n` : '') +
+          `\nसंपर्क: ${business.phone}\nधन्यवाद!`
+        : `*${business.name}* 🏪\n` +
+          `*Transaction Receipt (${typeText})*\n\n` +
+          `Date: ${formatDisplayDate(tx.date)}\n` +
+          `Customer: *${cust.name}*\n` +
+          (cust.villageName ? `Village: *${cust.villageName}*\n` : '') +
+          `Particulars: *${tx.description || '-'}*\n` +
+          (tx.quantity ? `Qty: ${tx.quantity} ${tx.unit || ''} @ ₹${toRupees(tx.ratePaise || 0)}\n` : '') +
+          `Amount: *${amountStr}*\n` +
+          `═════════════════════\n` +
+          `*Current Outstanding Balance: ${balanceStr}*\n` +
+          (business.upiId ? `\n💳 Pay via UPI: ${business.upiId}\n` : '') +
+          `\nContact: ${business.phone}\nThank you!`;
+
+    await ReminderService.sendViaWhatsApp(cust.mobile, message);
+  };
+
+  const handleShareDateRangeWhatsApp = async () => {
+    if (!business) return;
+
+    const totalOpeningBalancePaise = customers.reduce(
+      (sum, c) => sum + (c.openingBalancePaise || 0),
+      0
+    );
+
+    const netTxsBeforeDatePaise = transactions
+      .filter((tx) => !tx.isReversed && tx.date.substring(0, 10) < fromDate)
+      .reduce((sum, tx) => {
+        if (tx.type === 'CREDIT_SALE') return sum + tx.amountPaise;
+        if (tx.type === 'PAYMENT') return sum - tx.amountPaise;
+        return sum;
+      }, 0);
+
+    const previousBalancePaise = Math.max(0, totalOpeningBalancePaise + netTxsBeforeDatePaise);
+    const finalClosingDuePaise = previousBalancePaise + (periodStats.creditTotal - periodStats.paymentTotal);
+
+    const periodStr =
+      fromDate === toDate
+        ? formatUpperDate(fromDate)
+        : `${formatUpperDate(fromDate)} से ${formatUpperDate(toDate)}`;
+
+    const message =
+      language === 'hi'
+        ? `*${business.name}* 🏪\n` +
+          `*वित्तीय लेनदेन सारांश रिपोर्ट*\n\n` +
+          `📅 अवधि: ${periodStr}\n` +
+          `─────────────────────\n` +
+          `1. पिछला बकाया: *${formatCurrency(previousBalancePaise)}*\n` +
+          `2. कुल नया उधार (+): *+ ${formatCurrency(periodStats.creditTotal)}*\n` +
+          `3. कुल प्राप्त जमा (-): *- ${formatCurrency(periodStats.paymentTotal)}*\n` +
+          `═════════════════════\n` +
+          `*कुल अंतिम बाकी: ${formatCurrency(finalClosingDuePaise)}*\n` +
+          `📝 कुल प्रविष्टियाँ: ${periodStats.txCount}\n` +
+          (business.upiId ? `\n💳 UPI भुगतान: ${business.upiId}\n` : '') +
+          `\nसंपर्क: ${business.phone}\nडिजिटल खाता बही • धन्यवाद!`
+        : `*${business.name}* 🏪\n` +
+          `*Financial Statement Summary*\n\n` +
+          `📅 Period: ${periodStr}\n` +
+          `─────────────────────\n` +
+          `1. Previous Due: *${formatCurrency(previousBalancePaise)}*\n` +
+          `2. Total New Udhaar (+): *+ ${formatCurrency(periodStats.creditTotal)}*\n` +
+          `3. Total Received Jama (-): *- ${formatCurrency(periodStats.paymentTotal)}*\n` +
+          `═════════════════════\n` +
+          `*Net Closing Due: ${formatCurrency(finalClosingDuePaise)}*\n` +
+          `📝 Total Entries: ${periodStats.txCount}\n` +
+          (business.upiId ? `\n💳 UPI Payment: ${business.upiId}\n` : '') +
+          `\nContact: ${business.phone}\nThank you!`;
+
+    await ReminderService.shareGeneral(message);
   };
 
   // Date Preset Handlers
@@ -748,22 +850,36 @@ export const ReportsScreen: React.FC = () => {
             {/* Period Summary Card */}
             <Card style={styles.periodSummaryCard}>
               <View style={styles.periodSummaryHeader}>
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 1, marginRight: 8 }}>
                   <Text style={styles.periodHeading}>
                     {dateRangeHeading}
                   </Text>
                 </View>
 
-                {/* PDF Export button */}
-                <Button
-                  title={t('pdfShareBtn', language)}
-                  onPress={handleExportDateRangePdf}
-                  loading={exportingDateRange}
-                  size="sm"
-                  variant="outline"
-                  icon={<Ionicons name="share-outline" size={14} color={Colors.primaryForeground} />}
-                  style={styles.pdfPeriodBtn}
-                />
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  {/* WhatsApp Summary Share Button */}
+                  <TouchableOpacity
+                    style={styles.whatsAppSummaryBtn}
+                    onPress={handleShareDateRangeWhatsApp}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="logo-whatsapp" size={15} color="#FFFFFF" />
+                    <Text style={styles.whatsAppSummaryBtnText}>
+                      WhatsApp
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* PDF Export button */}
+                  <Button
+                    title={t('pdfShareBtn', language)}
+                    onPress={handleExportDateRangePdf}
+                    loading={exportingDateRange}
+                    size="sm"
+                    variant="outline"
+                    icon={<Ionicons name="document-text-outline" size={14} color={Colors.primaryForeground} />}
+                    style={styles.pdfPeriodBtn}
+                  />
+                </View>
               </View>
 
               <View style={styles.statsRow}>
@@ -836,7 +952,7 @@ export const ReportsScreen: React.FC = () => {
                           {tx.description} {cust?.villageName ? `• ${cust.villageName}` : ''}
                         </Text>
                       </View>
-                      <View style={{ alignItems: 'flex-end' }}>
+                      <View style={{ alignItems: 'flex-end', marginRight: cust?.mobile ? 6 : 0 }}>
                         <Text style={[styles.txAmount, { color: isSale ? Colors.creditSale : Colors.paymentReceived }]}>
                           {isSale ? '+' : '-'} {formatCurrency(tx.amountPaise)}
                         </Text>
@@ -844,6 +960,18 @@ export const ReportsScreen: React.FC = () => {
                           {isSale ? (language === 'hi' ? 'उधार' : 'Credit') : (language === 'hi' ? 'जमा' : 'Jama')}
                         </Text>
                       </View>
+
+                      {/* Quick WhatsApp Share Button directly to this Client */}
+                      {cust?.mobile ? (
+                        <TouchableOpacity
+                          style={styles.txWhatsAppBtn}
+                          activeOpacity={0.7}
+                          onPress={() => handleShareTxWhatsApp(tx)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Ionicons name="logo-whatsapp" size={18} color="#16A34A" />
+                        </TouchableOpacity>
+                      ) : null}
                     </TouchableOpacity>
                   );
                 })
@@ -1617,6 +1745,30 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.textSecondary,
     textTransform: 'uppercase',
+  },
+  whatsAppSummaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#16A34A',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.md,
+    justifyContent: 'center',
+  },
+  whatsAppSummaryBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  txWhatsAppBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#DCFCE7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 6,
   },
   emptyPeriodBox: {
     paddingVertical: Spacing.xl,
