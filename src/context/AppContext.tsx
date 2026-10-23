@@ -5,7 +5,7 @@ import { DataRepository } from '../services/db';
 import { isFirebaseConfigured } from '../services/firebase';
 import { AuthService } from '../services/auth';
 import { AuthModal } from '../components/AuthModal';
-import { isSuperAdmin as checkIsSuperAdmin } from '../utils/tenant';
+import { isSuperAdmin as checkIsSuperAdmin, getBusinessIdFromEmail } from '../utils/tenant';
 
 interface AppContextType {
   business: Business | null;
@@ -81,22 +81,29 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const init = async () => {
     try {
-      const savedLang = await StorageService.getLanguage();
+      // 1. FAST PATH: Restore cached business and language instantly (0ms)
+      const [savedLang, cachedCurBiz] = await Promise.all([
+        StorageService.getLanguage(),
+        StorageService.getCurrentBusiness(),
+      ]);
       setLang(savedLang);
+      if (cachedCurBiz) {
+        setBusiness(cachedCurBiz);
+      }
 
-      // Initialize auth state
+      // 2. Initialize auth state
       const authState = await AuthService.initAuth();
       setUser(authState.user);
       setIsGuestState(authState.isGuest);
 
-      let currentBiz: Business | null = null;
+      let currentBiz: Business | null = cachedCurBiz;
       if (authState.user && !authState.isGuest && authState.user.email) {
         currentBiz = await DataRepository.getOrCreateBusinessForUser(authState.user);
         if (checkIsSuperAdmin(authState.user.email)) {
           DataRepository.getAllBusinesses().then(setAvailableBusinesses).catch(() => {});
         }
-      } else {
-        // Guest mode
+      } else if (!cachedCurBiz) {
+        // Guest mode fallback
         currentBiz = await StorageService.getBusiness('biz_guest');
         if (!currentBiz) {
           currentBiz = {
@@ -112,10 +119,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      setBusiness(currentBiz);
-      DataRepository.syncLocalDataToFirestore(currentBiz.id).catch(() => {});
-      const count = await StorageService.getPendingSyncCount(currentBiz.id);
-      setPendingSyncCount(count);
+      if (currentBiz) {
+        setBusiness(currentBiz);
+        await StorageService.setCurrentBusiness(currentBiz);
+        DataRepository.syncLocalDataToFirestore(currentBiz.id).catch(() => {});
+        StorageService.getPendingSyncCount(currentBiz.id).then(setPendingSyncCount).catch(() => {});
+      }
     } catch (err) {
       console.error('AppProvider init error:', err);
     }
@@ -156,12 +165,22 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const clearData = async () => {
-    if (business) {
-      setIsSyncing(true);
-      await DataRepository.clearAllData(business.id);
-      await refreshAllData();
-      setIsSyncing(false);
+    if (!business) return;
+    if (!user?.email) {
+      throw new Error(language === 'hi' ? 'कृपया पहले लॉगिन करें।' : 'Please log in first.');
     }
+    const ownBizId = getBusinessIdFromEmail(user.email);
+    if (business.id !== ownBizId) {
+      throw new Error(
+        language === 'hi'
+          ? 'सुरक्षा प्रतिबंध: आप केवल अपने ही स्टोर का डेटा मिटा सकते हैं! अन्य यूज़र का डेटा सुरक्षित है।'
+          : 'Security restriction: You can only clear data for your own store!'
+      );
+    }
+    setIsSyncing(true);
+    await DataRepository.clearAllData(business.id, user.email);
+    await refreshAllData();
+    setIsSyncing(false);
   };
 
   // Auth Operations with Tenant Scoping

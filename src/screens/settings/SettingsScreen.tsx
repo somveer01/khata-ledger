@@ -24,6 +24,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { confirmAction, showAlert } from '../../utils/dialog';
 import { StoreSwitcherModal } from '../../components/StoreSwitcherModal';
 import { MpinSetupModal } from '../../components/MpinSetupModal';
+import { getBusinessIdFromEmail } from '../../utils/tenant';
 
 let deferredInstallPrompt: any = null;
 
@@ -118,7 +119,20 @@ export const SettingsScreen: React.FC = () => {
     showAlert(t('success', language), t('businessSavedSuccess', language), undefined, 'success');
   };
 
+  const isViewingOtherStore = !!user?.email && !!business?.id && business.id !== getBusinessIdFromEmail(user.email);
+
   const handleSeedReferenceData = () => {
+    if (isViewingOtherStore) {
+      showAlert(
+        t('error', language),
+        language === 'hi'
+          ? 'सुरक्षा प्रतिबंध: आप केवल अपने ही स्टोर में सैंपल डेटा लोड कर सकते हैं।'
+          : 'Security restriction: You can only seed sample data in your own store.',
+        undefined,
+        'danger'
+      );
+      return;
+    }
     confirmAction(
       t('seedSampleDataConfirmTitle', language),
       t('seedSampleDataConfirmDesc', language),
@@ -137,6 +151,17 @@ export const SettingsScreen: React.FC = () => {
   };
 
   const handleClearAll = () => {
+    if (isViewingOtherStore) {
+      showAlert(
+        t('error', language),
+        language === 'hi'
+          ? 'सुरक्षा प्रतिबंध: आप केवल अपने ही स्टोर का डेटा मिटा सकते हैं! अन्य यूज़र का डेटा सुरक्षित है।'
+          : 'Security restriction: You can only clear data for your own store! Other stores are protected.',
+        undefined,
+        'danger'
+      );
+      return;
+    }
     confirmAction(
       t('clearAllDataConfirmTitle', language),
       t('clearAllDataConfirmDesc', language),
@@ -623,6 +648,23 @@ export const SettingsScreen: React.FC = () => {
         <Card>
           <Text style={styles.sectionTitle}>{t('dataControls', language)}</Text>
 
+          {isViewingOtherStore ? (
+            <View style={styles.protectedStoreBox}>
+              <Ionicons name="shield-checkmark" size={24} color={Colors.primary} />
+              <View style={{ flex: 1, marginLeft: Spacing.sm }}>
+                <Text style={styles.protectedStoreTitle}>
+                  {language === 'hi' ? 'स्टोर सुरक्षा सक्रिय (अन्य स्टोर)' : 'Store Protection Active'}
+                </Text>
+                <Text style={styles.protectedStoreDesc}>
+                  {language === 'hi'
+                    ? `आप वर्तमान में "${business?.name || 'अन्य स्टोर'}" को देख रहे हैं। सुरक्षा कारणों से किसी अन्य स्टोर का डेटा मिटाना या सैंपल डेटा लोड करना पूरी तरह प्रतिबंधित है।`
+                    : `You are viewing "${business?.name || 'another store'}". Resetting or seeding data for another store is strictly blocked.`}
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <>
+
           <Button
             title={t('seedSampleData', language)}
             onPress={handleSeedReferenceData}
@@ -639,6 +681,8 @@ export const SettingsScreen: React.FC = () => {
             size="md"
             icon={<Ionicons name="trash-outline" size={18} color={Colors.textInverse} />}
           />
+          </>
+        )}
         </Card>
 
         {/* App Installation & Updates Card */}
@@ -1016,6 +1060,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     color: Colors.textSecondary,
+  },
+  protectedStoreBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+  },
+  protectedStoreTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1E3A8A',
+    marginBottom: 4,
+  },
+  protectedStoreDesc: {
+    fontSize: 12,
+    color: '#3B82F6',
+    lineHeight: 18,
   },
   timeoutChipTextSelected: {
     color: Colors.primary,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -39,9 +39,13 @@ export const DashboardScreen: React.FC = () => {
   const [recentTx, setRecentTx] = useState<Transaction[]>([]);
   const [topDueCustomers, setTopDueCustomers] = useState<Customer[]>([]);
   const [allCustomers, setAllCustomers] = useState<Customer[]>([]);
+  const lastLoadedRef = useRef<{ bizId: string; version: number }>({ bizId: '', version: -1 });
 
   const loadData = useCallback(async (force = false) => {
     if (!business) return;
+    if (!force && lastLoadedRef.current.bizId === business.id && lastLoadedRef.current.version === dataVersion) {
+      return;
+    }
     const [custs, txs, villages] = await Promise.all([
       DataRepository.getCustomers(business.id, force),
       DataRepository.getTransactions(business.id, undefined, force),
@@ -59,7 +63,8 @@ export const DashboardScreen: React.FC = () => {
       .filter((c) => (c.currentBalancePaise || 0) > 0)
       .sort((a, b) => (b.currentBalancePaise || 0) - (a.currentBalancePaise || 0));
     setTopDueCustomers(withDues.slice(0, 4));
-  }, [business]);
+    lastLoadedRef.current = { bizId: business.id, version: dataVersion };
+  }, [business, dataVersion]);
 
   useEffect(() => {
     loadData();
@@ -72,6 +77,7 @@ export const DashboardScreen: React.FC = () => {
   );
 
   const onRefresh = async () => {
+    lastLoadedRef.current = { bizId: '', version: -1 };
     setRefreshing(true);
     await refreshAllData();
     await loadData(true);

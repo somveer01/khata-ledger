@@ -350,50 +350,38 @@ export const DataRepository = {
     }
 
     if (isFirebaseConfigured() && db) {
-      if (!forceRefresh && localVillages.length > 0) {
-        // Fast path: return cached data immediately and sync in background
-        getDocs(query(collection(db, 'villages'), where('businessId', '==', businessId)))
-          .then(async (snap) => {
-            if (!snap.empty) {
-              const list = snap.docs.map((d) => d.data() as Village);
+      const syncVillagesTask = async () => {
+        try {
+          const snap = await getDocs(query(collection(db, 'villages'), where('businessId', '==', businessId)));
+          if (!snap.empty) {
+            const list = snap.docs.map((d) => d.data() as Village);
+            await StorageService.saveVillages(businessId, list);
+            return list;
+          } else if (businessId === LEGACY_BUSINESS_TENANT_ID) {
+            const legSnap = await getDocs(query(collection(db, 'villages'), where('businessId', '==', LEGACY_BUSINESS_ID)));
+            if (!legSnap.empty) {
+              const list = legSnap.docs.map((d) => ({ ...d.data(), businessId } as Village));
               await StorageService.saveVillages(businessId, list);
-            } else if (businessId === LEGACY_BUSINESS_TENANT_ID) {
-              // Legacy migration check in background
-              const legSnap = await getDocs(query(collection(db, 'villages'), where('businessId', '==', LEGACY_BUSINESS_ID)));
-              if (!legSnap.empty) {
-                const list = legSnap.docs.map((d) => ({ ...d.data(), businessId } as Village));
-                await StorageService.saveVillages(businessId, list);
-                list.forEach((v) => {
-                  setDoc(doc(db, 'villages', v.id), { ...v, serverTimestamp: serverTimestamp() }, { merge: true }).catch(() => {});
-                });
-              }
+              list.forEach((v) => {
+                setDoc(doc(db, 'villages', v.id), { ...v, serverTimestamp: serverTimestamp() }, { merge: true }).catch(() => {});
+              });
+              return list;
             }
-          })
-          .catch((err) => console.warn('Firestore getVillages background sync error:', err));
+          }
+        } catch (err) {
+          console.warn('Firestore getVillages error:', err);
+        }
+        return localVillages;
+      };
+
+      if (!forceRefresh) {
+        // FAST 0ms PATH: Return local cache immediately, sync in background
+        syncVillagesTask().catch(() => {});
         return [...localVillages];
       }
 
-      // Initial load when cache is empty or forceRefresh: await Firestore
-      try {
-        const snap = await getDocs(query(collection(db, 'villages'), where('businessId', '==', businessId)));
-        if (!snap.empty) {
-          const list = snap.docs.map((d) => d.data() as Village);
-          await StorageService.saveVillages(businessId, list);
-          return [...list];
-        } else if (businessId === LEGACY_BUSINESS_TENANT_ID) {
-          const legSnap = await getDocs(query(collection(db, 'villages'), where('businessId', '==', LEGACY_BUSINESS_ID)));
-          if (!legSnap.empty) {
-            const list = legSnap.docs.map((d) => ({ ...d.data(), businessId } as Village));
-            await StorageService.saveVillages(businessId, list);
-            list.forEach((v) => {
-              setDoc(doc(db, 'villages', v.id), { ...v, serverTimestamp: serverTimestamp() }, { merge: true }).catch(() => {});
-            });
-            return [...list];
-          }
-        }
-      } catch (err) {
-        console.warn('Firestore getVillages error, using local:', err);
-      }
+      // Explicit pull-to-refresh: await Firestore
+      return await syncVillagesTask();
     }
     return [...localVillages];
   },
@@ -512,68 +500,48 @@ export const DataRepository = {
     }
 
     if (isFirebaseConfigured() && db) {
-      if (!forceRefresh && localCustomers.length > 0) {
-        // Fast path: return cached customers immediately and sync in background
-        getDocs(query(collection(db, 'customers'), where('businessId', '==', businessId)))
-          .then(async (snap) => {
-            if (!snap.empty) {
-              const list = snap.docs.map((d) => d.data() as Customer);
-              // Safely merge based on updatedAt to prevent stale overwrites
-              const mergedMap = new Map<string, Customer>();
-              localCustomers.forEach((c) => mergedMap.set(c.id, c));
-              list.forEach((c) => {
-                const existing = mergedMap.get(c.id);
-                if (!existing || new Date(c.updatedAt).getTime() > new Date(existing.updatedAt).getTime()) {
-                  mergedMap.set(c.id, c);
-                }
-              });
-              await StorageService.saveCustomers(businessId, Array.from(mergedMap.values()));
-            } else if (businessId === LEGACY_BUSINESS_TENANT_ID) {
-              // Legacy migration check in background
-              const legSnap = await getDocs(query(collection(db, 'customers'), where('businessId', '==', LEGACY_BUSINESS_ID)));
-              if (!legSnap.empty) {
-                const list = legSnap.docs.map((d) => ({ ...d.data(), businessId } as Customer));
-                await StorageService.saveCustomers(businessId, list);
-                list.forEach((c) => {
-                  setDoc(doc(db, 'customers', c.id), { ...c, serverTimestamp: serverTimestamp() }, { merge: true }).catch(() => {});
-                });
+      const syncCustomersTask = async () => {
+        try {
+          const snap = await getDocs(query(collection(db, 'customers'), where('businessId', '==', businessId)));
+          if (!snap.empty) {
+            const list = snap.docs.map((d) => d.data() as Customer);
+            const currentLocal = await StorageService.getCustomers(businessId);
+            const mergedMap = new Map<string, Customer>();
+            currentLocal.forEach((c) => mergedMap.set(c.id, c));
+            list.forEach((c) => {
+              const existing = mergedMap.get(c.id);
+              if (!existing || new Date(c.updatedAt).getTime() >= new Date(existing.updatedAt).getTime()) {
+                mergedMap.set(c.id, c);
               }
+            });
+            const mergedList = Array.from(mergedMap.values());
+            await StorageService.saveCustomers(businessId, mergedList);
+            return mergedList;
+          } else if (businessId === LEGACY_BUSINESS_TENANT_ID) {
+            const legSnap = await getDocs(query(collection(db, 'customers'), where('businessId', '==', LEGACY_BUSINESS_ID)));
+            if (!legSnap.empty) {
+              const list = legSnap.docs.map((d) => ({ ...d.data(), businessId } as Customer));
+              await StorageService.saveCustomers(businessId, list);
+              list.forEach((c) => {
+                setDoc(doc(db, 'customers', c.id), { ...c, serverTimestamp: serverTimestamp() }, { merge: true }).catch(() => {});
+              });
+              return list;
             }
-          })
-          .catch((err) => console.warn('Firestore getCustomers background sync error:', err));
-        return [...localCustomers]; // Clone to ensure React re-renders on mutation
+          }
+        } catch (err) {
+          console.warn('Firestore getCustomers error:', err);
+        }
+        return localCustomers;
+      };
+
+      if (!forceRefresh) {
+        // FAST 0ms PATH: Return local cache immediately, sync in background
+        syncCustomersTask().catch(() => {});
+        return [...localCustomers];
       }
 
-      // Initial load when cache is empty or forceRefresh: await Firestore
-      try {
-        const snap = await getDocs(query(collection(db, 'customers'), where('businessId', '==', businessId)));
-        if (!snap.empty) {
-          const list = snap.docs.map((d) => d.data() as Customer);
-          const mergedMap = new Map<string, Customer>();
-          localCustomers.forEach((c) => mergedMap.set(c.id, c));
-          list.forEach((c) => {
-            const existing = mergedMap.get(c.id);
-            if (!existing || new Date(c.updatedAt).getTime() >= new Date(existing.updatedAt).getTime()) {
-              mergedMap.set(c.id, c);
-            }
-          });
-          const mergedList = Array.from(mergedMap.values());
-          await StorageService.saveCustomers(businessId, mergedList);
-          return [...mergedList];
-        } else if (businessId === LEGACY_BUSINESS_TENANT_ID) {
-          const legSnap = await getDocs(query(collection(db, 'customers'), where('businessId', '==', LEGACY_BUSINESS_ID)));
-          if (!legSnap.empty) {
-            const list = legSnap.docs.map((d) => ({ ...d.data(), businessId } as Customer));
-            await StorageService.saveCustomers(businessId, list);
-            list.forEach((c) => {
-              setDoc(doc(db, 'customers', c.id), { ...c, serverTimestamp: serverTimestamp() }, { merge: true }).catch(() => {});
-            });
-            return [...list];
-          }
-        }
-      } catch (err) {
-        console.warn('Firestore getCustomers error, using local:', err);
-      }
+      // Explicit pull-to-refresh: await Firestore
+      return await syncCustomersTask();
     }
     return [...localCustomers];
   },
@@ -747,82 +715,55 @@ export const DataRepository = {
         q = query(collection(db, 'transactions'), where('businessId', '==', businessId), where('customerId', '==', customerId));
       }
 
-      if (!forceRefresh && localTx.length > 0) {
-        // Fast path: return cached transactions immediately and sync in background
-        getDocs(q)
-          .then(async (snap) => {
-            const allLocal = await StorageService.getTransactions(businessId);
-            const remoteIds = new Set(snap.docs.map((d) => d.id));
+      const syncTransactionsTask = async () => {
+        try {
+          const snap = await getDocs(q);
+          const allLocal = await StorageService.getTransactions(businessId);
+          const remoteIds = new Set(snap.docs.map((d) => d.id));
 
-            // Auto-sync any local transactions not yet in Firestore
-            const unsynced = allLocal.filter((t) => !remoteIds.has(t.id));
-            if (unsynced.length > 0) {
-              for (const tx of unsynced) {
-                setDoc(
-                  doc(db, 'transactions', tx.id),
-                  cleanForFirestore({
-                    ...tx,
-                    serverTimestamp: serverTimestamp(),
-                  }),
-                  { merge: true }
-                ).catch(() => {});
-              }
+          // Auto-sync any local transactions not yet in Firestore
+          const unsynced = allLocal.filter((t) => !remoteIds.has(t.id));
+          if (unsynced.length > 0) {
+            for (const tx of unsynced) {
+              setDoc(
+                doc(db, 'transactions', tx.id),
+                cleanForFirestore({
+                  ...tx,
+                  serverTimestamp: serverTimestamp(),
+                }),
+                { merge: true }
+              ).catch(() => {});
             }
-
-            if (!snap.empty) {
-              const list = snap.docs.map((d) => d.data() as Transaction);
-              const mergedMap = new Map<string, Transaction>();
-              allLocal.forEach((t) => mergedMap.set(t.id, t));
-              list.forEach((t) => {
-                mergedMap.set(t.id, t); 
-              });
-              await StorageService.saveTransactions(businessId, Array.from(mergedMap.values()));
-            }
-          })
-          .catch((err) => console.warn('Firestore getTransactions background sync error:', err));
-
-        if (customerId) {
-          return localTx.filter((t) => t.customerId === customerId); // filter creates a new array
-        }
-        return [...localTx]; // clone
-      }
-
-      // Initial load when cache is empty or forceRefresh: await Firestore
-      try {
-        const snap = await getDocs(q);
-        const allLocal = await StorageService.getTransactions(businessId);
-        const remoteIds = new Set(snap.docs.map((d) => d.id));
-
-        // Auto-sync any local transactions not yet in Firestore
-        const unsynced = allLocal.filter((t) => !remoteIds.has(t.id));
-        if (unsynced.length > 0) {
-          for (const tx of unsynced) {
-            await setDoc(
-              doc(db, 'transactions', tx.id),
-              cleanForFirestore({
-                ...tx,
-                serverTimestamp: serverTimestamp(),
-              }),
-              { merge: true }
-            ).catch(() => {});
           }
-        }
 
-        const list = snap.docs.map((d) => d.data() as Transaction);
-        const mergedMap = new Map<string, Transaction>();
-        allLocal.forEach((t) => mergedMap.set(t.id, t));
-        list.forEach((t) => {
-          mergedMap.set(t.id, t);
-        });
-        const mergedList = Array.from(mergedMap.values());
-        await StorageService.saveTransactions(businessId, mergedList);
-        if (customerId) {
-          return mergedList.filter((t) => t.customerId === customerId); // filter creates a new array
+          if (!snap.empty) {
+            const list = snap.docs.map((d) => d.data() as Transaction);
+            const mergedMap = new Map<string, Transaction>();
+            allLocal.forEach((t) => mergedMap.set(t.id, t));
+            list.forEach((t) => {
+              mergedMap.set(t.id, t);
+            });
+            const mergedList = Array.from(mergedMap.values());
+            await StorageService.saveTransactions(businessId, mergedList);
+            return customerId ? mergedList.filter((t) => t.customerId === customerId) : mergedList;
+          }
+        } catch (err) {
+          console.warn('Firestore getTransactions error:', err);
         }
-        return [...mergedList]; // clone
-      } catch (err) {
-        console.warn('Firestore getTransactions error, using local:', err);
+        return customerId ? localTx.filter((t) => t.customerId === customerId) : localTx;
+      };
+
+      if (!forceRefresh) {
+        // FAST 0ms PATH: Return local cache immediately, sync in background
+        syncTransactionsTask().catch(() => {});
+        if (customerId) {
+          return localTx.filter((t) => t.customerId === customerId);
+        }
+        return [...localTx];
       }
+
+      // Explicit pull-to-refresh: await Firestore
+      return await syncTransactionsTask();
     }
 
     if (customerId) {
@@ -1524,16 +1465,32 @@ export const DataRepository = {
   // -------------------------------------------------------------
   // CLEAR ALL DATA (Reset)
   // -------------------------------------------------------------
-  async clearAllData(businessId: string): Promise<void> {
-    // 1. Clear local storage, auth users, and memory cache
+  async clearAllData(businessId: string, requestingUserEmail?: string | null): Promise<void> {
+    if (!businessId) {
+      throw new Error('businessId is required to clear data.');
+    }
+
+    // LAYER 1: Hard Protection for Sukhveer / Legacy Master Store (NEVER allow wiping)
+    if (businessId === LEGACY_BUSINESS_ID || businessId === LEGACY_BUSINESS_TENANT_ID) {
+      throw new Error('सुरक्षा प्रतिबंध: मुख्य/सुरक्षित स्टोर (Kushi kersi seva kendar) का डेटा मिटाना सख्त मना है!');
+    }
+
+    // LAYER 2: Strict Tenant Ownership Check
+    if (requestingUserEmail) {
+      const ownBizId = getBusinessIdFromEmail(requestingUserEmail);
+      if (businessId !== ownBizId) {
+        throw new Error('सुरक्षा प्रतिबंध: आप केवल अपने ही स्टोर का डेटा मिटा सकते हैं! अन्य यूज़र का डेटा सुरक्षित है।');
+      }
+    }
+
+    // 1. Clear local storage and memory cache ONLY for this businessId
     await StorageService.clearBusinessData(businessId);
     await StorageService.saveCustomers(businessId, []);
     await StorageService.saveVillages(businessId, []);
     await StorageService.saveTransactions(businessId, []);
     await StorageService.saveProducts(businessId, []);
-    await StorageService.clearAllLocalAuthAndUsers();
 
-    // 2. If Firebase is active, delete records from Firestore
+    // 2. If Firebase is active, delete records from Firestore strictly matching this businessId
     if (isFirebaseConfigured() && db) {
       try {
         const collections = ['customers', 'villages', 'transactions', 'products'];

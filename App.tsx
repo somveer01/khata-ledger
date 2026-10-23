@@ -8,6 +8,7 @@ import { SecurityProvider, useSecurity } from './src/context/SecurityContext';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { CustomDialogModal } from './src/components/CustomDialogModal';
 import { MpinLockScreen } from './src/components/MpinLockScreen';
+import { ErrorBoundary } from './src/components/ErrorBoundary';
 
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
   const existing = document.getElementById('khata-web-input-focus-fix');
@@ -67,7 +68,9 @@ export default function App() {
     <SafeAreaProvider>
       <AppProvider>
         <SecurityProvider>
-          <AppContent />
+          <ErrorBoundary>
+            <AppContent />
+          </ErrorBoundary>
         </SecurityProvider>
       </AppProvider>
     </SafeAreaProvider>
