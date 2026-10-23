@@ -18,6 +18,7 @@ interface InputProps extends TextInputProps {
   suffix?: string;
   rightElement?: React.ReactNode;
   containerStyle?: StyleProp<ViewStyle>;
+  inputWrapperStyle?: StyleProp<ViewStyle>;
   helperText?: string;
 }
 
@@ -28,6 +29,7 @@ export const Input: React.FC<InputProps> = ({
   suffix,
   rightElement,
   containerStyle,
+  inputWrapperStyle,
   helperText,
   style,
   onFocus,
@@ -42,6 +44,7 @@ export const Input: React.FC<InputProps> = ({
       <View
         style={[
           styles.inputWrapper,
+          inputWrapperStyle,
           isFocused ? styles.inputFocused : null,
           error ? styles.inputError : null,
         ]}
@@ -94,6 +97,7 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     backgroundColor: Colors.surface,
     paddingHorizontal: Spacing.md,
+    minHeight: 48,
   },
   inputFocused: {
     borderColor: Colors.primary,
@@ -115,9 +119,10 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    height: 48,
+    minHeight: 46,
     fontSize: 15,
     color: Colors.textPrimary,
+    paddingVertical: Platform.OS === 'android' ? 6 : 8,
   },
   errorText: {
     fontSize: 12,

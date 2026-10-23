@@ -932,7 +932,9 @@ export const AddEntryScreen: React.FC = () => {
 
                             {/* Particulars / Goods Section with Dual Option (Type or Pick) */}
               <View style={styles.itemHeaderRow}>
-                <Text style={styles.fieldLabel}>{t('itemDescription', language)} *</Text>
+                <Text style={[styles.fieldLabel, { flex: 1, marginBottom: 0 }]} numberOfLines={1}>
+                  {language === 'hi' ? 'सामान का विवरण *' : 'Item Description *'}
+                </Text>
                 <TouchableOpacity
                   style={styles.pickFromMasterBtn}
                   onPress={() => setProductPickerVisible(true)}
@@ -990,11 +992,12 @@ export const AddEntryScreen: React.FC = () => {
               <Input
                 placeholder={
                   language === 'hi'
-                    ? (isListening ? 'सुन रहा हूँ... बोलिए' : 'सामान का नाम लिखें या ऊपर 📋 बटन से चुनें')
+                    ? (isListening ? 'सुन रहा हूँ... बोलिए' : 'सामान का नाम लिखें (उदा: धान, खाद) या ऊपर 📋 से चुनें')
                     : (isListening ? 'Listening...' : 'Type item name or pick from catalog')
                 }
                 value={description}
                 onChangeText={setDescription}
+                inputWrapperStyle={styles.descriptionInputWrapper}
                 rightElement={
                   <TouchableOpacity onPress={handleMicPress} style={{ padding: 4 }}>
                     <Ionicons 
@@ -1020,12 +1023,13 @@ export const AddEntryScreen: React.FC = () => {
                       onChangeText={setQuantity}
                       keyboardType="numeric"
                       containerStyle={{ marginBottom: 0 }}
+                      inputWrapperStyle={styles.compactInputWrapper}
                       style={styles.compactInput}
                     />
                   </View>
 
                   {/* Unit Box - Strictly Single Line */}
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1.1 }}>
                     <Text style={styles.subColLabel} numberOfLines={1}>
                       {language === 'hi' ? 'इकाई (Unit)' : 'Unit'}
                     </Text>
@@ -1034,12 +1038,13 @@ export const AddEntryScreen: React.FC = () => {
                       value={unit}
                       onChangeText={setUnit}
                       containerStyle={{ marginBottom: 0 }}
+                      inputWrapperStyle={styles.compactInputWrapper}
                       style={styles.compactInput}
                     />
                   </View>
 
                   {/* Rate Box */}
-                  <View style={{ flex: 1.2 }}>
+                  <View style={{ flex: 1.3 }}>
                     <Text style={styles.subColLabel} numberOfLines={1}>
                       {language === 'hi' ? 'दर (Rate ₹)' : 'Rate (₹)'}
                     </Text>
@@ -1049,6 +1054,7 @@ export const AddEntryScreen: React.FC = () => {
                       onChangeText={setRate}
                       keyboardType="numeric"
                       containerStyle={{ marginBottom: 0 }}
+                      inputWrapperStyle={styles.compactInputWrapper}
                       style={styles.compactInput}
                     />
                   </View>
@@ -1509,6 +1515,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: Spacing.lg,
+    paddingBottom: 160,
   },
   segmentedContainer: {
     flexDirection: 'row',
@@ -1631,6 +1638,23 @@ const styles = StyleSheet.create({
     height: 18,
     lineHeight: 18,
     textAlign: 'center',
+  },
+  compactInputWrapper: {
+    paddingHorizontal: 8,
+    height: 48,
+    minHeight: 48,
+    borderRadius: BorderRadius.md,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+  },
+  descriptionInputWrapper: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+    borderRadius: BorderRadius.md,
+    minHeight: 50,
+    paddingRight: 8,
   },
   compactInput: {
     textAlign: 'center',
