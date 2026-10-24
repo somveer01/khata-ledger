@@ -19,6 +19,7 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
       input, textarea, select {
         outline: none !important;
         -webkit-tap-highlight-color: transparent;
+        font-size: 16px !important;
       }
       input:focus, textarea:focus, select:focus {
         outline: none !important;
