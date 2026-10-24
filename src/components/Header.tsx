@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Colors, Spacing, Typography, BorderRadius } from '../constants/theme';
@@ -97,7 +97,11 @@ export const Header: React.FC<HeaderProps> = ({
           </TouchableOpacity>
         ) : (
           <View style={styles.logoContainer}>
-            <Ionicons name="book" size={22} color={Colors.warning} />
+            <Image
+              source={require('../../assets/icon.png')}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
           </View>
         )}
 
@@ -202,7 +206,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: Spacing.sm,
   },
+  logoImage: {
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.md,
+  },
   logoContainer: {
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
     width: 36,
     height: 36,
     borderRadius: BorderRadius.md,
