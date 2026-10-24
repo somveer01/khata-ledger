@@ -143,7 +143,7 @@ export const DashboardScreen: React.FC = () => {
               <Ionicons name="add-circle" size={26} color={Colors.creditSale} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.actionBtnTitle}>{language === 'hi' ? 'Sale' : 'Sale'}</Text>
+              <Text style={styles.actionBtnTitle}>{t('giveCredit', language)}</Text>
               <Text style={styles.actionBtnSubtitle}>{t('giveCreditDesc', language)}</Text>
             </View>
           </TouchableOpacity>

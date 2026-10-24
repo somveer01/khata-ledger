@@ -416,7 +416,7 @@ export const translations = {
     navSettings: 'सेटिंग्स',
 
     // Financial actions & headings
-    addEntry: 'Sale',
+    addEntry: 'बिक्री (उधार)',
     addSaleEntry: 'सेव एंट्री',
     editSaleEntry: 'बिक्री प्रविष्टि बदलें (Edit Sale Entry)',
     addEntrySubtitle: 'उधार सामान या प्राप्त भुगतान दर्ज करें',
@@ -424,8 +424,8 @@ export const translations = {
     creditEntryTab: 'बिक्री (उधार)',
     addSaleEntryTab: 'बिक्री (उधार)',
     paymentEntryTab: 'जमा (भुगतान)',
-    giveCredit: 'Sale',
-    giveCreditDesc: 'सामान उधार दिया (नाम)',
+    giveCredit: 'बिक्री (उधार)',
+    giveCreditDesc: 'सामान उधार दिया (बिक्री)',
     receivedPaymentAtSale: 'प्राप्त भुगतान राशि (नगद/जमा)',
     receivedPaymentAtSaleHelper: 'बिक्री के समय ग्राहक द्वारा दी गई राशि (नकद/UPI)',
     netBalanceAddedToLedger: 'खाते में जुड़ने वाला बाकी',
