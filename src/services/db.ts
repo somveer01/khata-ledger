@@ -29,10 +29,23 @@ export function cleanForFirestore<T extends Record<string, any>>(obj: T): Record
   for (const key of Object.keys(obj)) {
     const val = obj[key];
     if (val !== undefined) {
-      if (
+      if (Array.isArray(val)) {
+        result[key] = val
+          .filter((item) => item !== undefined)
+          .map((item) => {
+            if (
+              item !== null &&
+              typeof item === 'object' &&
+              !(item instanceof Date) &&
+              typeof (item as any).toMillis !== 'function'
+            ) {
+              return cleanForFirestore(item);
+            }
+            return item;
+          });
+      } else if (
         val !== null &&
         typeof val === 'object' &&
-        !Array.isArray(val) &&
         !(val instanceof Date) &&
         typeof (val as any).toMillis !== 'function'
       ) {
@@ -1414,24 +1427,28 @@ export const DataRepository = {
     await StorageService.saveProducts(product.businessId, products);
 
     if (isFirebaseConfigured() && db) {
-      // 1. Update businesses/{businessId} doc (ALWAYS PERMITTED by cloud rules)
-      setDoc(
-        doc(db, 'businesses', product.businessId),
-        cleanForFirestore({
-          productsCatalog: products,
-          productsUpdatedAt: new Date().toISOString(),
-        }),
-        { merge: true }
-      ).catch((err) => console.warn('Firestore saveProduct to business doc error:', err));
+      try {
+        // 1. Update businesses/{businessId} doc (ALWAYS PERMITTED by cloud rules)
+        setDoc(
+          doc(db, 'businesses', product.businessId),
+          cleanForFirestore({
+            productsCatalog: products,
+            productsUpdatedAt: new Date().toISOString(),
+          }),
+          { merge: true }
+        ).catch((err) => console.warn('Firestore saveProduct to business doc error:', err));
 
-      // 2. Also update standalone products collection
-      setDoc(
-        doc(db, 'products', product.id),
-        cleanForFirestore({
-          ...product,
-          serverTimestamp: serverTimestamp(),
-        })
-      ).catch((err) => console.warn('Firestore saveProduct error:', err));
+        // 2. Also update standalone products collection
+        setDoc(
+          doc(db, 'products', product.id),
+          cleanForFirestore({
+            ...product,
+            serverTimestamp: serverTimestamp(),
+          })
+        ).catch((err) => console.warn('Firestore saveProduct error:', err));
+      } catch (err) {
+        console.warn('Firestore saveProduct sync error:', err);
+      }
     }
 
     return { success: true };
@@ -1443,20 +1460,24 @@ export const DataRepository = {
     await StorageService.saveProducts(businessId, filtered);
 
     if (isFirebaseConfigured() && db) {
-      // 1. Update businesses/{businessId} doc (ALWAYS PERMITTED)
-      setDoc(
-        doc(db, 'businesses', businessId),
-        cleanForFirestore({
-          productsCatalog: filtered,
-          productsUpdatedAt: new Date().toISOString(),
-        }),
-        { merge: true }
-      ).catch((err) => console.warn('Firestore deleteProduct from business doc error:', err));
+      try {
+        // 1. Update businesses/{businessId} doc (ALWAYS PERMITTED)
+        setDoc(
+          doc(db, 'businesses', businessId),
+          cleanForFirestore({
+            productsCatalog: filtered,
+            productsUpdatedAt: new Date().toISOString(),
+          }),
+          { merge: true }
+        ).catch((err) => console.warn('Firestore deleteProduct from business doc error:', err));
 
-      // 2. Also delete from standalone products collection
-      deleteDoc(doc(db, 'products', productId)).catch((err) =>
-        console.warn('Firestore deleteProduct error:', err)
-      );
+        // 2. Also delete from standalone products collection
+        deleteDoc(doc(db, 'products', productId)).catch((err) =>
+          console.warn('Firestore deleteProduct error:', err)
+        );
+      } catch (err) {
+        console.warn('Firestore deleteProduct sync error:', err);
+      }
     }
 
     return { success: true };
