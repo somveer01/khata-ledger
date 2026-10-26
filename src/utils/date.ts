@@ -1,4 +1,4 @@
-import { format, parseISO, isValid } from 'date-fns';
+import { format, parseISO, isValid, differenceInCalendarDays } from 'date-fns';
 
 /**
  * Returns today's date formatted as YYYY-MM-DD in Asia/Kolkata timezone.
@@ -106,30 +106,47 @@ export function getDaysDiff(d1Str: string, d2Str: string): number {
 }
 
 /**
- * Returns human-friendly relative time for last active date (e.g., 'आज', 'कल', '3 दिन पहले')
+ * Returns human-friendly relative time for last active date (e.g., 'आज (02:30 PM)', 'कल (03:37 PM)', '3 दिन पहले')
+ * Uses calendar day boundaries to accurately distinguish between 'आज' (Today) and 'कल' (Yesterday).
  */
-export function formatRelativeActivity(dateStr?: string, language: 'hi' | 'en' = 'hi'): string {
-  if (!dateStr) return language === 'hi' ? 'कोई लेन-देन नहीं' : 'No entries yet';
+export function formatRelativeActivity(dateInput?: string | Date, language: 'hi' | 'en' = 'hi'): string {
+  if (!dateInput) return language === 'hi' ? 'कोई लेन-देन नहीं' : 'No entries yet';
   try {
-    const d = new Date(dateStr);
+    const d = typeof dateInput === 'string'
+      ? (isValid(parseISO(dateInput)) ? parseISO(dateInput) : new Date(dateInput))
+      : dateInput;
+    if (!isValid(d)) return typeof dateInput === 'string' ? dateInput : '-';
+
     const now = new Date();
     const diffMs = now.getTime() - d.getTime();
-    if (isNaN(diffMs)) return dateStr;
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const calendarDays = differenceInCalendarDays(now, d);
 
-    if (diffHours < 1) {
-      return language === 'hi' ? 'अभी-अभी' : 'Just now';
-    } else if (diffDays === 0) {
-      return language === 'hi' ? `आज (${format(d, 'hh:mm a')})` : `Today (${format(d, 'hh:mm a')})`;
-    } else if (diffDays === 1) {
-      return language === 'hi' ? `कल (${format(d, 'hh:mm a')})` : `Yesterday (${format(d, 'hh:mm a')})`;
-    } else if (diffDays < 7) {
-      return language === 'hi' ? `${diffDays} दिन पहले` : `${diffDays}d ago`;
+    const hasTime = typeof dateInput === 'string'
+      ? (dateInput.includes('T') || dateInput.includes(':'))
+      : true;
+    const timeFormatted = hasTime ? format(d, 'hh:mm a') : '';
+
+    if (calendarDays <= 0) {
+      if (diffMs < 60 * 1000) {
+        return language === 'hi' ? 'अभी-अभी' : 'Just now';
+      } else if (diffMs < 3600 * 1000) {
+        const mins = Math.max(1, Math.floor(diffMs / 60000));
+        return language === 'hi' ? `${mins} मिनट पहले` : `${mins}m ago`;
+      } else {
+        return language === 'hi'
+          ? (hasTime ? `आज (${timeFormatted})` : 'आज')
+          : (hasTime ? `Today (${timeFormatted})` : 'Today');
+      }
+    } else if (calendarDays === 1) {
+      return language === 'hi'
+        ? (hasTime ? `कल (${timeFormatted})` : 'कल')
+        : (hasTime ? `Yesterday (${timeFormatted})` : 'Yesterday');
+    } else if (calendarDays < 7) {
+      return language === 'hi' ? `${calendarDays} दिन पहले` : `${calendarDays}d ago`;
     } else {
-      return formatDisplayDate(dateStr);
+      return format(d, 'dd/MMM/yyyy');
     }
   } catch {
-    return dateStr;
+    return typeof dateInput === 'string' ? dateInput : '-';
   }
 }

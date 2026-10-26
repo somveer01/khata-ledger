@@ -184,6 +184,9 @@ export const DataRepository = {
       );
       if (bizCustomers.length === 0) {
         bizCustomers = await StorageService.getCustomers(biz.id);
+        if (bizCustomers.length === 0 && biz.id === LEGACY_BUSINESS_ID) {
+          bizCustomers = await StorageService.getCustomers(LEGACY_BUSINESS_TENANT_ID);
+        }
       }
 
       // Find villages for this biz
@@ -192,6 +195,9 @@ export const DataRepository = {
       );
       if (bizVillages.length === 0) {
         bizVillages = await StorageService.getVillages(biz.id);
+        if (bizVillages.length === 0 && biz.id === LEGACY_BUSINESS_ID) {
+          bizVillages = await StorageService.getVillages(LEGACY_BUSINESS_TENANT_ID);
+        }
       }
 
       // Find transactions for this biz
@@ -199,9 +205,9 @@ export const DataRepository = {
         (t) => t.businessId === biz.id || (biz.id === LEGACY_BUSINESS_ID && t.businessId === LEGACY_BUSINESS_TENANT_ID)
       );
       if (bizTxs.length === 0) {
-        const curBiz = await StorageService.getCurrentBusiness();
-        if (curBiz && (curBiz.id === biz.id || (biz.id === LEGACY_BUSINESS_ID && curBiz.id === LEGACY_BUSINESS_TENANT_ID))) {
-          bizTxs = await StorageService.getTransactions(biz.id);
+        bizTxs = await StorageService.getTransactions(biz.id);
+        if (bizTxs.length === 0 && biz.id === LEGACY_BUSINESS_ID) {
+          bizTxs = await StorageService.getTransactions(LEGACY_BUSINESS_TENANT_ID);
         }
       }
 
@@ -231,6 +237,34 @@ export const DataRepository = {
       for (const c of bizCustomers) {
         if (c.currentBalancePaise && c.currentBalancePaise > 0) {
           totalOutstandingPaise += c.currentBalancePaise;
+        }
+        const cTimeStr = c.updatedAt || c.createdAt;
+        if (cTimeStr) {
+          const cTimeMs = new Date(cTimeStr).getTime();
+          if (!isNaN(cTimeMs) && cTimeMs > latestTxTimeMs) {
+            latestTxTimeMs = cTimeMs;
+            latestTxDate = cTimeStr;
+          }
+        }
+      }
+
+      for (const v of bizVillages) {
+        const vTimeStr = (v as any).updatedAt || (v as any).createdAt;
+        if (vTimeStr) {
+          const vTimeMs = new Date(vTimeStr).getTime();
+          if (!isNaN(vTimeMs) && vTimeMs > latestTxTimeMs) {
+            latestTxTimeMs = vTimeMs;
+            latestTxDate = vTimeStr;
+          }
+        }
+      }
+
+      const pUpdatedAt = (biz as any).productsUpdatedAt;
+      if (pUpdatedAt) {
+        const pTimeMs = new Date(pUpdatedAt).getTime();
+        if (!isNaN(pTimeMs) && pTimeMs > latestTxTimeMs) {
+          latestTxTimeMs = pTimeMs;
+          latestTxDate = pUpdatedAt;
         }
       }
 
