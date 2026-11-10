@@ -370,11 +370,13 @@ export const DataRepository = {
     await StorageService.saveBusiness(business);
     if (isFirebaseConfigured() && db) {
       try {
-        await setDoc(doc(db, 'businesses', business.id), cleanForFirestore({
+        setDoc(doc(db, 'businesses', business.id), cleanForFirestore({
           ...business,
           updatedAt: new Date().toISOString(),
           serverTimestamp: serverTimestamp(),
-        }));
+        })).catch((err) => {
+          console.warn('Firestore saveBusiness error:', err);
+        });
       } catch (err) {
         console.warn('Firestore saveBusiness error:', err);
       }
@@ -466,10 +468,12 @@ export const DataRepository = {
 
     if (isFirebaseConfigured() && db) {
       try {
-        await setDoc(doc(db, 'villages', village.id), cleanForFirestore({
+        setDoc(doc(db, 'villages', village.id), cleanForFirestore({
           ...village,
           serverTimestamp: serverTimestamp(),
-        }));
+        })).catch((err) => {
+          console.warn('Firestore saveVillage error:', err);
+        });
       } catch (err) {
         console.warn('Firestore saveVillage error:', err);
       }
@@ -661,10 +665,12 @@ export const DataRepository = {
 
     if (isFirebaseConfigured() && db) {
       try {
-        await setDoc(doc(db, 'customers', customer.id), cleanForFirestore({
+        setDoc(doc(db, 'customers', customer.id), cleanForFirestore({
           ...updatedCustomer,
           serverTimestamp: serverTimestamp(),
-        }));
+        })).catch((err) => {
+          console.warn('Firestore saveCustomer error:', err);
+        });
       } catch (err) {
         console.warn('Firestore saveCustomer error:', err);
       }
@@ -899,7 +905,7 @@ export const DataRepository = {
     await StorageService.saveTransactions(businessId, transactions);
     await StorageService.saveCustomers(businessId, customers);
 
-    // Persist to Cloud Firestore if connected
+    // Persist to Cloud Firestore if connected (non-blocking background sync)
     if (isFirebaseConfigured() && db) {
       try {
         const txRef = doc(db, 'transactions', finalizedTx.id);
@@ -921,7 +927,9 @@ export const DataRepository = {
           }),
           { merge: true }
         );
-        await batch.commit();
+        batch.commit().catch((err) => {
+          console.warn('Firestore transaction sync error (queued locally):', err);
+        });
       } catch (err) {
         console.warn('Firestore transaction sync error (queued locally):', err);
       }
@@ -1001,7 +1009,9 @@ export const DataRepository = {
           }),
           { merge: true }
         );
-        await batch.commit();
+        batch.commit().catch((err) => {
+          console.warn('Firestore updateTransaction error:', err);
+        });
       } catch (err) {
         console.warn('Firestore updateTransaction error:', err);
       }
@@ -1051,13 +1061,17 @@ export const DataRepository = {
 
     if (isFirebaseConfigured() && db) {
       try {
-        await deleteDoc(doc(db, 'transactions', transactionId));
+        deleteDoc(doc(db, 'transactions', transactionId)).catch((err) => {
+          console.warn('Firestore deleteTransaction error:', err);
+        });
         if (custIndex >= 0) {
           const customer = customers[custIndex];
-          await setDoc(doc(db, 'customers', customer.id), cleanForFirestore({
+          setDoc(doc(db, 'customers', customer.id), cleanForFirestore({
             ...customer,
             serverTimestamp: serverTimestamp(),
-          }));
+          })).catch((err) => {
+            console.warn('Firestore deleteTransaction customer sync error:', err);
+          });
         }
       } catch (err) {
         console.warn('Firestore deleteTransaction error:', err);
