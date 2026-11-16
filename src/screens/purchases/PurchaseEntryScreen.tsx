@@ -22,7 +22,7 @@ import { useApp } from '../../context/AppContext';
 import { DataRepository } from '../../services/db';
 import { Product, Supplier, PurchaseInvoice, PurchaseItemDetail, PaymentMethod } from '../../types';
 import { formatCurrency, toPaise, toRupees } from '../../utils/money';
-import { showAlert } from '../../utils/dialog';
+import { showAlert, confirmAction } from '../../utils/dialog';
 
 export const PurchaseEntryScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -42,6 +42,13 @@ export const PurchaseEntryScreen: React.FC = () => {
   const [invoiceNo, setInvoiceNo] = useState<string>(editInvoice?.invoiceNo || '');
   const [invoiceDate, setInvoiceDate] = useState<string>(
     editInvoice?.invoiceDate || new Date().toISOString().split('T')[0]
+  );
+
+  // GST Mode: true = GST Bill (Tax applicable), false = Non-GST (बिना जीएसटी / कच्चा बिल - 0% Tax)
+  const [isGstInvoice, setIsGstInvoice] = useState<boolean>(
+    editInvoice?.isGstInvoice !== undefined
+      ? editInvoice.isGstInvoice
+      : editInvoice ? editInvoice.gstAmountPaise > 0 : true
   );
 
   // Items in current bill
@@ -127,6 +134,55 @@ export const PurchaseEntryScreen: React.FC = () => {
     });
   }, [business?.id]);
 
+  // Switch bill tax mode (GST vs Non-GST) with strict single-mode enforcement
+  const handleToggleGstMode = (newMode: boolean) => {
+    if (newMode === isGstInvoice) return;
+
+    if (items.length > 0) {
+      confirmAction(
+        language === 'hi'
+          ? (newMode ? 'जीएसटी बिल में बदलें?' : 'बिना जीएसटी बिल में बदलें?')
+          : (newMode ? 'Switch to GST Bill?' : 'Switch to Non-GST Bill?'),
+        language === 'hi'
+          ? (newMode
+              ? `इस बिल में ${items.length} आइटम जुड़े हैं। जीएसटी बिल करने पर सभी उत्पादों की दरें रेट मास्टर के GST टैक्स स्लैब के अनुसार री-कैलकुलेट होंगी ताकि कोई मिक्सिंग न हो।\n\nक्या आप बदलना चाहते हैं?`
+              : `इस बिल में ${items.length} आइटम जुड़े हैं। बिना जीएसटी बिल करने पर सभी उत्पादों पर 0% टैक्स (केवल बिना GST दर) लागू होगी ताकि कोई मिक्सिंग न हो।\n\nक्या आप बदलना चाहते हैं?`)
+          : (newMode
+              ? `This invoice has ${items.length} items. Switching to GST invoice will recalculate all items with their GST rates. Continue?`
+              : `This invoice has ${items.length} items. Switching to Non-GST invoice will remove GST (0% tax) from all items. Continue?`),
+        () => {
+          setIsGstInvoice(newMode);
+          // Recalculate all items uniformly to prevent mixing
+          const updated = items.map((it) => {
+            if (newMode) {
+              const prod = products.find((p) => p.id === it.productId);
+              const gst = prod?.gstPercent ?? 18;
+              const withGstRatePaise = Math.round(it.billingRatePaise * (1 + gst / 100));
+              return {
+                ...it,
+                gstPercent: gst,
+                withGstRatePaise,
+                totalPaise: it.totalBaseUnits * withGstRatePaise,
+              };
+            } else {
+              return {
+                ...it,
+                gstPercent: 0,
+                withGstRatePaise: it.billingRatePaise,
+                totalPaise: it.totalBaseUnits * it.billingRatePaise,
+              };
+            }
+          });
+          setItems(updated);
+        },
+        language === 'hi' ? 'हाँ, बदलें' : 'Yes, Switch',
+        language === 'hi' ? 'रद्द करें' : 'Cancel'
+      );
+    } else {
+      setIsGstInvoice(newMode);
+    }
+  };
+
   // Open item add modal
   const openAddItemModal = () => {
     setSelectedProduct(null);
@@ -134,12 +190,19 @@ export const PurchaseEntryScreen: React.FC = () => {
     setBillingRate('');
     setBuyUnitType('CASE');
     setProductSearch('');
+    if (!isGstInvoice) {
+      setGstPercent(0);
+    }
     setItemModalVisible(true);
   };
 
   const handleSelectProduct = (prod: Product) => {
     setSelectedProduct(prod);
-    setGstPercent(prod.gstPercent ?? 18);
+    if (isGstInvoice) {
+      setGstPercent(prod.gstPercent ?? 18);
+    } else {
+      setGstPercent(0);
+    }
     const rateRupees = toRupees(prod.billingRatePaise || 0);
     setBillingRate(rateRupees > 0 ? rateRupees.toString() : '');
     // If product has unitsPerCase, default to CASE, otherwise BASE
@@ -174,7 +237,8 @@ export const PurchaseEntryScreen: React.FC = () => {
 
     // Rate calculation: rate is per base unit
     const ratePaise = toPaise(rate);
-    const withGstRatePaise = Math.round(ratePaise * (1 + gstPercent / 100));
+    const appliedGstPercent = isGstInvoice ? gstPercent : 0;
+    const withGstRatePaise = isGstInvoice ? Math.round(ratePaise * (1 + appliedGstPercent / 100)) : ratePaise;
     const totalPaise = totalBaseUnits * withGstRatePaise;
 
     const newItem: PurchaseItemDetail = {
@@ -189,7 +253,7 @@ export const PurchaseEntryScreen: React.FC = () => {
       totalBaseUnits,
       baseUnit,
       billingRatePaise: ratePaise,
-      gstPercent,
+      gstPercent: appliedGstPercent,
       withGstRatePaise,
       totalPaise,
     };
@@ -204,10 +268,12 @@ export const PurchaseEntryScreen: React.FC = () => {
     setItems(next);
   };
 
-  // Bill totals
+  // Bill totals: strict distinction between GST and Non-GST bills
   const subtotalPaise = items.reduce((sum, item) => sum + item.totalBaseUnits * item.billingRatePaise, 0);
-  const totalAmountPaise = items.reduce((sum, item) => sum + item.totalPaise, 0);
-  const gstAmountPaise = Math.max(0, totalAmountPaise - subtotalPaise);
+  const totalAmountPaise = isGstInvoice
+    ? items.reduce((sum, item) => sum + item.totalPaise, 0)
+    : subtotalPaise;
+  const gstAmountPaise = isGstInvoice ? Math.max(0, totalAmountPaise - subtotalPaise) : 0;
 
   // Auto calculate paid/due based on status
   const totalRupees = toRupees(totalAmountPaise);
@@ -271,6 +337,7 @@ export const PurchaseEntryScreen: React.FC = () => {
         dueAmountPaise: calculatedDueAmountPaise,
         paymentStatus,
         paymentMethod: paymentStatus !== 'UNPAID' ? paymentMethod : undefined,
+        isGstInvoice,
         billPhotoUri: billPhotoUri || undefined,
         billFileName: billFileName || undefined,
         billFileType: billPhotoUri ? billFileType : undefined,
@@ -331,6 +398,71 @@ export const PurchaseEntryScreen: React.FC = () => {
           <Text style={styles.sectionHeader}>
             🏢 {language === 'hi' ? 'सप्लायर एवं बिल विवरण' : 'Supplier & Bill Details'}
           </Text>
+
+          {/* GST vs Non-GST Bill Type Toggle */}
+          <View style={styles.taxModeContainer}>
+            <Text style={styles.fieldSubLabel}>
+              {language === 'hi' ? 'बिल का प्रकार (Invoice Tax Mode) *' : 'Invoice Tax Type *'}
+            </Text>
+            <View style={styles.taxToggleRow}>
+              <TouchableOpacity
+                style={[styles.taxToggleBtn, isGstInvoice && styles.taxToggleBtnActiveGst]}
+                onPress={() => handleToggleGstMode(true)}
+                activeOpacity={0.8}
+              >
+                <Ionicons
+                  name={isGstInvoice ? 'shield-checkmark' : 'shield-outline'}
+                  size={18}
+                  color={isGstInvoice ? '#FFFFFF' : '#4F46E5'}
+                />
+                <View style={{ marginLeft: 6 }}>
+                  <Text style={[styles.taxToggleTitle, isGstInvoice && styles.taxToggleTitleActive]}>
+                    {language === 'hi' ? 'जीएसटी बिल (GST Bill)' : 'GST Invoice'}
+                  </Text>
+                  <Text style={[styles.taxToggleSub, isGstInvoice && styles.taxToggleSubActive]}>
+                    {language === 'hi' ? 'GST टैक्स सहित दरें' : 'With GST Slabs'}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.taxToggleBtn, !isGstInvoice && styles.taxToggleBtnActiveNonGst]}
+                onPress={() => handleToggleGstMode(false)}
+                activeOpacity={0.8}
+              >
+                <Ionicons
+                  name={!isGstInvoice ? 'document-text' : 'document-outline'}
+                  size={18}
+                  color={!isGstInvoice ? '#FFFFFF' : '#D97706'}
+                />
+                <View style={{ marginLeft: 6 }}>
+                  <Text style={[styles.taxToggleTitle, !isGstInvoice && styles.taxToggleTitleActive]}>
+                    {language === 'hi' ? 'बिना जीएसटी (Non-GST)' : 'Non-GST Bill'}
+                  </Text>
+                  <Text style={[styles.taxToggleSub, !isGstInvoice && styles.taxToggleSubActive]}>
+                    {language === 'hi' ? 'कच्चा बिल • 0% टैक्स' : '0% Tax • Base Rate'}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+
+            <View style={[styles.taxNoticeBox, isGstInvoice ? styles.taxNoticeBoxGst : styles.taxNoticeBoxNonGst]}>
+              <Ionicons
+                name={isGstInvoice ? 'shield-checkmark' : 'alert-circle'}
+                size={14}
+                color={isGstInvoice ? '#4F46E5' : '#D97706'}
+              />
+              <Text style={[styles.taxNoticeText, { color: isGstInvoice ? '#3730A3' : '#92400E' }]}>
+                {isGstInvoice
+                  ? (language === 'hi'
+                      ? 'जीएसटी बिल: उत्पाद रेट मास्टर से GST स्लैब व टैक्स दर जुड़ेगी। बिल में कोई बिना-GST आइटम मिक्स नहीं होगा।'
+                      : 'GST Bill: Products will load with GST slabs and tax. No mixing with Non-GST items.')
+                  : (language === 'hi'
+                      ? 'बिना जीएसटी बिल: सभी उत्पादों पर केवल बिना GST दर (0% टैक्स) लागू होगी। बिल में कोई GST आइटम मिक्स नहीं होगा।'
+                      : 'Non-GST Bill: Products will load with flat base rate (0% tax). No mixing with GST items.')}
+              </Text>
+            </View>
+          </View>
 
           {/* Quick Supplier Picker Chips */}
           {suppliers.length > 0 && (
@@ -423,6 +555,7 @@ export const PurchaseEntryScreen: React.FC = () => {
                       {item.unitsPerPack > 1 ? `(× ${item.unitsPerPack} = ${item.totalBaseUnits} ${item.baseUnit})` : ''}
                       {' • '}
                       {formatCurrency(item.withGstRatePaise)}/{item.baseUnit}
+                      {item.gstPercent > 0 ? ` (GST ${item.gstPercent}%)` : ' (बिना GST)'}
                     </Text>
                   </View>
                 </View>
@@ -440,14 +573,25 @@ export const PurchaseEntryScreen: React.FC = () => {
           {/* Bill Totals Summary */}
           {items.length > 0 && (
             <View style={styles.billSummaryBox}>
-              <View style={styles.summaryLine}>
-                <Text style={styles.summaryLabel}>{language === 'hi' ? 'कुल बेस राशि:' : 'Subtotal:'}</Text>
-                <Text style={styles.summaryVal}>{formatCurrency(subtotalPaise)}</Text>
-              </View>
-              <View style={styles.summaryLine}>
-                <Text style={styles.summaryLabel}>{language === 'hi' ? 'कुल GST टैक्स:' : 'Total GST:'}</Text>
-                <Text style={styles.summaryVal}>{formatCurrency(gstAmountPaise)}</Text>
-              </View>
+              {isGstInvoice ? (
+                <>
+                  <View style={styles.summaryLine}>
+                    <Text style={styles.summaryLabel}>{language === 'hi' ? 'कुल बेस राशि:' : 'Subtotal:'}</Text>
+                    <Text style={styles.summaryVal}>{formatCurrency(subtotalPaise)}</Text>
+                  </View>
+                  <View style={styles.summaryLine}>
+                    <Text style={styles.summaryLabel}>{language === 'hi' ? 'कुल GST टैक्स:' : 'Total GST:'}</Text>
+                    <Text style={styles.summaryVal}>{formatCurrency(gstAmountPaise)}</Text>
+                  </View>
+                </>
+              ) : (
+                <View style={styles.summaryLine}>
+                  <Text style={styles.summaryLabel}>{language === 'hi' ? 'बिल प्रकार:' : 'Bill Mode:'}</Text>
+                  <Text style={[styles.summaryVal, { color: '#B45309', fontWeight: '700' }]}>
+                    📄 {language === 'hi' ? 'बिना GST बिल (0% टैक्स)' : 'Non-GST (0% Tax)'}
+                  </Text>
+                </View>
+              )}
               <View style={[styles.summaryLine, styles.grandTotalLine]}>
                 <Text style={styles.grandTotalLabel}>{language === 'hi' ? 'कुल बिल राशि:' : 'Grand Total:'}</Text>
                 <Text style={styles.grandTotalVal}>{formatCurrency(totalAmountPaise)}</Text>
@@ -661,6 +805,20 @@ export const PurchaseEntryScreen: React.FC = () => {
               </TouchableOpacity>
             </View>
 
+            {/* Bill Tax Mode Indicator inside Modal */}
+            <View style={[styles.modalModeNotice, isGstInvoice ? styles.modalModeNoticeGst : styles.modalModeNoticeNonGst]}>
+              <Ionicons
+                name={isGstInvoice ? 'shield-checkmark' : 'document-text'}
+                size={14}
+                color={isGstInvoice ? '#4F46E5' : '#D97706'}
+              />
+              <Text style={[styles.modalModeNoticeText, { color: isGstInvoice ? '#3730A3' : '#92400E' }]}>
+                {isGstInvoice
+                  ? (language === 'hi' ? 'जीएसटी बिल प्रविष्टि: उत्पाद का GST स्लैब स्वतः लागू होगा।' : 'GST Invoice: Applicable GST slab will be loaded.')
+                  : (language === 'hi' ? 'बिना जीएसटी बिल (कच्चा): 0% टैक्स, केवल बेस खरीद दर लागू होगी।' : 'Non-GST Invoice: 0% Tax, flat base rate applied.')}
+              </Text>
+            </View>
+
             <ScrollView showsVerticalScrollIndicator={false}>
               {/* Product Search & Picker */}
               {!selectedProduct ? (
@@ -677,6 +835,9 @@ export const PurchaseEntryScreen: React.FC = () => {
                     <ScrollView nestedScrollEnabled>
                       {filteredProducts.map((p) => {
                         const unitsPerCase = p.unitsPerCase || p.conversionFactor || 1;
+                        const displayPrice = isGstInvoice
+                          ? (p.withGstRatePaise || Math.round(p.billingRatePaise * (1 + (p.gstPercent ?? 18) / 100)))
+                          : p.billingRatePaise;
                         return (
                           <TouchableOpacity
                             key={p.id}
@@ -690,9 +851,14 @@ export const PurchaseEntryScreen: React.FC = () => {
                                 {unitsPerCase > 1 ? `[${p.packSize} × ${unitsPerCase} = 1 ${p.purchasePackagingUnit || 'पेटी'}]` : ''}
                               </Text>
                             </View>
-                            <Text style={styles.prodSelectPrice}>
-                              {formatCurrency(p.withGstRatePaise || p.billingRatePaise)}
-                            </Text>
+                            <View style={{ alignItems: 'flex-end' }}>
+                              <Text style={styles.prodSelectPrice}>
+                                {formatCurrency(displayPrice)}
+                              </Text>
+                              <Text style={[styles.prodSelectTaxBadge, { color: isGstInvoice ? '#4F46E5' : '#D97706' }]}>
+                                {isGstInvoice ? `GST ${p.gstPercent ?? 18}% सहित` : 'बिना GST दर'}
+                              </Text>
+                            </View>
                           </TouchableOpacity>
                         );
                       })}
@@ -768,7 +934,11 @@ export const PurchaseEntryScreen: React.FC = () => {
 
                     <View style={{ flex: 1 }}>
                       <Input
-                        label={language === 'hi' ? 'खरीद दर - बिना GST (₹) *' : 'Rate / Unit (₹) *'}
+                        label={
+                          isGstInvoice
+                            ? (language === 'hi' ? 'खरीद दर - बिना GST (₹) *' : 'Rate without GST (₹) *')
+                            : (language === 'hi' ? 'खरीद दर - 0% Tax (₹) *' : 'Base Rate - 0% Tax (₹) *')
+                        }
                         placeholder="0.00"
                         value={billingRate}
                         onChangeText={setBillingRate}
@@ -777,6 +947,52 @@ export const PurchaseEntryScreen: React.FC = () => {
                       />
                     </View>
                   </View>
+
+                  {/* GST Slab Selector or Non-GST Notice */}
+                  {isGstInvoice ? (
+                    <View style={{ marginVertical: Spacing.xs }}>
+                      <Text style={styles.fieldSubLabel}>
+                        {language === 'hi' ? 'GST टैक्स स्लैब:' : 'GST Tax Slab:'}
+                      </Text>
+                      <View style={styles.gstSlabRow}>
+                        {[0, 5, 12, 18, 28].map((slab) => {
+                          const isSel = gstPercent === slab;
+                          return (
+                            <TouchableOpacity
+                              key={`slab_${slab}`}
+                              style={[styles.gstSlabChip, isSel && styles.gstSlabChipActive]}
+                              onPress={() => setGstPercent(slab)}
+                            >
+                              <Text style={[styles.gstSlabChipText, isSel && styles.gstSlabChipTextActive]}>
+                                {slab}%
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+
+                      {parseFloat(billingRate) > 0 && (
+                        <View style={styles.rateCalcNotice}>
+                          <Ionicons name="calculator" size={14} color="#4F46E5" />
+                          <Text style={styles.rateCalcNoticeText}>
+                            बेस दर: ₹{parseFloat(billingRate).toFixed(2)} + GST ({gstPercent}% = ₹{(parseFloat(billingRate) * (gstPercent / 100)).toFixed(2)}) ={' '}
+                            <Text style={{ fontWeight: '800', color: '#1E1B4B' }}>
+                              ₹{(parseFloat(billingRate) * (1 + gstPercent / 100)).toFixed(2)} / {selectedProduct.primarySellingUnit || selectedProduct.unit || 'यूनिट'} (GST सहित)
+                            </Text>
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  ) : (
+                    <View style={styles.nonGstItemNotice}>
+                      <Ionicons name="checkmark-circle" size={15} color="#15803D" />
+                      <Text style={styles.nonGstItemNoticeText}>
+                        {language === 'hi'
+                          ? 'बिना GST बिल: 0% टैक्स लागू। बेस खरीद दर ही अंतिम दर होगी।'
+                          : 'Non-GST Bill: 0% Tax applied. Base rate is final.'}
+                      </Text>
+                    </View>
+                  )}
 
                   {/* Live Conversion Preview */}
                   {buyUnitType === 'CASE' && parseFloat(inputQty) > 0 && (
@@ -1279,5 +1495,165 @@ const styles = StyleSheet.create({
   liveCalculationText: {
     fontSize: 12,
     color: '#166534',
+  },
+  // Tax Mode Toggle & Notice styles
+  taxModeContainer: {
+    marginBottom: Spacing.sm,
+    backgroundColor: '#F8FAFC',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.sm,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  taxToggleRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+    marginBottom: 6,
+  },
+  taxToggleBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: BorderRadius.md,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+  },
+  taxToggleBtnActiveGst: {
+    backgroundColor: '#4F46E5',
+    borderColor: '#4338CA',
+  },
+  taxToggleBtnActiveNonGst: {
+    backgroundColor: '#D97706',
+    borderColor: '#B45309',
+  },
+  taxToggleTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+  },
+  taxToggleTitleActive: {
+    color: '#FFFFFF',
+  },
+  taxToggleSub: {
+    fontSize: 10,
+    color: Colors.textSecondary,
+    marginTop: 1,
+  },
+  taxToggleSubActive: {
+    color: '#E0E7FF',
+  },
+  taxNoticeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.sm,
+  },
+  taxNoticeBoxGst: {
+    backgroundColor: '#EEF2FF',
+    borderLeftWidth: 3,
+    borderLeftColor: '#4F46E5',
+  },
+  taxNoticeBoxNonGst: {
+    backgroundColor: '#FEF3C7',
+    borderLeftWidth: 3,
+    borderLeftColor: '#D97706',
+  },
+  taxNoticeText: {
+    flex: 1,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '600',
+  },
+  prodSelectTaxBadge: {
+    fontSize: 10,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  modalModeNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.sm,
+  },
+  modalModeNoticeGst: {
+    backgroundColor: '#EEF2FF',
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  modalModeNoticeNonGst: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  modalModeNoticeText: {
+    flex: 1,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  gstSlabRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 4,
+    marginBottom: 6,
+  },
+  gstSlabChip: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 6,
+    backgroundColor: '#F1F5F9',
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  gstSlabChipActive: {
+    backgroundColor: '#4F46E5',
+    borderColor: '#4338CA',
+  },
+  gstSlabChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+  },
+  gstSlabChipTextActive: {
+    color: '#FFFFFF',
+  },
+  rateCalcNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#EEF2FF',
+    padding: 8,
+    borderRadius: BorderRadius.sm,
+    marginTop: 4,
+  },
+  rateCalcNoticeText: {
+    fontSize: 11,
+    color: '#3730A3',
+    lineHeight: 16,
+  },
+  nonGstItemNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#F0FDF4',
+    padding: 8,
+    borderRadius: BorderRadius.sm,
+    marginVertical: 4,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  nonGstItemNoticeText: {
+    fontSize: 11,
+    color: '#15803D',
+    fontWeight: '700',
   },
 });

@@ -253,6 +253,7 @@ export interface PurchaseInvoice {
   dueAmountPaise: CurrencyPaise; // Credit amount added to supplier's ledger
   paymentStatus: 'PAID' | 'UNPAID' | 'PARTIAL';
   paymentMethod?: PaymentMethod;
+  isGstInvoice?: boolean; // true = GST Bill, false = Non-GST (बिना जीएसटी / कच्चा बिल)
   billPhotoUri?: string; // Camera photo or document URI
   billFileName?: string; // e.g. "invoice.pdf" or "bill_photo.jpg"
   billFileType?: 'image' | 'pdf'; // Type for visual rendering

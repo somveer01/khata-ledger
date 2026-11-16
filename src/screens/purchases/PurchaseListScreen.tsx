@@ -205,9 +205,48 @@ export const PurchaseListScreen: React.FC = () => {
                 <View style={styles.billHeaderRow}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.billSupplierName}>{item.supplierName}</Text>
-                    <Text style={styles.billDate}>
-                      📅 {item.invoiceDate} {item.invoiceNo ? `• बिल #${item.invoiceNo}` : ''}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2, flexWrap: 'wrap' }}>
+                      <Text style={styles.billDate}>
+                        📅 {item.invoiceDate} {item.invoiceNo ? `• बिल #${item.invoiceNo}` : ''}
+                      </Text>
+                      <View
+                        style={[
+                          styles.taxTypeBadge,
+                          (item.isGstInvoice !== false && (item.gstAmountPaise ?? 0) > 0)
+                            ? styles.taxTypeGst
+                            : styles.taxTypeNonGst,
+                        ]}
+                      >
+                        <Ionicons
+                          name={
+                            (item.isGstInvoice !== false && (item.gstAmountPaise ?? 0) > 0)
+                              ? 'shield-checkmark'
+                              : 'document-text'
+                          }
+                          size={10}
+                          color={
+                            (item.isGstInvoice !== false && (item.gstAmountPaise ?? 0) > 0)
+                              ? '#4F46E5'
+                              : '#D97706'
+                          }
+                        />
+                        <Text
+                          style={[
+                            styles.taxTypeBadgeText,
+                            {
+                              color:
+                                (item.isGstInvoice !== false && (item.gstAmountPaise ?? 0) > 0)
+                                  ? '#4F46E5'
+                                  : '#B45309',
+                            },
+                          ]}
+                        >
+                          {(item.isGstInvoice !== false && (item.gstAmountPaise ?? 0) > 0)
+                            ? 'GST बिल'
+                            : 'बिना GST (कच्चा)'}
+                        </Text>
+                      </View>
+                    </View>
                   </View>
 
                   <View
@@ -326,6 +365,7 @@ export const PurchaseListScreen: React.FC = () => {
                           {it.unitsPerPack > 1 ? `(× ${it.unitsPerPack} = ${it.totalBaseUnits} ${it.baseUnit})` : ''}
                           {' • '}
                           {formatCurrency(it.withGstRatePaise)}/{it.baseUnit}
+                          {it.gstPercent > 0 ? ` (GST ${it.gstPercent}%)` : ' (बिना GST)'}
                         </Text>
                       </View>
                       <Text style={styles.modalItemTotal}>{formatCurrency(it.totalPaise)}</Text>
@@ -334,9 +374,29 @@ export const PurchaseListScreen: React.FC = () => {
 
                   <View style={styles.modalDivider} />
 
+                  {(selectedBill.isGstInvoice !== false && (selectedBill.gstAmountPaise ?? 0) > 0) ? (
+                    <>
+                      <View style={styles.modalSummaryLine}>
+                        <Text style={styles.modalSumLabel}>{language === 'hi' ? 'कुल बेस राशि:' : 'Subtotal:'}</Text>
+                        <Text style={styles.modalSumVal}>{formatCurrency(selectedBill.subtotalPaise)}</Text>
+                      </View>
+                      <View style={styles.modalSummaryLine}>
+                        <Text style={styles.modalSumLabel}>{language === 'hi' ? 'कुल GST टैक्स:' : 'Total GST:'}</Text>
+                        <Text style={styles.modalSumVal}>{formatCurrency(selectedBill.gstAmountPaise)}</Text>
+                      </View>
+                    </>
+                  ) : (
+                    <View style={styles.modalSummaryLine}>
+                      <Text style={styles.modalSumLabel}>{language === 'hi' ? 'बिल प्रकार:' : 'Bill Mode:'}</Text>
+                      <Text style={[styles.modalSumVal, { color: '#B45309', fontWeight: '700' }]}>
+                        📄 {language === 'hi' ? 'बिना GST बिल (0% टैक्स)' : 'Non-GST (0% Tax)'}
+                      </Text>
+                    </View>
+                  )}
+
                   <View style={styles.modalSummaryLine}>
                     <Text style={styles.modalSumLabel}>{language === 'hi' ? 'कुल बिल राशि:' : 'Grand Total:'}</Text>
-                    <Text style={styles.modalSumVal}>{formatCurrency(selectedBill.totalAmountPaise)}</Text>
+                    <Text style={[styles.modalSumVal, { fontWeight: '900' }]}>{formatCurrency(selectedBill.totalAmountPaise)}</Text>
                   </View>
                   <View style={styles.modalSummaryLine}>
                     <Text style={styles.modalSumLabel}>{language === 'hi' ? 'चुकाया गया भुगतान:' : 'Paid:'}</Text>
@@ -513,6 +573,24 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textSecondary,
     marginTop: 2,
+  },
+  taxTypeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.sm,
+  },
+  taxTypeGst: {
+    backgroundColor: '#EEF2FF',
+  },
+  taxTypeNonGst: {
+    backgroundColor: '#FEF3C7',
+  },
+  taxTypeBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
   },
   statusBadge: {
     paddingHorizontal: 8,
