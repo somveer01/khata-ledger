@@ -39,6 +39,11 @@ interface AppContextType {
   refreshAllData: () => Promise<void>;
   seedDemoData: () => Promise<void>;
   clearData: () => Promise<void>;
+
+  // Left Navigation Drawer
+  isDrawerOpen: boolean;
+  openDrawer: () => void;
+  closeDrawer: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -57,6 +62,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [authModalVisible, setAuthModalVisible] = useState<boolean>(false);
   const [authPromptMessage, setAuthPromptMessage] = useState<string | undefined>(undefined);
   const [onAuthSuccessCallback, setOnAuthSuccessCallback] = useState<(() => void) | undefined>(undefined);
+
+  // Left Navigation Drawer State
+  const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
+  const openDrawer = () => setIsDrawerOpen(true);
+  const closeDrawer = () => setIsDrawerOpen(false);
 
   // Super Admin Multi-Store States
   const [availableBusinesses, setAvailableBusinesses] = useState<Business[]>([]);
@@ -330,6 +340,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         refreshAllData,
         seedDemoData,
         clearData,
+        isDrawerOpen,
+        openDrawer,
+        closeDrawer,
       }}
     >
       {children}

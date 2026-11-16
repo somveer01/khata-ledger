@@ -17,7 +17,7 @@ import { Card } from '../../components/Card';
 import { Colors, Spacing, Typography, BorderRadius } from '../../constants/theme';
 import { useApp } from '../../context/AppContext';
 import { DataRepository } from '../../services/db';
-import { Product, ProductCategory } from '../../types';
+import { Product, ProductCategory, UnitOfMeasurement } from '../../types';
 import { toPaise, toRupees, formatCurrency } from '../../utils/money';
 import { showAlert } from '../../utils/dialog';
 
@@ -49,6 +49,33 @@ export const AddEditProductScreen: React.FC = () => {
   const [packSize, setPackSize] = useState(existingProduct?.packSize || '');
   const [casePacking, setCasePacking] = useState(existingProduct?.casePacking || '');
   const [unit, setUnit] = useState(existingProduct?.unit || 'Bottle');
+  const [uoms, setUoms] = useState<UnitOfMeasurement[]>([]);
+  const [selectedUomId, setSelectedUomId] = useState<string>(existingProduct?.uomId || '');
+  const [purchaseUomId, setPurchaseUomId] = useState<string>(existingProduct?.purchaseUomId || '');
+  const [conversionFactor, setConversionFactor] = useState<string>(
+    existingProduct?.conversionFactor ? existingProduct.conversionFactor.toString() : ''
+  );
+
+  // Load UOMs
+  useEffect(() => {
+    if (!business) return;
+    DataRepository.getUOMs(business.id).then((list) => {
+      setUoms(list);
+      if (existingProduct?.uomId) {
+        setSelectedUomId(existingProduct.uomId);
+      } else if (list.length > 0) {
+        const found = list.find(
+          (u) =>
+            u.code.toLowerCase() === unit.toLowerCase() ||
+            u.nameEn.toLowerCase() === unit.toLowerCase() ||
+            u.nameHi === unit
+        );
+        if (found) {
+          setSelectedUomId(found.id);
+        }
+      }
+    });
+  }, [business?.id]);
 
   // Rate calculator fields
   const [billingRate, setBillingRate] = useState<string>(
@@ -140,6 +167,9 @@ export const AddEditProductScreen: React.FC = () => {
         packSize: packSize.trim(),
         casePacking: casePacking.trim() || '',
         unit: unit.trim() || 'Bottle',
+        uomId: selectedUomId || undefined,
+        purchaseUomId: purchaseUomId || undefined,
+        conversionFactor: parseFloat(conversionFactor) > 0 ? parseFloat(conversionFactor) : undefined,
         billingRatePaise: toPaise(bRateNum),
         gstPercent,
         withGstRatePaise: toPaise(withGstNum),
@@ -252,10 +282,10 @@ export const AddEditProductScreen: React.FC = () => {
           />
         </Card>
 
-        {/* Section 2: Pack Size */}
+        {/* Section 2: Pack Size & UOM */}
         <Card style={styles.card}>
           <Text style={styles.sectionHeader}>
-            📦 {language === 'hi' ? 'पैकिंग एवं साइज़' : 'Packaging & Pack Size'}
+            📦 {language === 'hi' ? 'पैकिंग एवं माप की इकाई (UOM)' : 'Packaging & Unit of Measurement'}
           </Text>
 
           <View style={styles.twoColRow}>
@@ -270,12 +300,111 @@ export const AddEditProductScreen: React.FC = () => {
 
             <View style={{ flex: 1 }}>
               <Input
-                label={language === 'hi' ? 'इकाई (Unit)' : 'Unit'}
-                placeholder="Bottle/Bag/Pouch"
+                label={language === 'hi' ? 'बिक्री इकाई (Unit)' : 'Selling Unit'}
+                placeholder="उदा. Bottle, Kg"
                 value={unit}
-                onChangeText={setUnit}
+                onChangeText={(t) => {
+                  setUnit(t);
+                  setSelectedUomId('');
+                }}
               />
             </View>
+          </View>
+
+          {/* Quick UOM Selection Chips */}
+          {uoms.length > 0 && (
+            <View style={{ marginTop: 2, marginBottom: Spacing.sm }}>
+              <Text style={styles.fieldSubLabel}>
+                {language === 'hi' ? 'इकाई चुनें (Quick UOM Pick):' : 'Select Unit (Quick Pick):'}
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.uomChipsScroll}>
+                {uoms.map((u) => {
+                  const isSelected = selectedUomId === u.id || unit.toLowerCase() === u.code.toLowerCase();
+                  return (
+                    <TouchableOpacity
+                      key={u.id}
+                      style={[styles.uomChip, isSelected && styles.uomChipActive]}
+                      onPress={() => {
+                        setSelectedUomId(u.id);
+                        setUnit(language === 'hi' ? u.nameHi : u.nameEn);
+                      }}
+                    >
+                      <Text style={[styles.uomChipCode, isSelected && styles.uomChipCodeActive]}>
+                        {u.code}
+                      </Text>
+                      <Text style={[styles.uomChipName, isSelected && styles.uomChipNameActive]}>
+                        {language === 'hi' ? u.nameHi : u.nameEn}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
+
+          {/* Bulk / Purchase Packaging & Conversion */}
+          <View style={styles.conversionBox}>
+            <View style={styles.conversionTitleRow}>
+              <Ionicons name="repeat" size={16} color={Colors.primary} />
+              <Text style={styles.conversionBoxTitle}>
+                {language === 'hi'
+                  ? 'थोक खरीद रूपांतरण (Purchase Conversion - Optional)'
+                  : 'Purchase Packaging & Conversion (Optional)'}
+              </Text>
+            </View>
+            <Text style={styles.conversionBoxHelp}>
+              {language === 'hi'
+                ? 'यदि आप पेटी (Box) में खरीदते हैं और बोतल/नग में बेचते हैं, तो यहाँ तय करें:'
+                : 'If you buy in Boxes/Bags and sell in Bottles/Pieces, configure here:'}
+            </Text>
+
+            <View style={styles.twoColRow}>
+              <View style={{ flex: 1.2 }}>
+                <Text style={styles.fieldSubLabel}>
+                  {language === 'hi' ? 'खरीद पैकेजिंग (जैसे BOX / BAG)' : 'Purchase Packaging Unit'}
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+                  {uoms
+                    .filter((u) => u.category === 'PACKAGING' || u.category === 'WEIGHT' || u.category === 'COUNT')
+                    .slice(0, 6)
+                    .map((u) => {
+                      const isSel = purchaseUomId === u.id;
+                      return (
+                        <TouchableOpacity
+                          key={`pur_${u.id}`}
+                          style={[styles.smallChip, isSel && styles.smallChipActive]}
+                          onPress={() => setPurchaseUomId(isSel ? '' : u.id)}
+                        >
+                          <Text style={[styles.smallChipText, isSel && styles.smallChipTextActive]}>
+                            {u.code} ({language === 'hi' ? u.nameHi : u.nameEn})
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                </ScrollView>
+              </View>
+
+              <View style={{ flex: 1 }}>
+                <Input
+                  label={language === 'hi' ? 'प्रति पेटी मात्रा (Qty)' : 'Units Per Pack'}
+                  placeholder="उदा. 10 या 20"
+                  value={conversionFactor}
+                  onChangeText={setConversionFactor}
+                  keyboardType="numeric"
+                />
+              </View>
+            </View>
+
+            {purchaseUomId && parseFloat(conversionFactor) > 0 && (
+              <View style={styles.formulaResultBadge}>
+                <Ionicons name="checkmark-circle" size={14} color="#15803D" />
+                <Text style={styles.formulaResultText}>
+                  {language === 'hi'
+                    ? `1 ${uoms.find((u) => u.id === purchaseUomId)?.code || 'पेटी'} = ${conversionFactor} ${unit || 'नग'}`
+                    : `1 ${uoms.find((u) => u.id === purchaseUomId)?.code || 'Pack'} = ${conversionFactor} ${unit || 'Units'}`}
+                </Text>
+              </View>
+            )}
           </View>
 
           <Input
@@ -627,5 +756,108 @@ const styles = StyleSheet.create({
   },
   saveActionArea: {
     marginTop: Spacing.sm,
+  },
+  fieldSubLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+    marginBottom: 4,
+  },
+  uomChipsScroll: {
+    flexDirection: 'row',
+    paddingVertical: 2,
+  },
+  uomChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    marginRight: 6,
+  },
+  uomChipActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  uomChipCode: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.primary,
+  },
+  uomChipCodeActive: {
+    color: '#FFFFFF',
+  },
+  uomChipName: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: Colors.textSecondary,
+  },
+  uomChipNameActive: {
+    color: '#E0E7FF',
+  },
+  conversionBox: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  conversionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 2,
+  },
+  conversionBoxTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  conversionBoxHelp: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginBottom: 8,
+  },
+  smallChip: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+    marginRight: 5,
+  },
+  smallChipActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  smallChipText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  smallChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  formulaResultBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.sm,
+    marginTop: 4,
+  },
+  formulaResultText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#15803D',
   },
 });

@@ -401,6 +401,22 @@ export const translations = {
     unlockApp: 'Unlock Ledger',
     appLocked: 'Ledger is Locked',
     clear: 'Clear',
+
+    // Left Panel & UOM & Inventory
+    rateMaster: 'Rate Master (Products)',
+    uomMaster: 'Unit Master (UOM)',
+    uomConversions: 'Unit Conversions',
+    purchaseEntry: 'Purchase Entry',
+    stockLedger: 'Stock & Inventory',
+    sideMenu: 'Menu',
+    upcomingFeature: 'Coming Soon',
+    uomCategoryCount: 'Count / Pieces',
+    uomCategoryWeight: 'Weight',
+    uomCategoryVolume: 'Volume (Liquid)',
+    uomCategoryPackaging: 'Packaging',
+    addUOM: 'Add Unit',
+    addConversion: 'Add Conversion Rule',
+    conversionCalculator: 'Conversion Calculator',
   },
   hi: {
     // App
@@ -802,6 +818,22 @@ export const translations = {
     unlockApp: 'लेजर अनलॉक करें',
     appLocked: 'लेजर लॉक है',
     clear: 'हटाएं',
+
+    // Left Panel & UOM & Inventory
+    rateMaster: 'रेट मास्टर (उत्पाद दरें)',
+    uomMaster: 'इकाई मास्टर (UOM Master)',
+    uomConversions: 'इकाई रूपांतरण (Conversions)',
+    purchaseEntry: 'खरीद प्रविष्टि (Purchase)',
+    stockLedger: 'स्टॉक व इन्वेंट्री',
+    sideMenu: 'मेनू',
+    upcomingFeature: 'आगामी',
+    uomCategoryCount: 'संख्या / नग',
+    uomCategoryWeight: 'वज़न',
+    uomCategoryVolume: 'आयतन (तरल)',
+    uomCategoryPackaging: 'पैकेजिंग',
+    addUOM: 'नई इकाई जोड़ें',
+    addConversion: 'नया रूपांतरण नियम',
+    conversionCalculator: 'कैलकुलेटर कैलकुलेटर',
   },
 };
 

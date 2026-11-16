@@ -8,6 +8,7 @@ import { t } from '../i18n';
 import { Ionicons } from '@expo/vector-icons';
 import { confirmAction } from '../utils/dialog';
 import { StoreSwitcherModal } from './StoreSwitcherModal';
+import { LeftDrawer } from './LeftDrawer';
 
 interface HeaderProps {
   title?: string;
@@ -37,6 +38,7 @@ export const Header: React.FC<HeaderProps> = ({
     logout,
     isSuperAdmin,
     availableBusinesses,
+    openDrawer,
   } = useApp();
 
   const handleUserPress = () => {
@@ -96,13 +98,16 @@ export const Header: React.FC<HeaderProps> = ({
             <Ionicons name="arrow-back" size={24} color={Colors.textInverse} />
           </TouchableOpacity>
         ) : (
-          <View style={styles.logoContainer}>
-            <Image
-              source={require('../../assets/icon.png')}
-              style={styles.logoImage}
-              resizeMode="contain"
-            />
-          </View>
+          <TouchableOpacity
+            onPress={openDrawer}
+            style={styles.iconButton}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Menu"
+          >
+            <Ionicons name="menu" size={24} color={Colors.textInverse} />
+          </TouchableOpacity>
         )}
 
         <View style={styles.titlesContainer}>
@@ -167,6 +172,8 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </View>
       </View>
+
+      <LeftDrawer />
 
       {isSuperAdmin && (
         <StoreSwitcherModal

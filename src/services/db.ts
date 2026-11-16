@@ -13,11 +13,12 @@ import {
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './firebase';
 import { StorageService } from './storage';
-import { Business, Village, Customer, Transaction, VillageSummary, DashboardMetrics, AppUser, StoreActivityStats, Product } from '../types';
+import { Business, Village, Customer, Transaction, VillageSummary, DashboardMetrics, AppUser, StoreActivityStats, Product, UnitOfMeasurement, UnitConversion } from '../types';
 import { calculateCustomerBalance, calculateVillageSummaries, calculateDashboardMetrics, calculateCustomerDueDate } from './accounting';
 import { toPaise } from '../utils/money';
 import { getBusinessIdFromEmail, isLegacyOwner, LEGACY_BUSINESS_ID, LEGACY_BUSINESS_TENANT_ID, LEGACY_OWNER_EMAIL } from '../utils/tenant';
 import { PRELOADED_TYCOON_PRODUCTS } from '../data/preloadedProducts';
+import { SYSTEM_DEFAULT_UOMS, SYSTEM_DEFAULT_CONVERSIONS } from '../data/defaultUOMs';
 
 /**
  * Strips all `undefined` fields from an object recursively.
@@ -1526,6 +1527,194 @@ export const DataRepository = {
       } catch (err) {
         console.warn('Firestore deleteProduct sync error:', err);
       }
+    }
+
+    return { success: true };
+  },
+
+  // -------------------------------------------------------------
+  // UNIT OF MEASUREMENT (UOM)
+  // -------------------------------------------------------------
+  async getUOMs(businessId: string): Promise<UnitOfMeasurement[]> {
+    let localList = await StorageService.getUOMs(businessId);
+
+    // Seed defaults if empty
+    if (localList.length === 0) {
+      const seeded: UnitOfMeasurement[] = SYSTEM_DEFAULT_UOMS.map((u) => ({
+        ...u,
+        businessId,
+      }));
+      await StorageService.saveUOMs(businessId, seeded);
+      localList = seeded;
+
+      if (isFirebaseConfigured() && db) {
+        setDoc(
+          doc(db, 'businesses', businessId),
+          cleanForFirestore({
+            uomMaster: seeded,
+            uomUpdatedAt: new Date().toISOString(),
+          }),
+          { merge: true }
+        ).catch(() => {});
+      }
+    }
+
+    // Background sync from Firestore if connected
+    if (isFirebaseConfigured() && db) {
+      getDoc(doc(db, 'businesses', businessId))
+        .then((bDoc) => {
+          if (bDoc.exists()) {
+            const data = bDoc.data();
+            if (Array.isArray(data?.uomMaster) && data.uomMaster.length > 0) {
+              StorageService.saveUOMs(businessId, data.uomMaster).catch(() => {});
+            }
+          }
+        })
+        .catch(() => {});
+    }
+
+    return localList;
+  },
+
+  async saveUOM(uom: UnitOfMeasurement): Promise<{ success: boolean; uom: UnitOfMeasurement }> {
+    const list = await this.getUOMs(uom.businessId);
+    const index = list.findIndex((u) => u.id === uom.id);
+    const now = new Date().toISOString();
+    let savedItem: UnitOfMeasurement;
+
+    if (index >= 0) {
+      savedItem = { ...uom, updatedAt: now };
+      list[index] = savedItem;
+    } else {
+      savedItem = { ...uom, createdAt: uom.createdAt || now, updatedAt: now };
+      list.push(savedItem);
+    }
+
+    await StorageService.saveUOMs(uom.businessId, list);
+
+    if (isFirebaseConfigured() && db) {
+      setDoc(
+        doc(db, 'businesses', uom.businessId),
+        cleanForFirestore({
+          uomMaster: list,
+          uomUpdatedAt: now,
+        }),
+        { merge: true }
+      ).catch((err) => console.warn('Firestore saveUOM error:', err));
+    }
+
+    return { success: true, uom: savedItem };
+  },
+
+  async deleteUOM(businessId: string, uomId: string): Promise<{ success: boolean; error?: string }> {
+    const list = await this.getUOMs(businessId);
+    const target = list.find((u) => u.id === uomId);
+    if (target?.isSystemDefault) {
+      return { success: false, error: 'सिस्टम डिफ़ॉल्ट इकाई को हटाया नहीं जा सकता।' };
+    }
+    const filtered = list.filter((u) => u.id !== uomId);
+    await StorageService.saveUOMs(businessId, filtered);
+
+    if (isFirebaseConfigured() && db) {
+      setDoc(
+        doc(db, 'businesses', businessId),
+        cleanForFirestore({
+          uomMaster: filtered,
+          uomUpdatedAt: new Date().toISOString(),
+        }),
+        { merge: true }
+      ).catch((err) => console.warn('Firestore deleteUOM error:', err));
+    }
+
+    return { success: true };
+  },
+
+  // -------------------------------------------------------------
+  // UNIT CONVERSIONS
+  // -------------------------------------------------------------
+  async getUOMConversions(businessId: string): Promise<UnitConversion[]> {
+    let localList = await StorageService.getUOMConversions(businessId);
+
+    if (localList.length === 0) {
+      const seeded: UnitConversion[] = SYSTEM_DEFAULT_CONVERSIONS.map((c) => ({
+        ...c,
+        businessId,
+      }));
+      await StorageService.saveUOMConversions(businessId, seeded);
+      localList = seeded;
+
+      if (isFirebaseConfigured() && db) {
+        setDoc(
+          doc(db, 'businesses', businessId),
+          cleanForFirestore({
+            uomConversions: seeded,
+            uomConversionsUpdatedAt: new Date().toISOString(),
+          }),
+          { merge: true }
+        ).catch(() => {});
+      }
+    }
+
+    if (isFirebaseConfigured() && db) {
+      getDoc(doc(db, 'businesses', businessId))
+        .then((bDoc) => {
+          if (bDoc.exists()) {
+            const data = bDoc.data();
+            if (Array.isArray(data?.uomConversions) && data.uomConversions.length > 0) {
+              StorageService.saveUOMConversions(businessId, data.uomConversions).catch(() => {});
+            }
+          }
+        })
+        .catch(() => {});
+    }
+
+    return localList;
+  },
+
+  async saveUOMConversion(conv: UnitConversion): Promise<{ success: boolean; conversion: UnitConversion }> {
+    const list = await this.getUOMConversions(conv.businessId);
+    const index = list.findIndex((c) => c.id === conv.id);
+    const now = new Date().toISOString();
+    let savedItem: UnitConversion;
+
+    if (index >= 0) {
+      savedItem = { ...conv, updatedAt: now };
+      list[index] = savedItem;
+    } else {
+      savedItem = { ...conv, createdAt: conv.createdAt || now, updatedAt: now };
+      list.push(savedItem);
+    }
+
+    await StorageService.saveUOMConversions(conv.businessId, list);
+
+    if (isFirebaseConfigured() && db) {
+      setDoc(
+        doc(db, 'businesses', conv.businessId),
+        cleanForFirestore({
+          uomConversions: list,
+          uomConversionsUpdatedAt: now,
+        }),
+        { merge: true }
+      ).catch((err) => console.warn('Firestore saveUOMConversion error:', err));
+    }
+
+    return { success: true, conversion: savedItem };
+  },
+
+  async deleteUOMConversion(businessId: string, conversionId: string): Promise<{ success: boolean; error?: string }> {
+    const list = await this.getUOMConversions(businessId);
+    const filtered = list.filter((c) => c.id !== conversionId);
+    await StorageService.saveUOMConversions(businessId, filtered);
+
+    if (isFirebaseConfigured() && db) {
+      setDoc(
+        doc(db, 'businesses', businessId),
+        cleanForFirestore({
+          uomConversions: filtered,
+          uomConversionsUpdatedAt: new Date().toISOString(),
+        }),
+        { merge: true }
+      ).catch((err) => console.warn('Firestore deleteUOMConversion error:', err));
     }
 
     return { success: true };

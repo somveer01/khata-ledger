@@ -14,6 +14,8 @@ import { SettingsScreen } from '../screens/settings/SettingsScreen';
 import { StoreActivityScreen } from '../screens/admin/StoreActivityScreen';
 import { ProductListScreen } from '../screens/products/ProductListScreen';
 import { AddEditProductScreen } from '../screens/products/AddEditProductScreen';
+import { UomMasterScreen } from '../screens/uom/UomMasterScreen';
+import { UomConversionScreen } from '../screens/uom/UomConversionScreen';
 import { Colors } from '../constants/theme';
 import { useApp } from '../context/AppContext';
 import { t } from '../i18n';
@@ -37,6 +39,8 @@ const SharedScreens = (Stack: any) => (
     <Stack.Screen name="StoreActivity" component={StoreActivityScreen} />
     <Stack.Screen name="ProductList" component={ProductListScreen} />
     <Stack.Screen name="AddEditProduct" component={AddEditProductScreen} />
+    <Stack.Screen name="UomMaster" component={UomMasterScreen} />
+    <Stack.Screen name="UomConversion" component={UomConversionScreen} />
   </>
 );
 

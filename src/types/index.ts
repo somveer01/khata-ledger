@@ -143,6 +143,9 @@ export interface Product {
   packSize: string; // e.g. "400 ML", "1 KG", "1 Litre"
   casePacking?: string; // e.g. "400ML*20 PCS", "10 LIT"
   unit?: string; // "Bottle", "Pouch", "Bag", "Litre", "Kg", "Unit"
+  uomId?: string; // Reference to UnitOfMeasurement (e.g. "uom_box", "uom_btl")
+  purchaseUomId?: string; // Optional purchase packaging UOM (e.g. "uom_box")
+  conversionFactor?: number; // e.g. 10 (1 Box = 10 Bottles)
   billingRatePaise: CurrencyPaise; // purchase price without GST
   gstPercent: number; // e.g. 18, 12, 5, 0
   withGstRatePaise: CurrencyPaise; // billingRate + GST
@@ -150,6 +153,36 @@ export interface Product {
   sellingRatePaise: CurrencyPaise; // customer selling price
   notes?: string;
   isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type UOMCategory = 'COUNT' | 'WEIGHT' | 'VOLUME' | 'PACKAGING';
+
+export interface UnitOfMeasurement {
+  id: string; // e.g. "uom_kg", "uom_box", "uom_pc"
+  businessId: string;
+  code: string; // "KG", "BOX", "PKT", "PC", "BTL", "BAG", "LTR", "GM", "ML", "QNTL"
+  nameHi: string; // "किलोग्राम", "पेटी / बॉक्स", "पैकेट", "नग / पीस", "बोतल"
+  nameEn: string; // "Kilogram", "Box", "Packet", "Piece", "Bottle"
+  category: UOMCategory;
+  isBaseUnit?: boolean;
+  isSystemDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UnitConversion {
+  id: string; // e.g. "conv_box_pc"
+  businessId: string;
+  fromUOMId: string; // Higher packaging UOM ID (e.g. "uom_box")
+  fromUOMCode?: string; // Denormalized for fast display (e.g. "BOX")
+  toUOMId: string; // Base/lower UOM ID (e.g. "uom_pc")
+  toUOMCode?: string; // Denormalized (e.g. "PC")
+  conversionFactor: number; // 1 fromUOM = conversionFactor toUOM (e.g. 1 BOX = 10 PC)
+  description?: string; // e.g. "1 पेटी = 10 पैकेट"
+  productId?: string; // Optional product-specific conversion rule
+  productName?: string; // Denormalized product name
   createdAt: string;
   updatedAt: string;
 }
