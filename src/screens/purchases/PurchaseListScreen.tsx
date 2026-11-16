@@ -8,6 +8,8 @@ import {
   RefreshControl,
   Modal,
   ScrollView,
+  Image,
+  Platform,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -277,6 +279,57 @@ export const PurchaseListScreen: React.FC = () => {
                       {formatCurrency(selectedBill.dueAmountPaise)}
                     </Text>
                   </View>
+
+                  {/* Attached Bill Photo or Document */}
+                  {selectedBill.billPhotoUri && (
+                    <View style={styles.modalAttachmentBox}>
+                      <Text style={styles.modalSectionTitle}>
+                        📎 {language === 'hi' ? 'संलग्न बिल (Attached Bill):' : 'Attached Bill:'}
+                      </Text>
+                      {selectedBill.billFileType === 'pdf' ? (
+                        <TouchableOpacity
+                          style={styles.modalPdfBtn}
+                          onPress={() => {
+                            if (Platform.OS === 'web' && typeof window !== 'undefined' && selectedBill.billPhotoUri) {
+                              window.open(selectedBill.billPhotoUri, '_blank');
+                            }
+                          }}
+                        >
+                          <Ionicons name="document-text" size={24} color="#DC2626" />
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.modalPdfName} numberOfLines={1}>
+                              {selectedBill.billFileName || 'Bill_Document.pdf'}
+                            </Text>
+                            <Text style={styles.modalPdfActionText}>
+                              {language === 'hi' ? 'दस्तावेज़ खोलने के लिए टैप करें' : 'Tap to open document'}
+                            </Text>
+                          </View>
+                          <Ionicons name="open-outline" size={18} color={Colors.primary} />
+                        </TouchableOpacity>
+                      ) : (
+                        <View style={styles.modalImageContainer}>
+                          <Image
+                            source={{ uri: selectedBill.billPhotoUri }}
+                            style={styles.modalBillImage}
+                            resizeMode="contain"
+                          />
+                          <TouchableOpacity
+                            style={styles.modalOpenImageBtn}
+                            onPress={() => {
+                              if (Platform.OS === 'web' && typeof window !== 'undefined' && selectedBill.billPhotoUri) {
+                                window.open(selectedBill.billPhotoUri, '_blank');
+                              }
+                            }}
+                          >
+                            <Ionicons name="expand-outline" size={16} color={Colors.primary} />
+                            <Text style={styles.modalOpenImageText}>
+                              {language === 'hi' ? 'फुल स्क्रीन में देखें' : 'View Full Image'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+                  )}
                 </ScrollView>
               </>
             )}
@@ -514,5 +567,56 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: Colors.textPrimary,
+  },
+  modalAttachmentBox: {
+    marginTop: Spacing.sm,
+    paddingTop: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  modalPdfBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    gap: Spacing.sm,
+  },
+  modalPdfName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  modalPdfActionText: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  modalImageContainer: {
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  modalBillImage: {
+    width: '100%',
+    height: 180,
+    borderRadius: BorderRadius.md,
+    backgroundColor: '#F1F5F9',
+  },
+  modalOpenImageBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: '#EEF2FF',
+    borderRadius: BorderRadius.sm,
+  },
+  modalOpenImageText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.primary,
   },
 });

@@ -9,6 +9,7 @@ import {
   Platform,
   Alert,
   Modal,
+  Image,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -52,8 +53,53 @@ export const PurchaseEntryScreen: React.FC = () => {
   const [paidAmount, setPaidAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('UPI');
   const [billPhotoUri, setBillPhotoUri] = useState<string>('');
+  const [billFileName, setBillFileName] = useState<string>('');
+  const [billFileType, setBillFileType] = useState<'image' | 'pdf'>('image');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // File / Camera Picker
+  const handlePickFile = (useCamera: boolean = false) => {
+    if (typeof document !== 'undefined') {
+      const input = document.createElement('input');
+      input.type = 'file';
+      if (useCamera) {
+        input.accept = 'image/*';
+        input.capture = 'environment';
+      } else {
+        input.accept = 'image/*,application/pdf';
+      }
+
+      input.onchange = (e: any) => {
+        const file = e.target?.files?.[0];
+        if (!file) return;
+
+        if (file.size > 8 * 1024 * 1024) {
+          showAlert(
+            language === 'hi' ? 'फ़ाइल बहुत बड़ी है' : 'File Too Large',
+            language === 'hi'
+              ? 'कृपया 8MB से छोटी फ़ोटो या PDF चुनें।'
+              : 'Please choose an image or PDF under 8MB.',
+            undefined,
+            'danger'
+          );
+          return;
+        }
+
+        const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          setBillPhotoUri(result);
+          setBillFileName(file.name);
+          setBillFileType(isPdf ? 'pdf' : 'image');
+        };
+        reader.readAsDataURL(file);
+      };
+
+      input.click();
+    }
+  };
 
   useEffect(() => {
     if (!business) return;
@@ -214,6 +260,8 @@ export const PurchaseEntryScreen: React.FC = () => {
         paymentStatus,
         paymentMethod: paymentStatus !== 'UNPAID' ? paymentMethod : undefined,
         billPhotoUri: billPhotoUri || undefined,
+        billFileName: billFileName || undefined,
+        billFileType: billPhotoUri ? billFileType : undefined,
         notes: notes.trim() || undefined,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -448,28 +496,106 @@ export const PurchaseEntryScreen: React.FC = () => {
               </Text>
             </View>
 
-            {/* Bill Photo Attachment Button */}
+            {/* Bill Photo / Document Attachment */}
             <View style={styles.photoUploadArea}>
-              <TouchableOpacity
-                style={styles.photoBtn}
-                onPress={() => {
-                  showAlert(
-                    language === 'hi' ? 'बिल फोटो' : 'Bill Photo',
-                    language === 'hi'
-                      ? 'डीलर के पर्चे या बिल की फोटो जोड़ने की सुविधा तैयार है।'
-                      : 'Bill photo attachment active.',
-                    undefined,
-                    'info'
-                  );
-                }}
-              >
-                <Ionicons name="camera" size={20} color={Colors.primary} />
-                <Text style={styles.photoBtnText}>
-                  {billPhotoUri
-                    ? language === 'hi' ? 'बिल फोटो बदलें' : 'Change Bill Photo'
-                    : language === 'hi' ? 'डीलर बिल की फोटो खींचें / अपलोड करें' : 'Attach Bill Photo'}
-                </Text>
-              </TouchableOpacity>
+              <Text style={styles.fieldSubLabel}>
+                {language === 'hi' ? 'डीलर का बिल / चालान (Photo / PDF)' : 'Dealer Bill Attachment (Photo / PDF)'}
+              </Text>
+
+              {billPhotoUri ? (
+                <View style={styles.attachedFileBox}>
+                  {billFileType === 'image' ? (
+                    <View style={styles.attachedImageWrapper}>
+                      <Image source={{ uri: billPhotoUri }} style={styles.billPreviewImage} resizeMode="cover" />
+                      <View style={styles.attachedInfoCol}>
+                        <Text style={styles.attachedFileName} numberOfLines={1}>
+                          📷 {billFileName || (language === 'hi' ? 'बिल फोटो' : 'Bill Photo')}
+                        </Text>
+                        <Text style={styles.attachedFileSuccess}>
+                          ✓ {language === 'hi' ? 'फ़ोटो सुरक्षित है' : 'Image Attached'}
+                        </Text>
+                        <View style={styles.attachedActionsRow}>
+                          <TouchableOpacity style={styles.changeFileBtn} onPress={() => handlePickFile(false)}>
+                            <Text style={styles.changeFileBtnText}>
+                              {language === 'hi' ? 'बदलें' : 'Change'}
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.removeFileBtn}
+                            onPress={() => {
+                              setBillPhotoUri('');
+                              setBillFileName('');
+                            }}
+                          >
+                            <Text style={styles.removeFileBtnText}>
+                              {language === 'hi' ? 'हटाएं' : 'Remove'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
+                  ) : (
+                    <View style={styles.attachedPdfWrapper}>
+                      <Ionicons name="document-text" size={36} color="#DC2626" />
+                      <View style={styles.attachedInfoCol}>
+                        <Text style={styles.attachedFileName} numberOfLines={1}>
+                          📄 {billFileName || 'Bill_Document.pdf'}
+                        </Text>
+                        <Text style={styles.attachedFileSuccess}>
+                          ✓ {language === 'hi' ? 'PDF दस्तावेज़ जुड़ा है' : 'PDF Attached'}
+                        </Text>
+                        <View style={styles.attachedActionsRow}>
+                          <TouchableOpacity
+                            style={styles.changeFileBtn}
+                            onPress={() => {
+                              if (Platform.OS === 'web' && typeof window !== 'undefined') {
+                                window.open(billPhotoUri, '_blank');
+                              }
+                            }}
+                          >
+                            <Text style={styles.changeFileBtnText}>
+                              {language === 'hi' ? 'देखें (Open)' : 'Open'}
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.removeFileBtn}
+                            onPress={() => {
+                              setBillPhotoUri('');
+                              setBillFileName('');
+                            }}
+                          >
+                            <Text style={styles.removeFileBtnText}>
+                              {language === 'hi' ? 'हटाएं' : 'Remove'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              ) : (
+                <View style={styles.uploadOptionsRow}>
+                  <TouchableOpacity
+                    style={[styles.uploadActionBtn, { backgroundColor: '#EEF2FF', borderColor: Colors.primary }]}
+                    onPress={() => handlePickFile(true)}
+                  >
+                    <Ionicons name="camera" size={20} color={Colors.primary} />
+                    <Text style={[styles.uploadActionText, { color: Colors.primary }]}>
+                      {language === 'hi' ? 'कैमरा से फोटो खींचें' : 'Take Photo'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.uploadActionBtn, { backgroundColor: '#F0FDF4', borderColor: '#16A34A' }]}
+                    onPress={() => handlePickFile(false)}
+                  >
+                    <Ionicons name="document-attach" size={20} color="#16A34A" />
+                    <Text style={[styles.uploadActionText, { color: '#16A34A' }]}>
+                      {language === 'hi' ? 'गैलरी / PDF चुनें' : 'Gallery / PDF'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
 
             <Input
@@ -896,24 +1022,90 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   photoUploadArea: {
-    marginBottom: Spacing.sm,
+    marginBottom: Spacing.md,
   },
-  photoBtn: {
+  uploadOptionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  uploadActionBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#EEF2FF',
+    paddingVertical: 12,
+    borderRadius: BorderRadius.md,
     borderWidth: 1.5,
     borderStyle: 'dashed',
-    borderColor: Colors.primary,
-    paddingVertical: 10,
-    borderRadius: BorderRadius.md,
-    gap: 8,
+    gap: 6,
   },
-  photoBtnText: {
+  uploadActionText: {
     fontSize: 12,
     fontWeight: '700',
+  },
+  attachedFileBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: Spacing.sm,
+  },
+  attachedImageWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  billPreviewImage: {
+    width: 64,
+    height: 64,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: '#E2E8F0',
+  },
+  attachedPdfWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  attachedInfoCol: {
+    flex: 1,
+  },
+  attachedFileName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  attachedFileSuccess: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#16A34A',
+    marginTop: 2,
+  },
+  attachedActionsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 4,
+  },
+  changeFileBtn: {
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.sm,
+  },
+  changeFileBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
     color: Colors.primary,
+  },
+  removeFileBtn: {
+    backgroundColor: '#FEF2F2',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.sm,
+  },
+  removeFileBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#DC2626',
   },
   actionContainer: {
     marginTop: Spacing.xs,

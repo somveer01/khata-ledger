@@ -254,6 +254,8 @@ export interface PurchaseInvoice {
   paymentStatus: 'PAID' | 'UNPAID' | 'PARTIAL';
   paymentMethod?: PaymentMethod;
   billPhotoUri?: string; // Camera photo or document URI
+  billFileName?: string; // e.g. "invoice.pdf" or "bill_photo.jpg"
+  billFileType?: 'image' | 'pdf'; // Type for visual rendering
   notes?: string;
   createdAt: string;
   updatedAt: string;
