@@ -38,7 +38,10 @@ export const UomConversionScreen: React.FC = () => {
   // Interactive Live Calculator (Ultra-slim single line)
   const [calcQty, setCalcQty] = useState('5');
   const [calcFromUomId, setCalcFromUomId] = useState('uom_box');
-  const [calcPickerVisible, setCalcPickerVisible] = useState(false);
+
+  // Searchable Unit Dropdown Picker Modal
+  const [unitPickerMode, setUnitPickerMode] = useState<'from' | 'to' | 'calc' | null>(null);
+  const [unitPickerSearch, setUnitPickerSearch] = useState('');
 
   // Add / Edit Modal State
   const [modalVisible, setModalVisible] = useState(false);
@@ -95,6 +98,18 @@ export const UomConversionScreen: React.FC = () => {
     setFactor(item.conversionFactor.toString());
     setDescription(item.description || '');
     setModalVisible(true);
+  };
+
+  const handleSelectPickerUnit = (uom: UnitOfMeasurement) => {
+    if (unitPickerMode === 'from') {
+      setFromUomId(uom.id);
+    } else if (unitPickerMode === 'to') {
+      setToUomId(uom.id);
+    } else if (unitPickerMode === 'calc') {
+      setCalcFromUomId(uom.id);
+    }
+    setUnitPickerMode(null);
+    setUnitPickerSearch('');
   };
 
   const handleSave = async () => {
@@ -252,6 +267,21 @@ export const UomConversionScreen: React.FC = () => {
     });
   }, [conversions, uoms, search, selectedUnitFilter]);
 
+  // Units filtered inside the Searchable Dropdown Picker Modal
+  const filteredPickerUoms = useMemo(() => {
+    const q = unitPickerSearch.toLowerCase().trim();
+    if (!q) return uoms;
+    return uoms.filter((u) =>
+      u.nameHi.toLowerCase().includes(q) ||
+      u.nameEn.toLowerCase().includes(q) ||
+      u.code.toLowerCase().includes(q) ||
+      (u.category && u.category.toLowerCase().includes(q))
+    );
+  }, [uoms, unitPickerSearch]);
+
+  const activeFromUom = uoms.find((u) => u.id === fromUomId);
+  const activeToUom = uoms.find((u) => u.id === toUomId);
+
   // High-density, compact conversion item
   const renderConversionItem = ({ item }: { item: UnitConversion }) => {
     const fromUom = uoms.find((u) => u.id === item.fromUOMId);
@@ -349,10 +379,13 @@ export const UomConversionScreen: React.FC = () => {
             selectTextOnFocus
           />
 
-          {/* From Unit Selector Pill */}
+          {/* From Unit Selector Pill (Opens Searchable Picker) */}
           <TouchableOpacity
             style={styles.calcUnitPill}
-            onPress={() => setCalcPickerVisible(true)}
+            onPress={() => {
+              setUnitPickerSearch('');
+              setUnitPickerMode('calc');
+            }}
             activeOpacity={0.7}
           >
             <Text style={styles.calcUnitPillText} numberOfLines={1}>
@@ -481,41 +514,94 @@ export const UomConversionScreen: React.FC = () => {
         <Text style={styles.fabText}>{language === 'hi' ? 'नया नियम' : 'Add Rule'}</Text>
       </TouchableOpacity>
 
-      {/* Calculator Unit Picker Modal */}
+      {/* Searchable Unit Dropdown Picker Modal (Used for From Unit, To Unit, and Calculator) */}
       <Modal
-        visible={calcPickerVisible}
+        visible={unitPickerMode !== null}
         transparent
         animationType="fade"
-        onRequestClose={() => setCalcPickerVisible(false)}
+        onRequestClose={() => {
+          setUnitPickerMode(null);
+          setUnitPickerSearch('');
+        }}
       >
         <TouchableOpacity
           style={styles.pickerOverlay}
           activeOpacity={1}
-          onPress={() => setCalcPickerVisible(false)}
+          onPress={() => {
+            setUnitPickerMode(null);
+            setUnitPickerSearch('');
+          }}
         >
-          <View style={styles.pickerModalBox}>
-            <Text style={styles.pickerModalTitle}>
-              {language === 'hi' ? 'कैलकुलेटर हेतु इकाई चुनें:' : 'Select Unit to Calculate:'}
-            </Text>
-            <ScrollView style={{ maxHeight: 250 }}>
-              {availableFilterUnits.map((u) => {
-                const isSel = calcFromUomId === u.id;
-                return (
-                  <TouchableOpacity
-                    key={u.id}
-                    style={[styles.pickerItemRow, isSel && styles.pickerItemRowActive]}
-                    onPress={() => {
-                      setCalcFromUomId(u.id);
-                      setCalcPickerVisible(false);
-                    }}
-                  >
-                    <Text style={[styles.pickerItemText, isSel && styles.pickerItemTextActive]}>
-                      {u.nameHi} ({u.code})
-                    </Text>
-                    {isSel && <Ionicons name="checkmark" size={16} color={Colors.primary} />}
-                  </TouchableOpacity>
-                );
-              })}
+          <View style={styles.pickerModalBox} onStartShouldSetResponder={() => true}>
+            <View style={styles.pickerModalHeader}>
+              <Text style={styles.pickerModalTitle}>
+                {unitPickerMode === 'from'
+                  ? language === 'hi' ? 'बड़ी पैकेजिंग इकाई चुनें (From Unit):' : 'Select From Unit:'
+                  : unitPickerMode === 'to'
+                  ? language === 'hi' ? 'छोटी / बेस इकाई चुनें (To Unit):' : 'Select To Unit:'
+                  : language === 'hi' ? 'कैलकुलेटर हेतु इकाई चुनें:' : 'Select Calculation Unit:'}
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setUnitPickerMode(null);
+                  setUnitPickerSearch('');
+                }}
+              >
+                <Ionicons name="close-circle" size={22} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* In-Modal Search Input */}
+            <View style={styles.pickerSearchWrap}>
+              <Ionicons name="search" size={16} color={Colors.textSecondary} style={{ marginRight: 6 }} />
+              <TextInput
+                style={styles.pickerSearchInput}
+                placeholder={language === 'hi' ? 'इकाई खोजें (उदा. पेटी, बोतल, BOX, PC)...' : 'Search unit name or code...'}
+                placeholderTextColor="#94A3B8"
+                value={unitPickerSearch}
+                onChangeText={setUnitPickerSearch}
+                autoFocus
+              />
+              {unitPickerSearch ? (
+                <TouchableOpacity onPress={() => setUnitPickerSearch('')}>
+                  <Ionicons name="close" size={16} color={Colors.textSecondary} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            {/* Searchable Unit List */}
+            <ScrollView style={{ maxHeight: 280 }} keyboardShouldPersistTaps="handled">
+              {filteredPickerUoms.length === 0 ? (
+                <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+                  <Text style={{ fontSize: 13, color: Colors.textMuted }}>
+                    {language === 'hi' ? 'कोई इकाई नहीं मिली' : 'No units match'}
+                  </Text>
+                </View>
+              ) : (
+                filteredPickerUoms.map((u) => {
+                  const currentSelectedId =
+                    unitPickerMode === 'from' ? fromUomId : unitPickerMode === 'to' ? toUomId : calcFromUomId;
+                  const isSel = currentSelectedId === u.id;
+
+                  return (
+                    <TouchableOpacity
+                      key={u.id}
+                      style={[styles.pickerItemRow, isSel && styles.pickerItemRowActive]}
+                      onPress={() => handleSelectPickerUnit(u)}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.pickerItemName, isSel && styles.pickerItemNameActive]}>
+                          {u.nameHi} ({u.code})
+                        </Text>
+                        <Text style={styles.pickerItemSub}>
+                          {u.nameEn} • {u.category || 'इकाई'}
+                        </Text>
+                      </View>
+                      {isSel && <Ionicons name="checkmark-circle" size={20} color={Colors.primary} />}
+                    </TouchableOpacity>
+                  );
+                })
+              )}
             </ScrollView>
           </View>
         </TouchableOpacity>
@@ -545,34 +631,40 @@ export const UomConversionScreen: React.FC = () => {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={{ maxHeight: 440 }} showsVerticalScrollIndicator={false}>
-              {/* Step 1: From Unit */}
+            <ScrollView style={{ maxHeight: 440 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {/* Step 1: From Unit Searchable Dropdown */}
               <Text style={styles.inputLabel}>
-                {language === 'hi' ? '1. बड़ी पैकेजिंग इकाई चुनें (From Unit):' : '1. From Unit (Larger Unit):'}
+                {language === 'hi' ? '1. बड़ी पैकेजिंग इकाई (From Unit) *' : '1. From Unit (Larger Unit) *'}
               </Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-                {uoms.map((u) => {
-                  const active = fromUomId === u.id;
-                  return (
-                    <TouchableOpacity
-                      key={u.id}
-                      style={[styles.uomSelectChip, active && styles.uomSelectChipActive]}
-                      onPress={() => setFromUomId(u.id)}
-                    >
-                      <Text style={[styles.uomSelectChipText, active && styles.uomSelectChipTextActive]}>
-                        {u.nameHi} ({u.code})
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+              <TouchableOpacity
+                style={styles.dropdownSelector}
+                onPress={() => {
+                  setUnitPickerSearch('');
+                  setUnitPickerMode('from');
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={styles.dropdownSelectedWrap}>
+                  <Ionicons name="cube-outline" size={18} color={Colors.primary} style={{ marginRight: 8 }} />
+                  {activeFromUom ? (
+                    <Text style={styles.dropdownSelectedText}>
+                      {activeFromUom.nameHi} ({activeFromUom.code}) - {activeFromUom.nameEn}
+                    </Text>
+                  ) : (
+                    <Text style={styles.dropdownPlaceholderText}>
+                      {language === 'hi' ? 'बड़ी इकाई चुनें...' : 'Select larger unit...'}
+                    </Text>
+                  )}
+                </View>
+                <Ionicons name="chevron-down" size={18} color={Colors.textSecondary} />
+              </TouchableOpacity>
 
               {/* Step 2: Conversion Factor */}
               <Input
                 label={
                   language === 'hi'
-                    ? '2. इसमें कितनी छोटी इकाइयाँ होंगी? (संख्या):'
-                    : '2. How many base units in 1 package?'
+                    ? '2. इसमें कितनी छोटी इकाइयाँ होंगी? (संख्या) *'
+                    : '2. How many base units in 1 package? *'
                 }
                 placeholder="10, 20, 50, 1000..."
                 keyboardType="numeric"
@@ -580,26 +672,32 @@ export const UomConversionScreen: React.FC = () => {
                 onChangeText={setFactor}
               />
 
-              {/* Step 3: To Unit */}
+              {/* Step 3: To Unit Searchable Dropdown */}
               <Text style={styles.inputLabel}>
-                {language === 'hi' ? '3. छोटी / बेस इकाई चुनें (To Unit):' : '3. To Unit (Base Unit):'}
+                {language === 'hi' ? '3. छोटी / बेस इकाई (To Unit) *' : '3. To Unit (Base Unit) *'}
               </Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-                {uoms.map((u) => {
-                  const active = toUomId === u.id;
-                  return (
-                    <TouchableOpacity
-                      key={u.id}
-                      style={[styles.uomSelectChip, active && styles.uomSelectChipActiveGreen]}
-                      onPress={() => setToUomId(u.id)}
-                    >
-                      <Text style={[styles.uomSelectChipText, active && styles.uomSelectChipTextActive]}>
-                        {u.nameHi} ({u.code})
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+              <TouchableOpacity
+                style={[styles.dropdownSelector, styles.dropdownSelectorGreen]}
+                onPress={() => {
+                  setUnitPickerSearch('');
+                  setUnitPickerMode('to');
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={styles.dropdownSelectedWrap}>
+                  <Ionicons name="scale-outline" size={18} color="#15803D" style={{ marginRight: 8 }} />
+                  {activeToUom ? (
+                    <Text style={[styles.dropdownSelectedText, { color: '#15803D' }]}>
+                      {activeToUom.nameHi} ({activeToUom.code}) - {activeToUom.nameEn}
+                    </Text>
+                  ) : (
+                    <Text style={styles.dropdownPlaceholderText}>
+                      {language === 'hi' ? 'छोटी इकाई चुनें...' : 'Select base unit...'}
+                    </Text>
+                  )}
+                </View>
+                <Ionicons name="chevron-down" size={18} color="#15803D" />
+              </TouchableOpacity>
 
               {/* Visual Formula Preview in Modal */}
               <View style={styles.formulaPreviewBox}>
@@ -607,8 +705,8 @@ export const UomConversionScreen: React.FC = () => {
                   {language === 'hi' ? 'रूपांतरण नियम का पूर्वावलोकन (Preview):' : 'Rule Preview:'}
                 </Text>
                 <Text style={styles.formulaPreviewFormula}>
-                  1 {uoms.find((u) => u.id === fromUomId)?.nameHi || 'इकाई'} = {factor || '0'}{' '}
-                  {uoms.find((u) => u.id === toUomId)?.nameHi || 'इकाई'}
+                  1 {activeFromUom?.nameHi || 'बड़ी इकाई'} = {factor || '0'}{' '}
+                  {activeToUom?.nameHi || 'छोटी इकाई'}
                 </Text>
               </View>
 
@@ -672,7 +770,7 @@ const styles = StyleSheet.create({
     height: 38,
   },
   calcInputInline: {
-    width: 36,
+    width: 38,
     height: 28,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
@@ -693,7 +791,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: BorderRadius.sm,
     gap: 3,
-    maxWidth: 90,
+    maxWidth: 100,
   },
   calcUnitPillText: {
     fontSize: 12,
@@ -877,6 +975,112 @@ const styles = StyleSheet.create({
     color: '#1E3A8A',
   },
 
+  // Dropdown Selector Trigger Input
+  dropdownSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  dropdownSelectorGreen: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#BBF7D0',
+  },
+  dropdownSelectedWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8,
+  },
+  dropdownSelectedText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  dropdownPlaceholderText: {
+    fontSize: 13,
+    color: Colors.textMuted,
+  },
+
+  // Searchable Picker Modal
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  pickerModalBox: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: BorderRadius.lg,
+    padding: 16,
+    width: '100%',
+    maxWidth: 380,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+  },
+  pickerModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  pickerModalTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  pickerSearchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F5F9',
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: 10,
+    height: 38,
+    marginBottom: 10,
+  },
+  pickerSearchInput: {
+    flex: 1,
+    fontSize: 13,
+    color: Colors.textPrimary,
+    padding: 0,
+  },
+  pickerItemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  pickerItemRowActive: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: BorderRadius.sm,
+  },
+  pickerItemName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  pickerItemNameActive: {
+    color: Colors.primary,
+  },
+  pickerItemSub: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+
   // Empty Box
   emptyBox: {
     alignItems: 'center',
@@ -931,49 +1135,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
 
-  // Picker Modal
-  pickerOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  pickerModalBox: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: BorderRadius.md,
-    padding: 16,
-    width: '100%',
-    maxWidth: 320,
-  },
-  pickerModalTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-    marginBottom: 10,
-  },
-  pickerItemRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  pickerItemRowActive: {
-    backgroundColor: '#EFF6FF',
-    borderRadius: BorderRadius.sm,
-  },
-  pickerItemText: {
-    fontSize: 13,
-    color: Colors.textPrimary,
-  },
-  pickerItemTextActive: {
-    fontWeight: '700',
-    color: Colors.primary,
-  },
-
   // Add / Edit Modal
   modalOverlay: {
     flex: 1,
@@ -999,34 +1160,9 @@ const styles = StyleSheet.create({
   },
   inputLabel: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
     color: Colors.textPrimary,
     marginBottom: 6,
-  },
-  uomSelectChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: '#F1F5F9',
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    marginRight: 6,
-  },
-  uomSelectChipActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
-  },
-  uomSelectChipActiveGreen: {
-    backgroundColor: '#16A34A',
-    borderColor: '#16A34A',
-  },
-  uomSelectChipText: {
-    fontSize: 12,
-    color: Colors.textPrimary,
-  },
-  uomSelectChipTextActive: {
-    color: '#FFFFFF',
-    fontWeight: '700',
   },
   formulaPreviewBox: {
     backgroundColor: '#FEF3C7',
