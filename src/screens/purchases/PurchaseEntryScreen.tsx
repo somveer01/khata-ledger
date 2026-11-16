@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
+  TextInput,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -39,6 +40,8 @@ export const PurchaseEntryScreen: React.FC = () => {
   const [supplierName, setSupplierName] = useState<string>(
     editInvoice?.supplierName || route.params?.supplierName || ''
   );
+  const [supplierDropdownOpen, setSupplierDropdownOpen] = useState(false);
+  const [supplierSearch, setSupplierSearch] = useState('');
   const [invoiceNo, setInvoiceNo] = useState<string>(editInvoice?.invoiceNo || '');
   const [invoiceDate, setInvoiceDate] = useState<string>(
     editInvoice?.invoiceDate || new Date().toISOString().split('T')[0]
@@ -370,6 +373,20 @@ export const PurchaseEntryScreen: React.FC = () => {
     }
   };
 
+  const filteredSuppliers = suppliers.filter((s) => {
+    const q = supplierSearch.toLowerCase().trim();
+    if (!q) return true;
+    return (
+      s.name.toLowerCase().includes(q) ||
+      (s.phone && s.phone.includes(q)) ||
+      (s.address && s.address.toLowerCase().includes(q))
+    );
+  });
+
+  const selectedSupplier = suppliers.find(
+    (s) => s.id === selectedSupplierId || (supplierName && s.name.toLowerCase() === supplierName.trim().toLowerCase())
+  );
+
   const filteredProducts = products.filter((p) => {
     const q = productSearch.toLowerCase();
     return p.productName.toLowerCase().includes(q) || p.brandName.toLowerCase().includes(q);
@@ -464,39 +481,179 @@ export const PurchaseEntryScreen: React.FC = () => {
             </View>
           </View>
 
-          {/* Quick Supplier Picker Chips */}
-          {suppliers.length > 0 && (
-            <View style={{ marginBottom: Spacing.sm }}>
-              <Text style={styles.fieldSubLabel}>
-                {language === 'hi' ? 'सप्लायर चुनें (Choose Supplier):' : 'Select Supplier:'}
-              </Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsScroll}>
-                {suppliers.map((s) => {
-                  const isSel = selectedSupplierId === s.id || supplierName === s.name;
-                  return (
+          {/* Searchable Supplier Dropdown */}
+          <View style={{ marginBottom: Spacing.sm }}>
+            <Text style={styles.fieldSubLabel}>
+              {language === 'hi' ? 'सप्लायर / डीलर चुनें (Select Supplier) *' : 'Select Supplier *'}
+            </Text>
+
+            {/* Dropdown Trigger Box */}
+            <TouchableOpacity
+              style={[
+                styles.supplierDropdownTrigger,
+                supplierDropdownOpen && styles.supplierDropdownTriggerOpen,
+                selectedSupplier ? styles.supplierDropdownTriggerSelected : undefined,
+              ]}
+              onPress={() => {
+                setSupplierSearch('');
+                setSupplierDropdownOpen(!supplierDropdownOpen);
+              }}
+              activeOpacity={0.7}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                <Ionicons
+                  name="business"
+                  size={20}
+                  color={selectedSupplier ? Colors.primary : Colors.textSecondary}
+                  style={{ marginRight: 8 }}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={[
+                      styles.supplierTriggerText,
+                      !supplierName && { color: Colors.textMuted },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {supplierName || (language === 'hi' ? 'सप्लायर ड्रॉपडाउन से चुनें...' : 'Choose supplier from dropdown...')}
+                  </Text>
+                  {selectedSupplier ? (
+                    <Text style={styles.supplierTriggerSub} numberOfLines={1}>
+                      {selectedSupplier.phone ? `📞 ${selectedSupplier.phone}` : ''}
+                      {selectedSupplier.address ? ` • 📍 ${selectedSupplier.address}` : ''}
+                      {selectedSupplier.currentOutstandingPaise > 0
+                        ? ` • उधार: ${formatCurrency(selectedSupplier.currentOutstandingPaise)}`
+                        : ''}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                {supplierName ? (
+                  <TouchableOpacity
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      setSelectedSupplierId('');
+                      setSupplierName('');
+                      setSupplierDropdownOpen(true);
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="close-circle" size={18} color={Colors.textSecondary} />
+                  </TouchableOpacity>
+                ) : null}
+                <Ionicons
+                  name={supplierDropdownOpen ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color={Colors.textSecondary}
+                />
+              </View>
+            </TouchableOpacity>
+
+            {/* Dropdown Panel */}
+            {supplierDropdownOpen && (
+              <View style={styles.supplierDropdownCard}>
+                {/* Search Bar inside dropdown */}
+                <View style={styles.supplierSearchWrap}>
+                  <Ionicons name="search" size={15} color={Colors.textSecondary} style={{ marginRight: 6 }} />
+                  <TextInput
+                    style={styles.supplierSearchInput}
+                    placeholder={language === 'hi' ? 'सप्लायर का नाम या फोन नंबर खोजें...' : 'Search supplier or phone...'}
+                    placeholderTextColor="#94A3B8"
+                    value={supplierSearch}
+                    onChangeText={setSupplierSearch}
+                    autoFocus={Platform.OS === 'web'}
+                  />
+                  {supplierSearch ? (
+                    <TouchableOpacity onPress={() => setSupplierSearch('')}>
+                      <Ionicons name="close" size={16} color={Colors.textSecondary} />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+
+                {/* Supplier Items List */}
+                <ScrollView
+                  style={{ maxHeight: 220 }}
+                  nestedScrollEnabled
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {filteredSuppliers.map((s) => {
+                    const isSel = selectedSupplierId === s.id || supplierName === s.name;
+                    return (
+                      <TouchableOpacity
+                        key={s.id}
+                        style={[styles.supplierItemRow, isSel && styles.supplierItemRowActive]}
+                        onPress={() => {
+                          setSelectedSupplierId(s.id);
+                          setSupplierName(s.name);
+                          setSupplierDropdownOpen(false);
+                        }}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.supplierItemName, isSel && styles.supplierItemNameActive]}>
+                            {s.name}
+                          </Text>
+                          <Text style={styles.supplierItemSub}>
+                            {s.phone ? `📞 ${s.phone}` : ''}
+                            {s.address ? ` • 📍 ${s.address}` : ''}
+                          </Text>
+                        </View>
+
+                        {s.currentOutstandingPaise > 0 && (
+                          <View style={styles.supplierDueBadge}>
+                            <Text style={styles.supplierDueText}>
+                              उधार: {formatCurrency(s.currentOutstandingPaise)}
+                            </Text>
+                          </View>
+                        )}
+
+                        {isSel && (
+                          <Ionicons name="checkmark-circle" size={18} color={Colors.primary} style={{ marginLeft: 6 }} />
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+
+                  {filteredSuppliers.length === 0 && (
+                    <View style={styles.noSupplierFoundBox}>
+                      <Text style={styles.noSupplierFoundText}>
+                        {language === 'hi' ? 'कोई सप्लायर नहीं मिला।' : 'No supplier found.'}
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* Add New Custom Supplier Option */}
+                  {supplierSearch.trim() && !suppliers.some(s => s.name.toLowerCase() === supplierSearch.trim().toLowerCase()) && (
                     <TouchableOpacity
-                      key={s.id}
-                      style={[styles.supChip, isSel && styles.supChipActive]}
+                      style={styles.addNewSupplierRow}
                       onPress={() => {
-                        setSelectedSupplierId(s.id);
-                        setSupplierName(s.name);
+                        setSupplierName(supplierSearch.trim());
+                        setSelectedSupplierId('');
+                        setSupplierDropdownOpen(false);
                       }}
                     >
-                      <Text style={[styles.supChipText, isSel && styles.supChipTextActive]}>{s.name}</Text>
+                      <Ionicons name="add-circle" size={18} color="#166534" />
+                      <Text style={styles.addNewSupplierText}>
+                        {language === 'hi'
+                          ? `+ नया सप्लायर "${supplierSearch.trim()}" जोड़ें`
+                          : `+ Use new "${supplierSearch.trim()}"`}
+                      </Text>
                     </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </View>
-          )}
+                  )}
+                </ScrollView>
+              </View>
+            )}
+          </View>
 
           <Input
-            label={language === 'hi' ? 'सप्लायर / डीलर का नाम *' : 'Supplier / Dealer Name *'}
+            label={language === 'hi' ? 'सप्लायर / डीलर का नाम (सत्यापित करें या बदलें) *' : 'Supplier / Dealer Name *'}
             placeholder="उदा. श्रीराम कृषि केंद्र, बायर एजेंसी"
             value={supplierName}
             onChangeText={(txt) => {
               setSupplierName(txt);
-              setSelectedSupplierId('');
+              const matched = suppliers.find((s) => s.name.toLowerCase() === txt.trim().toLowerCase());
+              setSelectedSupplierId(matched ? matched.id : '');
             }}
           />
 
@@ -1655,5 +1812,125 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#15803D',
     fontWeight: '700',
+  },
+  // Supplier Dropdown Styles
+  supplierDropdownTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: Spacing.xs,
+  },
+  supplierDropdownTriggerOpen: {
+    borderColor: Colors.primary,
+    backgroundColor: '#F8FAFC',
+  },
+  supplierDropdownTriggerSelected: {
+    borderColor: '#93C5FD',
+    backgroundColor: '#F0F9FF',
+  },
+  supplierTriggerText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  supplierTriggerSub: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  supplierDropdownCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.xs,
+    marginBottom: Spacing.sm,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  supplierSearchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F5F9',
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: Spacing.xs,
+  },
+  supplierSearchInput: {
+    flex: 1,
+    fontSize: 13,
+    color: Colors.textPrimary,
+    padding: 0,
+  },
+  supplierItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    borderRadius: BorderRadius.sm,
+  },
+  supplierItemRowActive: {
+    backgroundColor: '#EEF2FF',
+  },
+  supplierItemName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  supplierItemNameActive: {
+    color: Colors.primary,
+    fontWeight: '800',
+  },
+  supplierItemSub: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  supplierDueBadge: {
+    backgroundColor: '#FEF2F2',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.sm,
+  },
+  supplierDueText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#DC2626',
+  },
+  noSupplierFoundBox: {
+    padding: Spacing.sm,
+    alignItems: 'center',
+  },
+  noSupplierFoundText: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+  },
+  addNewSupplierRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    backgroundColor: '#F0FDF4',
+    borderRadius: BorderRadius.sm,
+    marginTop: 4,
+  },
+  addNewSupplierText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#166534',
   },
 });
