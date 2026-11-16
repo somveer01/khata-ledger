@@ -86,13 +86,23 @@ export const StockLedgerScreen: React.FC = () => {
         showBack={true}
         onBack={() => navigation.goBack()}
         rightAction={
-          <TouchableOpacity
-            style={styles.addPurchaseBtn}
-            onPress={() => navigation.navigate('PurchaseEntry')}
-          >
-            <Ionicons name="add" size={18} color="#FFFFFF" />
-            <Text style={styles.addPurchaseBtnText}>{language === 'hi' ? 'खरीद एंट्री' : 'Add Stock'}</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <TouchableOpacity
+              style={styles.adjustStockBtn}
+              onPress={() => navigation.navigate('StockAdjustment')}
+            >
+              <Ionicons name="shield-half-outline" size={15} color="#DC2626" />
+              <Text style={styles.adjustStockBtnText}>{language === 'hi' ? 'एडजस्ट' : 'Adjust'}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.addPurchaseBtn}
+              onPress={() => navigation.navigate('PurchaseEntry')}
+            >
+              <Ionicons name="add" size={16} color="#FFFFFF" />
+              <Text style={styles.addPurchaseBtnText}>{language === 'hi' ? 'खरीद' : 'Buy'}</Text>
+            </TouchableOpacity>
+          </View>
         }
       />
 
@@ -271,6 +281,17 @@ export const StockLedgerScreen: React.FC = () => {
                   </View>
                 </View>
 
+                {item.totalAdjustedBaseUnits !== 0 && item.totalAdjustedBaseUnits !== undefined && (
+                  <View style={styles.adjustmentRow}>
+                    <Text style={styles.adjustmentText}>
+                      ⚙️ {language === 'hi' ? 'समायोजन (डैमेज/ऑडिट):' : 'Adjustments:'}{' '}
+                      <Text style={{ fontWeight: '800', color: item.totalAdjustedBaseUnits > 0 ? '#16A34A' : '#DC2626' }}>
+                        {item.totalAdjustedBaseUnits > 0 ? `+${item.totalAdjustedBaseUnits}` : item.totalAdjustedBaseUnits} {item.sellingUnit}
+                      </Text>
+                    </Text>
+                  </View>
+                )}
+
                 <View style={styles.stockValueFooter}>
                   <Text style={styles.unitCostHint}>
                     {language === 'hi' ? 'खरीद दर:' : 'Unit Cost:'} {formatCurrency(item.unitCostPaise)}/{item.sellingUnit}
@@ -360,6 +381,22 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: Colors.background,
+  },
+  adjustStockBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: BorderRadius.full,
+    gap: 4,
+  },
+  adjustStockBtnText: {
+    color: '#DC2626',
+    fontSize: 11,
+    fontWeight: '700',
   },
   addPurchaseBtn: {
     flexDirection: 'row',
@@ -548,6 +585,18 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginTop: 1,
     textAlign: 'right',
+  },
+  adjustmentRow: {
+    backgroundColor: '#F8FAFC',
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: BorderRadius.sm,
+    marginTop: 6,
+    alignSelf: 'flex-start',
+  },
+  adjustmentText: {
+    fontSize: 11,
+    color: Colors.textSecondary,
   },
   stockValueFooter: {
     flexDirection: 'row',

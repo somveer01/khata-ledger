@@ -13,7 +13,7 @@ import {
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './firebase';
 import { StorageService } from './storage';
-import { Business, Village, Customer, Transaction, VillageSummary, DashboardMetrics, AppUser, StoreActivityStats, Product, UnitOfMeasurement, UnitConversion, Supplier, SupplierPayment, PurchaseInvoice, StockItemSummary } from '../types';
+import { Business, Village, Customer, Transaction, VillageSummary, DashboardMetrics, AppUser, StoreActivityStats, Product, UnitOfMeasurement, UnitConversion, Supplier, SupplierPayment, PurchaseInvoice, StockItemSummary, StockAdjustment } from '../types';
 import { calculateCustomerBalance, calculateVillageSummaries, calculateDashboardMetrics, calculateCustomerDueDate } from './accounting';
 import { toPaise } from '../utils/money';
 import { getBusinessIdFromEmail, isLegacyOwner, LEGACY_BUSINESS_ID, LEGACY_BUSINESS_TENANT_ID, LEGACY_OWNER_EMAIL } from '../utils/tenant';
@@ -1788,6 +1788,7 @@ export const DataRepository = {
     try {
       const list = await StorageService.getPurchases(purchase.businessId);
       const idx = list.findIndex((p) => p.id === purchase.id);
+      const oldPurchase = idx >= 0 ? list[idx] : null;
       const savedItem: PurchaseInvoice = {
         ...purchase,
         updatedAt: new Date().toISOString(),
@@ -1802,20 +1803,54 @@ export const DataRepository = {
       await StorageService.savePurchases(purchase.businessId, list);
 
       // Also update supplier outstanding balance and total purchases
+      const suppliers = await StorageService.getSuppliers(purchase.businessId);
+      let suppliersChanged = false;
+
+      // If supplier changed on edit, revert old supplier balances first
+      if (oldPurchase && oldPurchase.supplierId && oldPurchase.supplierId !== purchase.supplierId) {
+        const oldSIdx = suppliers.findIndex((s) => s.id === oldPurchase.supplierId);
+        if (oldSIdx >= 0) {
+          const oldSup = suppliers[oldSIdx];
+          const updatedOldSup: Supplier = {
+            ...oldSup,
+            totalPurchasePaise: Math.max(0, (oldSup.totalPurchasePaise || 0) - oldPurchase.totalAmountPaise),
+            totalPaidPaise: Math.max(0, (oldSup.totalPaidPaise || 0) - (oldPurchase.paidAmountPaise || 0)),
+            currentOutstandingPaise: Math.max(0, (oldSup.currentOutstandingPaise || 0) - (oldPurchase.dueAmountPaise || 0)),
+            updatedAt: new Date().toISOString(),
+          };
+          suppliers[oldSIdx] = updatedOldSup;
+          suppliersChanged = true;
+
+          if (isFirebaseConfigured() && db) {
+            setDoc(
+              doc(db, 'suppliers', oldSup.id),
+              cleanForFirestore({
+                ...updatedOldSup,
+                updatedAt: serverTimestamp(),
+              }),
+              { merge: true }
+            ).catch((err) => console.warn('Firestore revert old supplier on purchase edit error:', err));
+          }
+        }
+      }
+
       if (purchase.supplierId) {
-        const suppliers = await StorageService.getSuppliers(purchase.businessId);
         const sIdx = suppliers.findIndex((s) => s.id === purchase.supplierId);
         if (sIdx >= 0) {
           const sup = suppliers[sIdx];
+          const prevTotal = oldPurchase && oldPurchase.supplierId === purchase.supplierId ? oldPurchase.totalAmountPaise : 0;
+          const prevPaid = oldPurchase && oldPurchase.supplierId === purchase.supplierId ? (oldPurchase.paidAmountPaise || 0) : 0;
+          const prevDue = oldPurchase && oldPurchase.supplierId === purchase.supplierId ? (oldPurchase.dueAmountPaise || 0) : 0;
+
           const updatedSupplier: Supplier = {
             ...sup,
-            totalPurchasePaise: (sup.totalPurchasePaise || 0) + purchase.totalAmountPaise,
-            totalPaidPaise: (sup.totalPaidPaise || 0) + (purchase.paidAmountPaise || 0),
-            currentOutstandingPaise: (sup.currentOutstandingPaise || 0) + (purchase.dueAmountPaise || 0),
+            totalPurchasePaise: Math.max(0, (sup.totalPurchasePaise || 0) - prevTotal + purchase.totalAmountPaise),
+            totalPaidPaise: Math.max(0, (sup.totalPaidPaise || 0) - prevPaid + (purchase.paidAmountPaise || 0)),
+            currentOutstandingPaise: Math.max(0, (sup.currentOutstandingPaise || 0) - prevDue + (purchase.dueAmountPaise || 0)),
             updatedAt: new Date().toISOString(),
           };
           suppliers[sIdx] = updatedSupplier;
-          await StorageService.saveSuppliers(purchase.businessId, suppliers);
+          suppliersChanged = true;
 
           if (isFirebaseConfigured() && db) {
             setDoc(
@@ -1828,6 +1863,10 @@ export const DataRepository = {
             ).catch((err) => console.warn('Firestore update supplier on purchase error:', err));
           }
         }
+      }
+
+      if (suppliersChanged) {
+        await StorageService.saveSuppliers(purchase.businessId, suppliers);
       }
 
       if (isFirebaseConfigured() && db) {
@@ -1860,14 +1899,26 @@ export const DataRepository = {
         const sIdx = suppliers.findIndex((s) => s.id === toDelete.supplierId);
         if (sIdx >= 0) {
           const sup = suppliers[sIdx];
-          suppliers[sIdx] = {
+          const updatedSupplier: Supplier = {
             ...sup,
             totalPurchasePaise: Math.max(0, (sup.totalPurchasePaise || 0) - toDelete.totalAmountPaise),
             totalPaidPaise: Math.max(0, (sup.totalPaidPaise || 0) - (toDelete.paidAmountPaise || 0)),
             currentOutstandingPaise: Math.max(0, (sup.currentOutstandingPaise || 0) - (toDelete.dueAmountPaise || 0)),
             updatedAt: new Date().toISOString(),
           };
+          suppliers[sIdx] = updatedSupplier;
           await StorageService.saveSuppliers(businessId, suppliers);
+
+          if (isFirebaseConfigured() && db) {
+            setDoc(
+              doc(db, 'suppliers', sup.id),
+              cleanForFirestore({
+                ...updatedSupplier,
+                updatedAt: serverTimestamp(),
+              }),
+              { merge: true }
+            ).catch((err) => console.warn('Firestore update supplier on delete purchase error:', err));
+          }
         }
       }
 
@@ -1942,13 +1993,79 @@ export const DataRepository = {
   },
 
   // -------------------------------------------------------------
-  // LIVE STOCK LEDGER SUMMARY (Purchases - Sales = Available Stock)
+  // STOCK ADJUSTMENTS (Damaged, Expiry, Physical Count Audit)
+  // -------------------------------------------------------------
+  async getStockAdjustments(businessId: string): Promise<StockAdjustment[]> {
+    return StorageService.getStockAdjustments(businessId);
+  },
+
+  async saveStockAdjustment(
+    adj: StockAdjustment
+  ): Promise<{ success: boolean; adjustment?: StockAdjustment; error?: string }> {
+    try {
+      const list = await StorageService.getStockAdjustments(adj.businessId);
+      const idx = list.findIndex((a) => a.id === adj.id);
+      const now = new Date().toISOString();
+      const savedItem: StockAdjustment = {
+        ...adj,
+        updatedAt: now,
+      };
+
+      if (idx >= 0) {
+        list[idx] = savedItem;
+      } else {
+        list.unshift(savedItem);
+      }
+
+      await StorageService.saveStockAdjustments(adj.businessId, list);
+
+      if (isFirebaseConfigured() && db) {
+        setDoc(
+          doc(db, 'stock_adjustments', adj.id),
+          cleanForFirestore({
+            ...savedItem,
+            updatedAt: serverTimestamp(),
+          }),
+          { merge: true }
+        ).catch((err) => console.warn('Firestore saveStockAdjustment error:', err));
+      }
+
+      return { success: true, adjustment: savedItem };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  async deleteStockAdjustment(
+    businessId: string,
+    adjustmentId: string
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const list = await StorageService.getStockAdjustments(businessId);
+      const filtered = list.filter((a) => a.id !== adjustmentId);
+      await StorageService.saveStockAdjustments(businessId, filtered);
+
+      if (isFirebaseConfigured() && db) {
+        deleteDoc(doc(db, 'stock_adjustments', adjustmentId)).catch((err) =>
+          console.warn('Firestore deleteStockAdjustment error:', err)
+        );
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  // -------------------------------------------------------------
+  // LIVE STOCK LEDGER SUMMARY (Purchases - Sales + Adjustments = Available Stock)
   // -------------------------------------------------------------
   async getStockLedgerSummary(businessId: string): Promise<StockItemSummary[]> {
-    const [products, purchases, transactions] = await Promise.all([
+    const [products, purchases, transactions, adjustments] = await Promise.all([
       this.getProducts(businessId),
       StorageService.getPurchases(businessId),
       StorageService.getTransactions(businessId),
+      StorageService.getStockAdjustments(businessId),
     ]);
 
     // Calculate total purchased base units per product
@@ -1971,6 +2088,21 @@ export const DataRepository = {
       }
     }
 
+    // Calculate net adjustments (+ surplus / - damage, expiry, loss)
+    const adjustedMap = new Map<string, number>();
+    for (const adj of adjustments) {
+      const key = adj.productId || adj.productName?.toLowerCase().trim();
+      const prev = adjustedMap.get(key) || 0;
+      let delta = 0;
+      if (adj.adjustmentType === 'AUDIT_SURPLUS' || adj.adjustmentType === 'MANUAL_IN') {
+        delta = Math.abs(adj.quantityBaseUnits);
+      } else {
+        // DAMAGE, EXPIRY, THEFT_LOSS, AUDIT_SHORT, MANUAL_OUT
+        delta = -Math.abs(adj.quantityBaseUnits);
+      }
+      adjustedMap.set(key, prev + delta);
+    }
+
     const summaries: StockItemSummary[] = products
       .filter((p) => p.isActive)
       .map((p) => {
@@ -1979,7 +2111,8 @@ export const DataRepository = {
 
         const totalPurchased = (purchasedMap.get(idKey) || 0) + (purchasedMap.get(nameKey) || 0);
         const totalSold = soldMap.get(nameKey) || 0;
-        const currentStock = Math.max(0, totalPurchased - totalSold);
+        const netAdjusted = (adjustedMap.get(idKey) || 0) + (adjustedMap.get(nameKey) || 0);
+        const currentStock = Math.max(0, totalPurchased - totalSold + netAdjusted);
 
         const unitsPerCase = p.unitsPerCase || p.conversionFactor || 10;
         const cases = Math.floor(currentStock / unitsPerCase);
@@ -2008,6 +2141,7 @@ export const DataRepository = {
           purchasePackagingUnit: p.purchasePackagingUnit || 'Box',
           totalPurchasedBaseUnits: totalPurchased,
           totalSoldBaseUnits: totalSold,
+          totalAdjustedBaseUnits: netAdjusted,
           currentStockBaseUnits: currentStock,
           currentStockCases: cases,
           currentStockLooseUnits: loose,

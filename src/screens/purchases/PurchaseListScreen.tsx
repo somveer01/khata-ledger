@@ -16,11 +16,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { Header } from '../../components/Header';
 import { Card } from '../../components/Card';
 import { Input } from '../../components/Input';
+import { Button } from '../../components/Button';
 import { Colors, Spacing, Typography, BorderRadius } from '../../constants/theme';
 import { useApp } from '../../context/AppContext';
 import { DataRepository } from '../../services/db';
 import { PurchaseInvoice } from '../../types';
 import { formatCurrency } from '../../utils/money';
+import { showAlert, confirmAction } from '../../utils/dialog';
 
 export const PurchaseListScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -62,6 +64,43 @@ export const PurchaseListScreen: React.FC = () => {
   const onRefresh = () => {
     setRefreshing(true);
     loadData();
+  };
+
+  const handleEditBill = (bill: PurchaseInvoice) => {
+    setSelectedBill(null);
+    navigation.navigate('PurchaseEntry', { editInvoice: bill });
+  };
+
+  const handleDeleteBill = (bill: PurchaseInvoice) => {
+    if (!business) return;
+    confirmAction(
+      language === 'hi' ? 'खरीद बिल हटाएं' : 'Delete Purchase Invoice',
+      language === 'hi'
+        ? `क्या आप निश्चित रूप से ${bill.supplierName} का बिल #${bill.invoiceNo || bill.id} हटाना चाहते हैं?\n\nयह खरीद आपके स्टॉक लेज़र से और सप्लायर के बहीखाते से घट जाएगी।`
+        : `Are you sure you want to delete invoice #${bill.invoiceNo || bill.id} from ${bill.supplierName}? This will revert stock and supplier balances.`,
+      async () => {
+        try {
+          const res = await DataRepository.deletePurchase(business.id, bill.id);
+          if (res.success) {
+            setSelectedBill(null);
+            await loadData();
+            showAlert(
+              language === 'hi' ? 'सफल' : 'Success',
+              language === 'hi' ? 'खरीद बिल हटा दिया गया है और स्टॉक अपडेट हो गया है।' : 'Purchase invoice deleted successfully.',
+              undefined,
+              'success'
+            );
+          } else {
+            showAlert(language === 'hi' ? 'त्रुटि' : 'Error', res.error || 'Failed to delete invoice', undefined, 'danger');
+          }
+        } catch (err: any) {
+          showAlert(language === 'hi' ? 'त्रुटि' : 'Error', err.message, undefined, 'danger');
+        }
+      },
+      language === 'hi' ? 'हटाएं' : 'Delete',
+      language === 'hi' ? 'रद्द करें' : 'Cancel',
+      'danger'
+    );
   };
 
   const filteredPurchases = purchases.filter((p) => {
@@ -209,14 +248,46 @@ export const PurchaseListScreen: React.FC = () => {
                   <Text style={styles.billTotalText}>{formatCurrency(item.totalAmountPaise)}</Text>
                 </View>
 
-                {item.dueAmountPaise > 0 && (
-                  <View style={styles.dueAlertRow}>
-                    <Text style={styles.dueAlertLabel}>
-                      {language === 'hi' ? 'सप्लायर का बाकी:' : 'Due to Pay:'}
-                    </Text>
-                    <Text style={styles.dueAlertVal}>{formatCurrency(item.dueAmountPaise)}</Text>
+                <View style={styles.cardFooterActionsRow}>
+                  <View style={{ flex: 1 }}>
+                    {item.dueAmountPaise > 0 ? (
+                      <View style={styles.dueAlertRow}>
+                        <Text style={styles.dueAlertLabel}>
+                          {language === 'hi' ? 'सप्लायर का बाकी:' : 'Due to Pay:'}
+                        </Text>
+                        <Text style={styles.dueAlertVal}>{formatCurrency(item.dueAmountPaise)}</Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.fullyPaidBadgeText}>
+                        ✓ {language === 'hi' ? 'पूर्ण भुगतान' : 'Fully Paid'}
+                      </Text>
+                    )}
                   </View>
-                )}
+
+                  <View style={styles.actionButtonsRow}>
+                    <TouchableOpacity
+                      style={styles.actionIconBtn}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handleEditBill(item);
+                      }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="create-outline" size={16} color={Colors.primary} />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.actionIconBtn, styles.deleteIconBtn]}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handleDeleteBill(item);
+                      }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="trash-outline" size={16} color={Colors.danger} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
               </Card>
             </TouchableOpacity>
           );
@@ -331,6 +402,24 @@ export const PurchaseListScreen: React.FC = () => {
                     </View>
                   )}
                 </ScrollView>
+
+                {/* Modal Edit & Delete Actions */}
+                <View style={styles.modalActionButtonsRow}>
+                  <Button
+                    title={language === 'hi' ? 'बिल सुधारें' : 'Edit Bill'}
+                    variant="outline"
+                    icon={<Ionicons name="create-outline" size={16} color={Colors.primary} />}
+                    onPress={() => handleEditBill(selectedBill)}
+                    style={{ flex: 1, marginRight: 8 }}
+                  />
+                  <Button
+                    title={language === 'hi' ? 'हटाएं' : 'Delete'}
+                    variant="danger"
+                    icon={<Ionicons name="trash-outline" size={16} color="#FFFFFF" />}
+                    onPress={() => handleDeleteBill(selectedBill)}
+                    style={{ flex: 1, marginLeft: 8 }}
+                  />
+                </View>
               </>
             )}
           </View>
@@ -618,5 +707,43 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: Colors.primary,
+  },
+  cardFooterActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: Spacing.xs,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  fullyPaidBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#166534',
+  },
+  actionButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  actionIconBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#EEF2FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteIconBtn: {
+    backgroundColor: '#FEF2F2',
+  },
+  modalActionButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.md,
+    paddingTop: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
   },
 });

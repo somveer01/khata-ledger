@@ -29,15 +29,23 @@ export const PurchaseEntryScreen: React.FC = () => {
   const route = useRoute<any>();
   const { business, language } = useApp();
 
+  const editInvoice: PurchaseInvoice | undefined = route.params?.editInvoice;
+
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [selectedSupplierId, setSelectedSupplierId] = useState<string>(route.params?.supplierId || '');
-  const [supplierName, setSupplierName] = useState<string>(route.params?.supplierName || '');
-  const [invoiceNo, setInvoiceNo] = useState<string>('');
-  const [invoiceDate, setInvoiceDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string>(
+    editInvoice?.supplierId || route.params?.supplierId || ''
+  );
+  const [supplierName, setSupplierName] = useState<string>(
+    editInvoice?.supplierName || route.params?.supplierName || ''
+  );
+  const [invoiceNo, setInvoiceNo] = useState<string>(editInvoice?.invoiceNo || '');
+  const [invoiceDate, setInvoiceDate] = useState<string>(
+    editInvoice?.invoiceDate || new Date().toISOString().split('T')[0]
+  );
 
   // Items in current bill
-  const [items, setItems] = useState<PurchaseItemDetail[]>([]);
+  const [items, setItems] = useState<PurchaseItemDetail[]>(editInvoice?.items || []);
 
   // Item Add Modal
   const [itemModalVisible, setItemModalVisible] = useState(false);
@@ -49,13 +57,17 @@ export const PurchaseEntryScreen: React.FC = () => {
   const [productSearch, setProductSearch] = useState('');
 
   // Payment Status
-  const [paymentStatus, setPaymentStatus] = useState<'PAID' | 'UNPAID' | 'PARTIAL'>('UNPAID');
-  const [paidAmount, setPaidAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('UPI');
-  const [billPhotoUri, setBillPhotoUri] = useState<string>('');
-  const [billFileName, setBillFileName] = useState<string>('');
-  const [billFileType, setBillFileType] = useState<'image' | 'pdf'>('image');
-  const [notes, setNotes] = useState('');
+  const [paymentStatus, setPaymentStatus] = useState<'PAID' | 'UNPAID' | 'PARTIAL'>(
+    editInvoice?.paymentStatus || 'UNPAID'
+  );
+  const [paidAmount, setPaidAmount] = useState(
+    editInvoice?.paidAmountPaise ? toRupees(editInvoice.paidAmountPaise).toString() : ''
+  );
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(editInvoice?.paymentMethod || 'UPI');
+  const [billPhotoUri, setBillPhotoUri] = useState<string>(editInvoice?.billPhotoUri || '');
+  const [billFileName, setBillFileName] = useState<string>(editInvoice?.billFileName || '');
+  const [billFileType, setBillFileType] = useState<'image' | 'pdf'>(editInvoice?.billFileType || 'image');
+  const [notes, setNotes] = useState(editInvoice?.notes || '');
   const [saving, setSaving] = useState(false);
 
   // File / Camera Picker
@@ -243,8 +255,8 @@ export const PurchaseEntryScreen: React.FC = () => {
         }
       }
 
-      const purchaseId = `pur_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-      const newPurchase: PurchaseInvoice = {
+      const purchaseId = editInvoice ? editInvoice.id : `pur_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const purchasePayload: PurchaseInvoice = {
         id: purchaseId,
         businessId: business.id,
         supplierId: supId,
@@ -263,17 +275,21 @@ export const PurchaseEntryScreen: React.FC = () => {
         billFileName: billFileName || undefined,
         billFileType: billPhotoUri ? billFileType : undefined,
         notes: notes.trim() || undefined,
-        createdAt: new Date().toISOString(),
+        createdAt: editInvoice ? editInvoice.createdAt : new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
 
-      const res = await DataRepository.savePurchase(newPurchase);
+      const res = await DataRepository.savePurchase(purchasePayload);
       if (res.success) {
         showAlert(
           language === 'hi' ? 'सफल' : 'Success',
-          language === 'hi'
-            ? `खरीद बिल सुरक्षित हो गया! कुल ${items.length} उत्पादों का स्टॉक लेज़र में जुड़ गया।`
-            : `Purchase bill saved! Stock updated for ${items.length} items.`,
+          editInvoice
+            ? (language === 'hi'
+                ? `खरीद बिल #${purchasePayload.invoiceNo || purchasePayload.id} सफलतापूर्वक अपडेट हो गया!`
+                : 'Purchase invoice updated successfully!')
+            : (language === 'hi'
+                ? `खरीद बिल सुरक्षित हो गया! कुल ${items.length} उत्पादों का स्टॉक लेज़र में जुड़ गया।`
+                : `Purchase bill saved! Stock updated for ${items.length} items.`),
           () => navigation.goBack(),
           'success'
         );
@@ -295,8 +311,16 @@ export const PurchaseEntryScreen: React.FC = () => {
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Header
-        title={language === 'hi' ? 'खरीद प्रविष्टि (Purchase Entry)' : 'New Purchase Bill'}
-        subtitle={language === 'hi' ? 'डीलर माल व स्टॉक इनवर्ड' : 'Dealer Inward & Stock Entry'}
+        title={
+          editInvoice
+            ? (language === 'hi' ? 'खरीद बिल सुधारें (Edit Bill)' : 'Edit Purchase Invoice')
+            : (language === 'hi' ? 'खरीद प्रविष्टि (Purchase Entry)' : 'New Purchase Bill')
+        }
+        subtitle={
+          editInvoice
+            ? (language === 'hi' ? `बिल #${editInvoice.invoiceNo || editInvoice.id}` : 'Edit Invoice & Update Stock')
+            : (language === 'hi' ? 'डीलर माल व स्टॉक इनवर्ड' : 'Dealer Inward & Stock Entry')
+        }
         showBack={true}
         onBack={() => navigation.goBack()}
       />
@@ -612,8 +636,10 @@ export const PurchaseEntryScreen: React.FC = () => {
           <Button
             title={
               saving
-                ? language === 'hi' ? 'सुरक्षित हो रहा है...' : 'Saving...'
-                : language === 'hi' ? 'खरीद बिल सुरक्षित करें (Save Bill)' : 'Save Purchase Bill'
+                ? (language === 'hi' ? 'सुरक्षित हो रहा है...' : 'Saving...')
+                : editInvoice
+                ? (language === 'hi' ? 'परिवर्तन सुरक्षित करें (Update Bill)' : 'Update Purchase Bill')
+                : (language === 'hi' ? 'खरीद बिल सुरक्षित करें (Save Bill)' : 'Save Purchase Bill')
             }
             onPress={handleSavePurchase}
             loading={saving}

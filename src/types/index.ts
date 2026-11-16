@@ -274,10 +274,37 @@ export interface StockItemSummary {
   purchasePackagingUnit: string; // "BOX", "BAG"
   totalPurchasedBaseUnits: number;
   totalSoldBaseUnits: number;
-  currentStockBaseUnits: number; // purchased - sold
+  totalAdjustedBaseUnits?: number; // Net physical adjustments (+ surplus / - damage)
+  currentStockBaseUnits: number; // purchased - sold + adjustments
   currentStockCases: number; // Math.floor(currentStockBaseUnits / unitsPerCase)
   currentStockLooseUnits: number; // currentStockBaseUnits % unitsPerCase
   unitCostPaise: CurrencyPaise; // purchase with-gst rate
   totalStockValuePaise: CurrencyPaise; // currentStockBaseUnits * unitCostPaise
   status: 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK';
 }
+
+export type StockAdjustmentType =
+  | 'DAMAGE'        // टूट-फूट / डैमेज (-)
+  | 'EXPIRY'        // एक्सपायर (-)
+  | 'THEFT_LOSS'    // चोरी / नुकसान (-)
+  | 'AUDIT_SURPLUS' // गिनती में अधिक (+)
+  | 'AUDIT_SHORT'   // गिनती में कमी (-)
+  | 'MANUAL_IN'     // अन्य आवक (+)
+  | 'MANUAL_OUT';   // अन्य जावक (-)
+
+export interface StockAdjustment {
+  id: string; // "adj_..."
+  businessId: string;
+  productId: string;
+  productName: string;
+  brandName?: string;
+  adjustmentType: StockAdjustmentType;
+  quantityBaseUnits: number; // Absolute positive number
+  unit: string; // e.g. "BTL", "PC", "KG"
+  reason?: string;
+  date: string; // YYYY-MM-DD
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+

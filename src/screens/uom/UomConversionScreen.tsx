@@ -37,6 +37,7 @@ export const UomConversionScreen: React.FC = () => {
 
   // Modal State
   const [modalVisible, setModalVisible] = useState(false);
+  const [editingConversion, setEditingConversion] = useState<UnitConversion | null>(null);
   const [fromUomId, setFromUomId] = useState('');
   const [toUomId, setToUomId] = useState('');
   const [factor, setFactor] = useState('10');
@@ -69,12 +70,22 @@ export const UomConversionScreen: React.FC = () => {
   }, [business?.id]);
 
   const handleOpenAddModal = () => {
+    setEditingConversion(null);
     const boxUom = uoms.find((u) => u.code === 'BOX') || uoms[0];
     const pcUom = uoms.find((u) => u.code === 'PC') || uoms[1] || uoms[0];
     setFromUomId(boxUom ? boxUom.id : '');
     setToUomId(pcUom ? pcUom.id : '');
     setFactor('10');
     setDescription('');
+    setModalVisible(true);
+  };
+
+  const handleOpenEditModal = (item: UnitConversion) => {
+    setEditingConversion(item);
+    setFromUomId(item.fromUOMId);
+    setToUomId(item.toUOMId);
+    setFactor(item.conversionFactor.toString());
+    setDescription(item.description || '');
     setModalVisible(true);
   };
 
@@ -99,10 +110,10 @@ export const UomConversionScreen: React.FC = () => {
 
     setSaving(true);
     try {
-      const convId = `conv_${fromUom?.code.toLowerCase()}_${toUom?.code.toLowerCase()}_${Date.now()}`;
+      const convId = editingConversion ? editingConversion.id : `conv_${fromUom?.code.toLowerCase()}_${toUom?.code.toLowerCase()}_${Date.now()}`;
       const defaultDesc = `1 ${fromUom?.nameHi || fromUom?.code} = ${factorNum} ${toUom?.nameHi || toUom?.code}`;
 
-      const newConv: UnitConversion = {
+      const convPayload: UnitConversion = {
         id: convId,
         businessId: business.id,
         fromUOMId: fromUomId,
@@ -111,14 +122,21 @@ export const UomConversionScreen: React.FC = () => {
         toUOMCode: toUom?.code,
         conversionFactor: factorNum,
         description: description.trim() || defaultDesc,
-        createdAt: new Date().toISOString(),
+        createdAt: editingConversion ? editingConversion.createdAt : new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
 
-      await DataRepository.saveUOMConversion(newConv);
+      await DataRepository.saveUOMConversion(convPayload);
       setModalVisible(false);
       await loadData();
-      showAlert(language === 'hi' ? 'सफल' : 'Success', language === 'hi' ? 'रूपांतरण नियम सुरक्षित हो गया।' : 'Conversion rule saved successfully.', undefined, 'success');
+      showAlert(
+        language === 'hi' ? 'सफल' : 'Success',
+        editingConversion
+          ? (language === 'hi' ? 'रूपांतरण नियम सफलतापूर्वक अपडेट हो गया।' : 'Conversion rule updated successfully.')
+          : (language === 'hi' ? 'रूपांतरण नियम सुरक्षित हो गया।' : 'Conversion rule saved successfully.'),
+        undefined,
+        'success'
+      );
     } catch (err: any) {
       showAlert(language === 'hi' ? 'त्रुटि' : 'Error', err.message, undefined, 'danger');
     } finally {
@@ -208,13 +226,23 @@ export const UomConversionScreen: React.FC = () => {
             )}
           </View>
 
-          <TouchableOpacity
-            onPress={() => handleDelete(item)}
-            style={styles.deleteBtn}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Ionicons name="trash-outline" size={16} color={Colors.danger} />
-          </TouchableOpacity>
+          <View style={styles.actionButtonsRow}>
+            <TouchableOpacity
+              onPress={() => handleOpenEditModal(item)}
+              style={styles.editBtn}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="create-outline" size={16} color={Colors.primary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => handleDelete(item)}
+              style={styles.deleteBtn}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="trash-outline" size={16} color={Colors.danger} />
+            </TouchableOpacity>
+          </View>
         </View>
       </Card>
     );
@@ -328,7 +356,9 @@ export const UomConversionScreen: React.FC = () => {
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
-                {language === 'hi' ? 'नया इकाई रूपांतरण नियम' : 'New Conversion Rule'}
+                {editingConversion
+                  ? (language === 'hi' ? 'रूपांतरण नियम सुधारें (Edit Rule)' : 'Edit Conversion Rule')
+                  : (language === 'hi' ? 'नया इकाई रूपांतरण नियम' : 'New Conversion Rule')}
               </Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
                 <Ionicons name="close" size={24} color={Colors.textSecondary} />
@@ -413,7 +443,11 @@ export const UomConversionScreen: React.FC = () => {
                 style={{ flex: 1, marginRight: 8 }}
               />
               <Button
-                title={language === 'hi' ? 'नियम बनाएं' : 'Save Rule'}
+                title={
+                  editingConversion
+                    ? (language === 'hi' ? 'परिवर्तन सुरक्षित करें' : 'Update Rule')
+                    : (language === 'hi' ? 'नियम बनाएं' : 'Save Rule')
+                }
                 variant="primary"
                 loading={saving}
                 onPress={handleSave}
@@ -605,6 +639,20 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: '#1E3A8A',
+  },
+  actionButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginLeft: 8,
+  },
+  editBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#EEF2FF',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   deleteBtn: {
     width: 32,

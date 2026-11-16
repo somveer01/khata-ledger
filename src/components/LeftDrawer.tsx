@@ -220,6 +220,23 @@ export const LeftDrawer: React.FC = () => {
 
             <TouchableOpacity
               style={styles.menuItem}
+              onPress={() => handleNavigate('StockAdjustment')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.menuIconBox, { backgroundColor: '#FEE2E2' }]}>
+                <Ionicons name="shield-half-outline" size={20} color="#DC2626" />
+              </View>
+              <View style={styles.menuTextBox}>
+                <Text style={styles.menuTitle}>{t('stockAdjustment', language)}</Text>
+                <Text style={styles.menuSub}>
+                  {language === 'hi' ? 'डैमेज, एक्सपायरी व ऑडिट अंतर' : 'Damage, Expiry & Audits'}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuItem}
               onPress={() => handleNavigate('PurchaseList')}
               activeOpacity={0.7}
             >

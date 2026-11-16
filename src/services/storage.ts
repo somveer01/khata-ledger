@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Business, Village, Customer, Transaction, AppUser, Product, UnitOfMeasurement, UnitConversion, Supplier, SupplierPayment, PurchaseInvoice } from '../types';
+import { Business, Village, Customer, Transaction, AppUser, Product, UnitOfMeasurement, UnitConversion, Supplier, SupplierPayment, PurchaseInvoice, StockAdjustment } from '../types';
 
 const STORAGE_KEYS = {
   CURRENT_BUSINESS: '@khata_book_current_business',
@@ -13,6 +13,7 @@ const STORAGE_KEYS = {
   SUPPLIERS: '@khata_book_suppliers',
   PURCHASES: '@khata_book_purchases',
   SUPPLIER_PAYMENTS: '@khata_book_supplier_payments',
+  STOCK_ADJUSTMENTS: '@khata_book_stock_adjustments',
   PENDING_SYNC: '@khata_book_pending_sync',
   APP_LANGUAGE: '@khata_book_language',
   CURRENT_USER: '@khata_book_current_user',
@@ -241,6 +242,24 @@ export const StorageService = {
     await AsyncStorage.setItem(key, JSON.stringify(payments));
   },
 
+  // Stock Adjustments
+  async getStockAdjustments(businessId: string): Promise<StockAdjustment[]> {
+    const key = `${STORAGE_KEYS.STOCK_ADJUSTMENTS}_${businessId}`;
+    if (memoryCache.has(key)) {
+      return [...memoryCache.get(key)];
+    }
+    const raw = await AsyncStorage.getItem(key);
+    const list = raw ? JSON.parse(raw) : [];
+    memoryCache.set(key, list);
+    return [...list];
+  },
+
+  async saveStockAdjustments(businessId: string, adjustments: StockAdjustment[]): Promise<void> {
+    const key = `${STORAGE_KEYS.STOCK_ADJUSTMENTS}_${businessId}`;
+    memoryCache.set(key, [...adjustments]);
+    await AsyncStorage.setItem(key, JSON.stringify(adjustments));
+  },
+
   // Pending Sync
   async getPendingSyncCount(businessId: string): Promise<number> {
     const raw = await AsyncStorage.getItem(`${STORAGE_KEYS.PENDING_SYNC}_${businessId}`);
@@ -259,6 +278,7 @@ export const StorageService = {
     const supKey = `${STORAGE_KEYS.SUPPLIERS}_${businessId}`;
     const purKey = `${STORAGE_KEYS.PURCHASES}_${businessId}`;
     const supPayKey = `${STORAGE_KEYS.SUPPLIER_PAYMENTS}_${businessId}`;
+    const adjKey = `${STORAGE_KEYS.STOCK_ADJUSTMENTS}_${businessId}`;
     const sKey = `${STORAGE_KEYS.PENDING_SYNC}_${businessId}`;
 
     memoryCache.delete(vKey);
@@ -270,6 +290,7 @@ export const StorageService = {
     memoryCache.delete(supKey);
     memoryCache.delete(purKey);
     memoryCache.delete(supPayKey);
+    memoryCache.delete(adjKey);
     memoryCache.delete(sKey);
 
     await AsyncStorage.removeItem(vKey);
@@ -281,6 +302,7 @@ export const StorageService = {
     await AsyncStorage.removeItem(supKey);
     await AsyncStorage.removeItem(purKey);
     await AsyncStorage.removeItem(supPayKey);
+    await AsyncStorage.removeItem(adjKey);
     await AsyncStorage.removeItem(sKey);
   },
 
