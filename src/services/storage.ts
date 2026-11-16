@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Business, Village, Customer, Transaction, AppUser, Product, UnitOfMeasurement, UnitConversion } from '../types';
+import { Business, Village, Customer, Transaction, AppUser, Product, UnitOfMeasurement, UnitConversion, Supplier, SupplierPayment, PurchaseInvoice } from '../types';
 
 const STORAGE_KEYS = {
   CURRENT_BUSINESS: '@khata_book_current_business',
@@ -10,6 +10,9 @@ const STORAGE_KEYS = {
   PRODUCTS: '@khata_book_products',
   UOMS: '@khata_book_uoms',
   UOM_CONVERSIONS: '@khata_book_uom_conversions',
+  SUPPLIERS: '@khata_book_suppliers',
+  PURCHASES: '@khata_book_purchases',
+  SUPPLIER_PAYMENTS: '@khata_book_supplier_payments',
   PENDING_SYNC: '@khata_book_pending_sync',
   APP_LANGUAGE: '@khata_book_language',
   CURRENT_USER: '@khata_book_current_user',
@@ -184,6 +187,60 @@ export const StorageService = {
     await AsyncStorage.setItem(key, JSON.stringify(conversions));
   },
 
+  // Suppliers (Dealers / Vendors)
+  async getSuppliers(businessId: string): Promise<Supplier[]> {
+    const key = `${STORAGE_KEYS.SUPPLIERS}_${businessId}`;
+    if (memoryCache.has(key)) {
+      return [...memoryCache.get(key)];
+    }
+    const raw = await AsyncStorage.getItem(key);
+    const list = raw ? JSON.parse(raw) : [];
+    memoryCache.set(key, list);
+    return [...list];
+  },
+
+  async saveSuppliers(businessId: string, suppliers: Supplier[]): Promise<void> {
+    const key = `${STORAGE_KEYS.SUPPLIERS}_${businessId}`;
+    memoryCache.set(key, [...suppliers]);
+    await AsyncStorage.setItem(key, JSON.stringify(suppliers));
+  },
+
+  // Purchase Invoices
+  async getPurchases(businessId: string): Promise<PurchaseInvoice[]> {
+    const key = `${STORAGE_KEYS.PURCHASES}_${businessId}`;
+    if (memoryCache.has(key)) {
+      return [...memoryCache.get(key)];
+    }
+    const raw = await AsyncStorage.getItem(key);
+    const list = raw ? JSON.parse(raw) : [];
+    memoryCache.set(key, list);
+    return [...list];
+  },
+
+  async savePurchases(businessId: string, purchases: PurchaseInvoice[]): Promise<void> {
+    const key = `${STORAGE_KEYS.PURCHASES}_${businessId}`;
+    memoryCache.set(key, [...purchases]);
+    await AsyncStorage.setItem(key, JSON.stringify(purchases));
+  },
+
+  // Supplier Payments
+  async getSupplierPayments(businessId: string): Promise<SupplierPayment[]> {
+    const key = `${STORAGE_KEYS.SUPPLIER_PAYMENTS}_${businessId}`;
+    if (memoryCache.has(key)) {
+      return [...memoryCache.get(key)];
+    }
+    const raw = await AsyncStorage.getItem(key);
+    const list = raw ? JSON.parse(raw) : [];
+    memoryCache.set(key, list);
+    return [...list];
+  },
+
+  async saveSupplierPayments(businessId: string, payments: SupplierPayment[]): Promise<void> {
+    const key = `${STORAGE_KEYS.SUPPLIER_PAYMENTS}_${businessId}`;
+    memoryCache.set(key, [...payments]);
+    await AsyncStorage.setItem(key, JSON.stringify(payments));
+  },
+
   // Pending Sync
   async getPendingSyncCount(businessId: string): Promise<number> {
     const raw = await AsyncStorage.getItem(`${STORAGE_KEYS.PENDING_SYNC}_${businessId}`);
@@ -199,6 +256,9 @@ export const StorageService = {
     const pKey = `${STORAGE_KEYS.PRODUCTS}_${businessId}`;
     const uomKey = `${STORAGE_KEYS.UOMS}_${businessId}`;
     const convKey = `${STORAGE_KEYS.UOM_CONVERSIONS}_${businessId}`;
+    const supKey = `${STORAGE_KEYS.SUPPLIERS}_${businessId}`;
+    const purKey = `${STORAGE_KEYS.PURCHASES}_${businessId}`;
+    const supPayKey = `${STORAGE_KEYS.SUPPLIER_PAYMENTS}_${businessId}`;
     const sKey = `${STORAGE_KEYS.PENDING_SYNC}_${businessId}`;
 
     memoryCache.delete(vKey);
@@ -207,6 +267,9 @@ export const StorageService = {
     memoryCache.delete(pKey);
     memoryCache.delete(uomKey);
     memoryCache.delete(convKey);
+    memoryCache.delete(supKey);
+    memoryCache.delete(purKey);
+    memoryCache.delete(supPayKey);
     memoryCache.delete(sKey);
 
     await AsyncStorage.removeItem(vKey);
@@ -215,6 +278,9 @@ export const StorageService = {
     await AsyncStorage.removeItem(pKey);
     await AsyncStorage.removeItem(uomKey);
     await AsyncStorage.removeItem(convKey);
+    await AsyncStorage.removeItem(supKey);
+    await AsyncStorage.removeItem(purKey);
+    await AsyncStorage.removeItem(supPayKey);
     await AsyncStorage.removeItem(sKey);
   },
 

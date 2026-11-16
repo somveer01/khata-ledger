@@ -142,6 +142,10 @@ export interface Product {
   category: ProductCategory;
   packSize: string; // e.g. "400 ML", "1 KG", "1 Litre"
   casePacking?: string; // e.g. "400ML*20 PCS", "10 LIT"
+  unitsPerCase?: number; // e.g. 20 (pieces per box/case)
+  caseVolumeOrWeight?: string; // e.g. "8 Litre", "10 Litre"
+  primarySellingUnit?: string; // e.g. "Bottle", "Piece", "Bag"
+  purchasePackagingUnit?: string; // e.g. "Box", "Case", "Bag"
   unit?: string; // "Bottle", "Pouch", "Bag", "Litre", "Kg", "Unit"
   uomId?: string; // Reference to UnitOfMeasurement (e.g. "uom_box", "uom_btl")
   purchaseUomId?: string; // Optional purchase packaging UOM (e.g. "uom_box")
@@ -185,4 +189,93 @@ export interface UnitConversion {
   productName?: string; // Denormalized product name
   createdAt: string;
   updatedAt: string;
+}
+
+export interface Supplier {
+  id: string; // e.g. "sup_173..."
+  businessId: string;
+  name: string; // Dealer / Vendor / Company name (e.g. "श्रीराम कृषि केंद्र", "बायर डिस्ट्रीब्यूटर")
+  contactPerson?: string;
+  phone: string;
+  address?: string;
+  gstin?: string;
+  totalPurchasePaise: CurrencyPaise;
+  totalPaidPaise: CurrencyPaise;
+  currentOutstandingPaise: CurrencyPaise; // Unpaid balance due to supplier
+  notes?: string;
+  status: 'ACTIVE' | 'ARCHIVED';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SupplierPayment {
+  id: string; // "sup_pay_..."
+  businessId: string;
+  supplierId: string;
+  supplierName?: string;
+  amountPaise: CurrencyPaise;
+  paymentMethod: PaymentMethod;
+  referenceNo?: string; // UPI ref, Cheque no, bank ref
+  date: string; // YYYY-MM-DD
+  notes?: string;
+  createdAt: string;
+}
+
+export interface PurchaseItemDetail {
+  productId: string;
+  productName: string;
+  brandName: string;
+  category: ProductCategory;
+  packSize: string; // e.g. "250 ML"
+  purchaseQty: number; // e.g. 2 (Boxes) or 10 (Bottles)
+  purchaseUnit: string; // "BOX" or "BTL"
+  unitsPerPack: number; // e.g. 40 (if 1 Box = 40 Bottles), or 1 if buying loose bottles
+  totalBaseUnits: number; // e.g. 2 x 40 = 80 Bottles (quantity added to stock)
+  baseUnit: string; // e.g. "BTL" or "PC"
+  billingRatePaise: CurrencyPaise; // Rate per base unit
+  gstPercent: number;
+  withGstRatePaise: CurrencyPaise;
+  totalPaise: CurrencyPaise; // Total cost for this line item
+}
+
+export interface PurchaseInvoice {
+  id: string; // "pur_..."
+  businessId: string;
+  supplierId: string;
+  supplierName: string;
+  invoiceNo?: string; // e.g. "INV-2026-904"
+  invoiceDate: string; // YYYY-MM-DD
+  items: PurchaseItemDetail[];
+  subtotalPaise: CurrencyPaise;
+  gstAmountPaise: CurrencyPaise;
+  totalAmountPaise: CurrencyPaise;
+  paidAmountPaise: CurrencyPaise;
+  dueAmountPaise: CurrencyPaise; // Credit amount added to supplier's ledger
+  paymentStatus: 'PAID' | 'UNPAID' | 'PARTIAL';
+  paymentMethod?: PaymentMethod;
+  billPhotoUri?: string; // Camera photo or document URI
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StockItemSummary {
+  productId: string;
+  productName: string;
+  brandName: string;
+  category: ProductCategory;
+  packSize: string;
+  casePacking?: string;
+  unitsPerCase: number; // e.g. 40
+  caseVolumeOrWeight?: string; // e.g. "10 Litre"
+  sellingUnit: string; // "BTL", "PC", "KG"
+  purchasePackagingUnit: string; // "BOX", "BAG"
+  totalPurchasedBaseUnits: number;
+  totalSoldBaseUnits: number;
+  currentStockBaseUnits: number; // purchased - sold
+  currentStockCases: number; // Math.floor(currentStockBaseUnits / unitsPerCase)
+  currentStockLooseUnits: number; // currentStockBaseUnits % unitsPerCase
+  unitCostPaise: CurrencyPaise; // purchase with-gst rate
+  totalStockValuePaise: CurrencyPaise; // currentStockBaseUnits * unitCostPaise
+  status: 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK';
 }

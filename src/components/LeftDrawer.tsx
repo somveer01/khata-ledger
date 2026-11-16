@@ -196,40 +196,61 @@ export const LeftDrawer: React.FC = () => {
               <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
             </TouchableOpacity>
 
-            {/* Section 2: Inventory & Purchase (Upcoming) */}
+            {/* Section 2: Inventory & Purchase */}
             <Text style={styles.sectionHeader}>
-              {language === 'hi' ? 'खरीद व इन्वेंट्री' : 'Inventory & Buying'}
+              {language === 'hi' ? 'खरीद व इन्वेंट्री (Stock)' : 'Inventory & Buying'}
             </Text>
 
-            <View style={[styles.menuItem, styles.menuItemDisabled]}>
-              <View style={[styles.menuIconBox, { backgroundColor: '#E2E8F0' }]}>
-                <Ionicons name="cart-outline" size={20} color="#64748B" />
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => handleNavigate('StockLedger')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.menuIconBox, { backgroundColor: '#DCFCE7' }]}>
+                <Ionicons name="layers" size={20} color="#16A34A" />
               </View>
               <View style={styles.menuTextBox}>
-                <Text style={[styles.menuTitle, { color: '#64748B' }]}>{t('purchaseEntry', language)}</Text>
+                <Text style={styles.menuTitle}>{t('stockLedger', language)}</Text>
                 <Text style={styles.menuSub}>
-                  {language === 'hi' ? 'होलसेलर/डीलर से खरीद' : 'Dealer Purchases'}
+                  {language === 'hi' ? 'खरीद - बिक्री = शेष स्टॉक' : 'Live Remaining Stock'}
                 </Text>
               </View>
-              <View style={styles.badgeComingSoon}>
-                <Text style={styles.badgeComingSoonText}>{t('upcomingFeature', language)}</Text>
-              </View>
-            </View>
+              <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+            </TouchableOpacity>
 
-            <View style={[styles.menuItem, styles.menuItemDisabled]}>
-              <View style={[styles.menuIconBox, { backgroundColor: '#E2E8F0' }]}>
-                <Ionicons name="layers-outline" size={20} color="#64748B" />
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => handleNavigate('PurchaseList')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.menuIconBox, { backgroundColor: '#E0E7FF' }]}>
+                <Ionicons name="cart" size={20} color="#4F46E5" />
               </View>
               <View style={styles.menuTextBox}>
-                <Text style={[styles.menuTitle, { color: '#64748B' }]}>{t('stockLedger', language)}</Text>
+                <Text style={styles.menuTitle}>{t('purchaseList', language)}</Text>
                 <Text style={styles.menuSub}>
-                  {language === 'hi' ? 'लाइव स्टॉक व बची इन्वेंट्री' : 'Live Remaining Stock'}
+                  {language === 'hi' ? 'सप्लायर बिल व माल आवक' : 'Dealer Purchases'}
                 </Text>
               </View>
-              <View style={styles.badgeComingSoon}>
-                <Text style={styles.badgeComingSoonText}>{t('upcomingFeature', language)}</Text>
+              <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => handleNavigate('SupplierList')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.menuIconBox, { backgroundColor: '#FEF3C7' }]}>
+                <Ionicons name="people" size={20} color="#D97706" />
               </View>
-            </View>
+              <View style={styles.menuTextBox}>
+                <Text style={styles.menuTitle}>{t('suppliers', language)}</Text>
+                <Text style={styles.menuSub}>
+                  {language === 'hi' ? 'डीलर व सप्लायर उधारी खाता' : 'Dealer Accounts & Dues'}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+            </TouchableOpacity>
 
             {/* Section 3: Core Operations */}
             <Text style={styles.sectionHeader}>

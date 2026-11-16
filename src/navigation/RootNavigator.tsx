@@ -16,6 +16,10 @@ import { ProductListScreen } from '../screens/products/ProductListScreen';
 import { AddEditProductScreen } from '../screens/products/AddEditProductScreen';
 import { UomMasterScreen } from '../screens/uom/UomMasterScreen';
 import { UomConversionScreen } from '../screens/uom/UomConversionScreen';
+import { SupplierListScreen } from '../screens/suppliers/SupplierListScreen';
+import { PurchaseListScreen } from '../screens/purchases/PurchaseListScreen';
+import { PurchaseEntryScreen } from '../screens/purchases/PurchaseEntryScreen';
+import { StockLedgerScreen } from '../screens/inventory/StockLedgerScreen';
 import { Colors } from '../constants/theme';
 import { useApp } from '../context/AppContext';
 import { t } from '../i18n';
@@ -41,6 +45,10 @@ const SharedScreens = (Stack: any) => (
     <Stack.Screen name="AddEditProduct" component={AddEditProductScreen} />
     <Stack.Screen name="UomMaster" component={UomMasterScreen} />
     <Stack.Screen name="UomConversion" component={UomConversionScreen} />
+    <Stack.Screen name="SupplierList" component={SupplierListScreen} />
+    <Stack.Screen name="PurchaseList" component={PurchaseListScreen} />
+    <Stack.Screen name="PurchaseEntry" component={PurchaseEntryScreen} />
+    <Stack.Screen name="StockLedger" component={StockLedgerScreen} />
   </>
 );
 

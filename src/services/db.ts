@@ -13,7 +13,7 @@ import {
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './firebase';
 import { StorageService } from './storage';
-import { Business, Village, Customer, Transaction, VillageSummary, DashboardMetrics, AppUser, StoreActivityStats, Product, UnitOfMeasurement, UnitConversion } from '../types';
+import { Business, Village, Customer, Transaction, VillageSummary, DashboardMetrics, AppUser, StoreActivityStats, Product, UnitOfMeasurement, UnitConversion, Supplier, SupplierPayment, PurchaseInvoice, StockItemSummary } from '../types';
 import { calculateCustomerBalance, calculateVillageSummaries, calculateDashboardMetrics, calculateCustomerDueDate } from './accounting';
 import { toPaise } from '../utils/money';
 import { getBusinessIdFromEmail, isLegacyOwner, LEGACY_BUSINESS_ID, LEGACY_BUSINESS_TENANT_ID, LEGACY_OWNER_EMAIL } from '../utils/tenant';
@@ -1718,6 +1718,306 @@ export const DataRepository = {
     }
 
     return { success: true };
+  },
+
+  // -------------------------------------------------------------
+  // SUPPLIERS (Vendors / Dealers)
+  // -------------------------------------------------------------
+  async getSuppliers(businessId: string): Promise<Supplier[]> {
+    return StorageService.getSuppliers(businessId);
+  },
+
+  async saveSupplier(supplier: Supplier): Promise<{ success: boolean; supplier?: Supplier; error?: string }> {
+    try {
+      const list = await StorageService.getSuppliers(supplier.businessId);
+      const idx = list.findIndex((s) => s.id === supplier.id);
+      const savedItem: Supplier = {
+        ...supplier,
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (idx >= 0) {
+        list[idx] = savedItem;
+      } else {
+        list.unshift(savedItem);
+      }
+
+      await StorageService.saveSuppliers(supplier.businessId, list);
+
+      if (isFirebaseConfigured() && db) {
+        setDoc(
+          doc(db, 'suppliers', supplier.id),
+          cleanForFirestore({
+            ...savedItem,
+            updatedAt: serverTimestamp(),
+          }),
+          { merge: true }
+        ).catch((err) => console.warn('Firestore saveSupplier error:', err));
+      }
+
+      return { success: true, supplier: savedItem };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  async deleteSupplier(businessId: string, supplierId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const list = await StorageService.getSuppliers(businessId);
+      const filtered = list.filter((s) => s.id !== supplierId);
+      await StorageService.saveSuppliers(businessId, filtered);
+
+      if (isFirebaseConfigured() && db) {
+        deleteDoc(doc(db, 'suppliers', supplierId)).catch((err) => console.warn('Firestore deleteSupplier error:', err));
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  // -------------------------------------------------------------
+  // PURCHASES (Inward Bills)
+  // -------------------------------------------------------------
+  async getPurchases(businessId: string): Promise<PurchaseInvoice[]> {
+    return StorageService.getPurchases(businessId);
+  },
+
+  async savePurchase(purchase: PurchaseInvoice): Promise<{ success: boolean; purchase?: PurchaseInvoice; error?: string }> {
+    try {
+      const list = await StorageService.getPurchases(purchase.businessId);
+      const idx = list.findIndex((p) => p.id === purchase.id);
+      const savedItem: PurchaseInvoice = {
+        ...purchase,
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (idx >= 0) {
+        list[idx] = savedItem;
+      } else {
+        list.unshift(savedItem);
+      }
+
+      await StorageService.savePurchases(purchase.businessId, list);
+
+      // Also update supplier outstanding balance and total purchases
+      if (purchase.supplierId) {
+        const suppliers = await StorageService.getSuppliers(purchase.businessId);
+        const sIdx = suppliers.findIndex((s) => s.id === purchase.supplierId);
+        if (sIdx >= 0) {
+          const sup = suppliers[sIdx];
+          const updatedSupplier: Supplier = {
+            ...sup,
+            totalPurchasePaise: (sup.totalPurchasePaise || 0) + purchase.totalAmountPaise,
+            totalPaidPaise: (sup.totalPaidPaise || 0) + (purchase.paidAmountPaise || 0),
+            currentOutstandingPaise: (sup.currentOutstandingPaise || 0) + (purchase.dueAmountPaise || 0),
+            updatedAt: new Date().toISOString(),
+          };
+          suppliers[sIdx] = updatedSupplier;
+          await StorageService.saveSuppliers(purchase.businessId, suppliers);
+
+          if (isFirebaseConfigured() && db) {
+            setDoc(
+              doc(db, 'suppliers', sup.id),
+              cleanForFirestore({
+                ...updatedSupplier,
+                updatedAt: serverTimestamp(),
+              }),
+              { merge: true }
+            ).catch((err) => console.warn('Firestore update supplier on purchase error:', err));
+          }
+        }
+      }
+
+      if (isFirebaseConfigured() && db) {
+        setDoc(
+          doc(db, 'purchases', purchase.id),
+          cleanForFirestore({
+            ...savedItem,
+            updatedAt: serverTimestamp(),
+          }),
+          { merge: true }
+        ).catch((err) => console.warn('Firestore savePurchase error:', err));
+      }
+
+      return { success: true, purchase: savedItem };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  async deletePurchase(businessId: string, purchaseId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const list = await StorageService.getPurchases(businessId);
+      const toDelete = list.find((p) => p.id === purchaseId);
+      const filtered = list.filter((p) => p.id !== purchaseId);
+      await StorageService.savePurchases(businessId, filtered);
+
+      // Revert supplier balance if needed
+      if (toDelete && toDelete.supplierId) {
+        const suppliers = await StorageService.getSuppliers(businessId);
+        const sIdx = suppliers.findIndex((s) => s.id === toDelete.supplierId);
+        if (sIdx >= 0) {
+          const sup = suppliers[sIdx];
+          suppliers[sIdx] = {
+            ...sup,
+            totalPurchasePaise: Math.max(0, (sup.totalPurchasePaise || 0) - toDelete.totalAmountPaise),
+            totalPaidPaise: Math.max(0, (sup.totalPaidPaise || 0) - (toDelete.paidAmountPaise || 0)),
+            currentOutstandingPaise: Math.max(0, (sup.currentOutstandingPaise || 0) - (toDelete.dueAmountPaise || 0)),
+            updatedAt: new Date().toISOString(),
+          };
+          await StorageService.saveSuppliers(businessId, suppliers);
+        }
+      }
+
+      if (isFirebaseConfigured() && db) {
+        deleteDoc(doc(db, 'purchases', purchaseId)).catch((err) => console.warn('Firestore deletePurchase error:', err));
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  // -------------------------------------------------------------
+  // SUPPLIER PAYMENTS
+  // -------------------------------------------------------------
+  async getSupplierPayments(businessId: string, supplierId?: string): Promise<SupplierPayment[]> {
+    const list = await StorageService.getSupplierPayments(businessId);
+    if (supplierId) {
+      return list.filter((p) => p.supplierId === supplierId);
+    }
+    return list;
+  },
+
+  async saveSupplierPayment(payment: SupplierPayment): Promise<{ success: boolean; payment?: SupplierPayment; error?: string }> {
+    try {
+      const list = await StorageService.getSupplierPayments(payment.businessId);
+      list.unshift(payment);
+      await StorageService.saveSupplierPayments(payment.businessId, list);
+
+      // Reduce supplier due balance
+      const suppliers = await StorageService.getSuppliers(payment.businessId);
+      const sIdx = suppliers.findIndex((s) => s.id === payment.supplierId);
+      if (sIdx >= 0) {
+        const sup = suppliers[sIdx];
+        const updatedSupplier: Supplier = {
+          ...sup,
+          totalPaidPaise: (sup.totalPaidPaise || 0) + payment.amountPaise,
+          currentOutstandingPaise: Math.max(0, (sup.currentOutstandingPaise || 0) - payment.amountPaise),
+          updatedAt: new Date().toISOString(),
+        };
+        suppliers[sIdx] = updatedSupplier;
+        await StorageService.saveSuppliers(payment.businessId, suppliers);
+
+        if (isFirebaseConfigured() && db) {
+          setDoc(
+            doc(db, 'suppliers', sup.id),
+            cleanForFirestore({
+              ...updatedSupplier,
+              updatedAt: serverTimestamp(),
+            }),
+            { merge: true }
+          ).catch((err) => console.warn('Firestore update supplier payment error:', err));
+        }
+      }
+
+      if (isFirebaseConfigured() && db) {
+        setDoc(
+          doc(db, 'supplier_payments', payment.id),
+          cleanForFirestore({
+            ...payment,
+            createdAt: serverTimestamp(),
+          }),
+          { merge: true }
+        ).catch((err) => console.warn('Firestore saveSupplierPayment error:', err));
+      }
+
+      return { success: true, payment };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  // -------------------------------------------------------------
+  // LIVE STOCK LEDGER SUMMARY (Purchases - Sales = Available Stock)
+  // -------------------------------------------------------------
+  async getStockLedgerSummary(businessId: string): Promise<StockItemSummary[]> {
+    const [products, purchases, transactions] = await Promise.all([
+      this.getProducts(businessId),
+      StorageService.getPurchases(businessId),
+      StorageService.getTransactions(businessId),
+    ]);
+
+    // Calculate total purchased base units per product
+    const purchasedMap = new Map<string, number>();
+    for (const pur of purchases) {
+      for (const item of pur.items || []) {
+        const key = item.productId || item.productName?.toLowerCase().trim();
+        const prev = purchasedMap.get(key) || 0;
+        purchasedMap.set(key, prev + (item.totalBaseUnits || item.purchaseQty || 0));
+      }
+    }
+
+    // Calculate total sold units per product from transactions
+    const soldMap = new Map<string, number>();
+    for (const tx of transactions) {
+      if (tx.type === 'CREDIT_SALE' && !tx.isReversed) {
+        const key = tx.description?.toLowerCase().trim();
+        const prev = soldMap.get(key) || 0;
+        soldMap.set(key, prev + (tx.quantity || 1));
+      }
+    }
+
+    const summaries: StockItemSummary[] = products
+      .filter((p) => p.isActive)
+      .map((p) => {
+        const idKey = p.id;
+        const nameKey = p.productName?.toLowerCase().trim();
+
+        const totalPurchased = (purchasedMap.get(idKey) || 0) + (purchasedMap.get(nameKey) || 0);
+        const totalSold = soldMap.get(nameKey) || 0;
+        const currentStock = Math.max(0, totalPurchased - totalSold);
+
+        const unitsPerCase = p.unitsPerCase || p.conversionFactor || 10;
+        const cases = Math.floor(currentStock / unitsPerCase);
+        const loose = currentStock % unitsPerCase;
+
+        const unitCost = p.withGstRatePaise || p.billingRatePaise || 0;
+        const totalValue = currentStock * unitCost;
+
+        let status: 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK' = 'IN_STOCK';
+        if (currentStock <= 0) {
+          status = 'OUT_OF_STOCK';
+        } else if (currentStock <= 5) {
+          status = 'LOW_STOCK';
+        }
+
+        return {
+          productId: p.id,
+          productName: p.productName,
+          brandName: p.brandName,
+          category: p.category,
+          packSize: p.packSize,
+          casePacking: p.casePacking,
+          unitsPerCase,
+          caseVolumeOrWeight: p.caseVolumeOrWeight,
+          sellingUnit: p.primarySellingUnit || p.unit || 'Piece',
+          purchasePackagingUnit: p.purchasePackagingUnit || 'Box',
+          totalPurchasedBaseUnits: totalPurchased,
+          totalSoldBaseUnits: totalSold,
+          currentStockBaseUnits: currentStock,
+          currentStockCases: cases,
+          currentStockLooseUnits: loose,
+          unitCostPaise: unitCost,
+          totalStockValuePaise: totalValue,
+          status,
+        };
+      });
+
+    return summaries;
   },
 
   // -------------------------------------------------------------
