@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   Modal,
   ScrollView,
-  Alert,
+  TextInput,
   ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -31,11 +31,16 @@ export const UomConversionScreen: React.FC = () => {
   const [conversions, setConversions] = useState<UnitConversion[]>([]);
   const [uoms, setUoms] = useState<UnitOfMeasurement[]>([]);
 
-  // Interactive Live Calculator widget
+  // Search & Filter
+  const [search, setSearch] = useState('');
+  const [selectedUnitFilter, setSelectedUnitFilter] = useState('ALL');
+
+  // Interactive Live Calculator (Ultra-slim single line)
   const [calcQty, setCalcQty] = useState('5');
   const [calcFromUomId, setCalcFromUomId] = useState('uom_box');
+  const [calcPickerVisible, setCalcPickerVisible] = useState(false);
 
-  // Modal State
+  // Add / Edit Modal State
   const [modalVisible, setModalVisible] = useState(false);
   const [editingConversion, setEditingConversion] = useState<UnitConversion | null>(null);
   const [fromUomId, setFromUomId] = useState('');
@@ -57,6 +62,9 @@ export const UomConversionScreen: React.FC = () => {
       if (uList.length > 0 && !fromUomId) {
         setFromUomId(uList[0].id);
         setToUomId(uList[uList.length > 1 ? 1 : 0].id);
+      }
+      if (cList.length > 0 && !calcFromUomId) {
+        setCalcFromUomId(cList[0].fromUOMId);
       }
     } catch (err) {
       console.warn('Error loading conversions:', err);
@@ -92,16 +100,31 @@ export const UomConversionScreen: React.FC = () => {
   const handleSave = async () => {
     if (!business) return;
     if (!fromUomId || !toUomId) {
-      showAlert(language === 'hi' ? 'त्रुटि' : 'Error', language === 'hi' ? 'कृपया दोनों इकाइयाँ चुनें।' : 'Please select both units.', undefined, 'danger');
+      showAlert(
+        language === 'hi' ? 'त्रुटि' : 'Error',
+        language === 'hi' ? 'कृपया दोनों इकाइयाँ चुनें।' : 'Please select both units.',
+        undefined,
+        'danger'
+      );
       return;
     }
     if (fromUomId === toUomId) {
-      showAlert(language === 'hi' ? 'त्रुटि' : 'Error', language === 'hi' ? 'दोनों इकाइयाँ अलग-अलग होनी चाहिए।' : 'From and To units must be different.', undefined, 'danger');
+      showAlert(
+        language === 'hi' ? 'त्रुटि' : 'Error',
+        language === 'hi' ? 'दोनों इकाइयाँ अलग-अलग होनी चाहिए।' : 'From and To units must be different.',
+        undefined,
+        'danger'
+      );
       return;
     }
     const factorNum = parseFloat(factor);
     if (isNaN(factorNum) || factorNum <= 0) {
-      showAlert(language === 'hi' ? 'त्रुटि' : 'Error', language === 'hi' ? 'कृपया सही संख्या (अनुपात) दर्ज करें।' : 'Please enter a valid conversion factor.', undefined, 'danger');
+      showAlert(
+        language === 'hi' ? 'त्रुटि' : 'Error',
+        language === 'hi' ? 'कृपया सही संख्या (अनुपात) दर्ज करें।' : 'Please enter a valid conversion factor.',
+        undefined,
+        'danger'
+      );
       return;
     }
 
@@ -110,7 +133,9 @@ export const UomConversionScreen: React.FC = () => {
 
     setSaving(true);
     try {
-      const convId = editingConversion ? editingConversion.id : `conv_${fromUom?.code.toLowerCase()}_${toUom?.code.toLowerCase()}_${Date.now()}`;
+      const convId = editingConversion
+        ? editingConversion.id
+        : `conv_${fromUom?.code.toLowerCase()}_${toUom?.code.toLowerCase()}_${Date.now()}`;
       const defaultDesc = `1 ${fromUom?.nameHi || fromUom?.code} = ${factorNum} ${toUom?.nameHi || toUom?.code}`;
 
       const convPayload: UnitConversion = {
@@ -132,8 +157,12 @@ export const UomConversionScreen: React.FC = () => {
       showAlert(
         language === 'hi' ? 'सफल' : 'Success',
         editingConversion
-          ? (language === 'hi' ? 'रूपांतरण नियम सफलतापूर्वक अपडेट हो गया।' : 'Conversion rule updated successfully.')
-          : (language === 'hi' ? 'रूपांतरण नियम सुरक्षित हो गया।' : 'Conversion rule saved successfully.'),
+          ? language === 'hi'
+            ? 'रूपांतरण नियम सफलतापूर्वक अपडेट हो गया।'
+            : 'Conversion rule updated successfully.'
+          : language === 'hi'
+          ? 'रूपांतरण नियम सुरक्षित हो गया।'
+          : 'Conversion rule saved successfully.',
         undefined,
         'success'
       );
@@ -149,12 +178,19 @@ export const UomConversionScreen: React.FC = () => {
 
     confirmAction(
       language === 'hi' ? 'नियम हटाएं' : 'Delete Rule',
-      language === 'hi' ? `क्या आप निश्चित रूप से "${item.description || 'रूपांतरण'}" को हटाना चाहते हैं?` : 'Are you sure you want to delete this conversion rule?',
+      language === 'hi'
+        ? `क्या आप निश्चित रूप से "${item.description || 'रूपांतरण'}" को हटाना चाहते हैं?`
+        : 'Are you sure you want to delete this conversion rule?',
       async () => {
         const res = await DataRepository.deleteUOMConversion(business.id, item.id);
         if (res.success) {
           await loadData();
-          showAlert(language === 'hi' ? 'सफल' : 'Success', language === 'hi' ? 'नियम हटा दिया गया।' : 'Rule deleted.', undefined, 'success');
+          showAlert(
+            language === 'hi' ? 'सफल' : 'Success',
+            language === 'hi' ? 'नियम हटा दिया गया।' : 'Rule deleted.',
+            undefined,
+            'success'
+          );
         } else {
           showAlert(language === 'hi' ? 'त्रुटि' : 'Error', res.error || 'Failed to delete rule', undefined, 'danger');
         }
@@ -165,14 +201,14 @@ export const UomConversionScreen: React.FC = () => {
     );
   };
 
-  // Calculator computation
+  // Calculator computation (Single Line)
   const calcResult = useMemo(() => {
     const q = parseFloat(calcQty);
     if (isNaN(q) || q <= 0) return null;
     const rule = conversions.find((c) => c.fromUOMId === calcFromUomId);
     if (!rule) return null;
     const toUom = uoms.find((u) => u.id === rule.toUOMId);
-    const convertedTotal = q * rule.conversionFactor;
+    const convertedTotal = Math.round(q * rule.conversionFactor * 100) / 100;
     return {
       convertedTotal,
       toName: toUom?.nameHi || toUom?.code || rule.toUOMCode,
@@ -180,59 +216,81 @@ export const UomConversionScreen: React.FC = () => {
     };
   }, [calcQty, calcFromUomId, conversions, uoms]);
 
+  // Distinct units that have conversions for quick filter chips
+  const availableFilterUnits = useMemo(() => {
+    const unitIdSet = new Set<string>();
+    conversions.forEach((c) => {
+      unitIdSet.add(c.fromUOMId);
+    });
+    return uoms.filter((u) => unitIdSet.has(u.id));
+  }, [conversions, uoms]);
+
+  // Search & Filter Memo
+  const filteredConversions = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    return conversions.filter((c) => {
+      const fromUom = uoms.find((u) => u.id === c.fromUOMId);
+      const toUom = uoms.find((u) => u.id === c.toUOMId);
+
+      const matchSearch =
+        !q ||
+        (c.fromUOMCode && c.fromUOMCode.toLowerCase().includes(q)) ||
+        (c.toUOMCode && c.toUOMCode.toLowerCase().includes(q)) ||
+        (fromUom?.nameHi && fromUom.nameHi.toLowerCase().includes(q)) ||
+        (fromUom?.nameEn && fromUom.nameEn.toLowerCase().includes(q)) ||
+        (toUom?.nameHi && toUom.nameHi.toLowerCase().includes(q)) ||
+        (toUom?.nameEn && toUom.nameEn.toLowerCase().includes(q)) ||
+        (c.description && c.description.toLowerCase().includes(q)) ||
+        (c.productName && c.productName.toLowerCase().includes(q));
+
+      const matchUnit =
+        selectedUnitFilter === 'ALL' ||
+        c.fromUOMId === selectedUnitFilter ||
+        c.toUOMId === selectedUnitFilter;
+
+      return matchSearch && matchUnit;
+    });
+  }, [conversions, uoms, search, selectedUnitFilter]);
+
+  // High-density, compact conversion item
   const renderConversionItem = ({ item }: { item: UnitConversion }) => {
     const fromUom = uoms.find((u) => u.id === item.fromUOMId);
     const toUom = uoms.find((u) => u.id === item.toUOMId);
 
     return (
-      <Card style={styles.convCard}>
-        <View style={styles.ruleVisualRow}>
-          <View style={styles.unitBox}>
-            <Text style={styles.unitBoxCount}>1</Text>
-            <Text style={styles.unitBoxCode}>{item.fromUOMCode || fromUom?.code}</Text>
-            <Text style={styles.unitBoxName} numberOfLines={1}>
-              {fromUom?.nameHi || fromUom?.nameEn}
-            </Text>
-          </View>
-
-          <View style={styles.arrowBox}>
-            <View style={styles.factorPill}>
-              <Text style={styles.factorPillText}>× {item.conversionFactor}</Text>
-            </View>
-            <Ionicons name="arrow-forward" size={18} color="#D97706" />
-          </View>
-
-          <View style={[styles.unitBox, styles.unitBoxTo]}>
-            <Text style={styles.unitBoxCount}>{item.conversionFactor}</Text>
-            <Text style={[styles.unitBoxCode, { color: '#047857' }]}>{item.toUOMCode || toUom?.code}</Text>
-            <Text style={styles.unitBoxName} numberOfLines={1}>
-              {toUom?.nameHi || toUom?.nameEn}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.cardFooter}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.descText}>{item.description}</Text>
-            {item.productName ? (
-              <View style={styles.productTag}>
-                <Ionicons name="pricetag" size={10} color="#1E3A8A" />
-                <Text style={styles.productTagText}>{item.productName}</Text>
-              </View>
-            ) : (
-              <Text style={styles.globalTag}>
-                {language === 'hi' ? 'मानक (Global Rule)' : 'Standard Global Rule'}
+      <Card style={styles.compactCard}>
+        {/* Row 1: Formula Strip & Action Buttons */}
+        <View style={styles.compactMainRow}>
+          <View style={styles.compactFormulaWrap}>
+            {/* From Unit Pill */}
+            <View style={styles.fromUnitPill}>
+              <Text style={styles.fromUnitText}>
+                1 {fromUom?.nameHi || item.fromUOMCode}
               </Text>
-            )}
+            </View>
+
+            {/* Factor Arrow Pill */}
+            <View style={styles.factorArrowPill}>
+              <Text style={styles.factorArrowText}>× {item.conversionFactor}</Text>
+              <Ionicons name="arrow-forward" size={13} color="#D97706" />
+            </View>
+
+            {/* To Unit Pill */}
+            <View style={styles.toUnitPill}>
+              <Text style={styles.toUnitText}>
+                {item.conversionFactor} {toUom?.nameHi || item.toUOMCode}
+              </Text>
+            </View>
           </View>
 
+          {/* Action Buttons */}
           <View style={styles.actionButtonsRow}>
             <TouchableOpacity
               onPress={() => handleOpenEditModal(item)}
               style={styles.editBtn}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Ionicons name="create-outline" size={16} color={Colors.primary} />
+              <Ionicons name="create-outline" size={15} color={Colors.primary} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -240,9 +298,28 @@ export const UomConversionScreen: React.FC = () => {
               style={styles.deleteBtn}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Ionicons name="trash-outline" size={16} color={Colors.danger} />
+              <Ionicons name="trash-outline" size={15} color={Colors.danger} />
             </TouchableOpacity>
           </View>
+        </View>
+
+        {/* Row 2: Description and Tag */}
+        <View style={styles.compactSubRow}>
+          <Text style={styles.descText} numberOfLines={1}>
+            {item.description}
+          </Text>
+          {item.productName ? (
+            <View style={styles.productTag}>
+              <Ionicons name="pricetag" size={10} color="#1E3A8A" />
+              <Text style={styles.productTagText} numberOfLines={1}>
+                {item.productName}
+              </Text>
+            </View>
+          ) : (
+            <Text style={styles.globalTag}>
+              {language === 'hi' ? 'मानक (Global)' : 'Standard'}
+            </Text>
+          )}
         </View>
       </Card>
     );
@@ -256,60 +333,107 @@ export const UomConversionScreen: React.FC = () => {
         showBack={true}
       />
 
-      {/* Live Interactive Conversion Calculator Card */}
-      <View style={styles.calcContainer}>
-        <Card style={styles.calcCard}>
-          <View style={styles.calcHeader}>
-            <Ionicons name="calculator" size={18} color="#D97706" />
-            <Text style={styles.calcTitle}>
-              {language === 'hi' ? 'लाइव रूपांतरण कैलकुलेटर (Live Calculator)' : 'Live Conversion Preview'}
+      {/* 1. Ultra-Slim Single-Line Live Calculator Strip */}
+      <View style={styles.singleLineCalcContainer}>
+        <View style={styles.singleLineCalcBar}>
+          <Ionicons name="calculator" size={15} color="#D97706" style={{ marginRight: 4 }} />
+
+          {/* Inline Qty Input */}
+          <TextInput
+            style={styles.calcInputInline}
+            placeholder="5"
+            placeholderTextColor="#94A3B8"
+            keyboardType="numeric"
+            value={calcQty}
+            onChangeText={setCalcQty}
+            selectTextOnFocus
+          />
+
+          {/* From Unit Selector Pill */}
+          <TouchableOpacity
+            style={styles.calcUnitPill}
+            onPress={() => setCalcPickerVisible(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.calcUnitPillText} numberOfLines={1}>
+              {uoms.find((u) => u.id === calcFromUomId)?.nameHi || 'इकाई'}
             </Text>
-          </View>
+            <Ionicons name="chevron-down" size={11} color="#92400E" />
+          </TouchableOpacity>
 
-          <View style={styles.calcRow}>
-            <View style={{ width: 80 }}>
-              <Input
-                placeholder="5"
-                keyboardType="numeric"
-                value={calcQty}
-                onChangeText={setCalcQty}
-                style={{ textAlign: 'center', fontSize: 16, fontWeight: '700' }}
-              />
-            </View>
+          {/* Thin arrow */}
+          <Ionicons name="arrow-forward" size={13} color="#D97706" style={{ marginHorizontal: 3 }} />
 
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.fromUomPicker}>
-              {conversions.map((c) => {
-                const uom = uoms.find((u) => u.id === c.fromUOMId);
-                const active = calcFromUomId === c.fromUOMId;
-                return (
-                  <TouchableOpacity
-                    key={c.id}
-                    style={[styles.uomChip, active && styles.uomChipActive]}
-                    onPress={() => setCalcFromUomId(c.fromUOMId)}
-                  >
-                    <Text style={[styles.uomChipText, active && styles.uomChipTextActive]}>
-                      {uom?.nameHi || c.fromUOMCode}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
-
-          {calcResult && (
-            <View style={styles.calcResultBox}>
-              <Text style={styles.calcResultText}>
-                = <Text style={styles.calcResultBold}>{calcResult.convertedTotal}</Text> {calcResult.toName}
+          {/* Live Single Line Result */}
+          <View style={styles.calcResultInline}>
+            {calcResult ? (
+              <Text style={styles.calcResultInlineText} numberOfLines={1}>
+                ={' '}
+                <Text style={styles.calcResultInlineBold}>{calcResult.convertedTotal}</Text>{' '}
+                {calcResult.toName}
               </Text>
-              <Text style={styles.calcResultHint}>
-                ({calcQty} {calcResult.fromName} में कुल {calcResult.convertedTotal} {calcResult.toName} होते हैं)
+            ) : (
+              <Text style={styles.calcNoRuleText} numberOfLines={1}>
+                {language === 'hi' ? 'नियम नहीं' : 'No rule'}
               </Text>
-            </View>
-          )}
-        </Card>
+            )}
+          </View>
+        </View>
       </View>
 
-      {/* Main List */}
+      {/* 2. Fast Real-Time Search Bar */}
+      <View style={styles.searchBarContainer}>
+        <Input
+          placeholder={
+            language === 'hi'
+              ? 'इकाई या नियम खोजें (उदा. पेटी, बोतल, BOX, PC)...'
+              : 'Search units or rules (e.g. Box, Bottle)...'
+          }
+          value={search}
+          onChangeText={setSearch}
+          rightElement={
+            search ? (
+              <TouchableOpacity onPress={() => setSearch('')}>
+                <Ionicons name="close-circle" size={18} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            ) : undefined
+          }
+        />
+      </View>
+
+      {/* 3. Quick Unit Filter Chips (Horizontal) */}
+      {availableFilterUnits.length > 0 && (
+        <View style={styles.filterChipsRow}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChipsScroll}>
+            <TouchableOpacity
+              style={[styles.filterChip, selectedUnitFilter === 'ALL' && styles.filterChipActive]}
+              onPress={() => setSelectedUnitFilter('ALL')}
+            >
+              <Text style={[styles.filterChipText, selectedUnitFilter === 'ALL' && styles.filterChipTextActive]}>
+                {language === 'hi' ? 'सभी' : 'All'} ({conversions.length})
+              </Text>
+            </TouchableOpacity>
+
+            {availableFilterUnits.map((u) => {
+              const isSel = selectedUnitFilter === u.id;
+              const ruleCount = conversions.filter((c) => c.fromUOMId === u.id || c.toUOMId === u.id).length;
+              return (
+                <TouchableOpacity
+                  key={u.id}
+                  style={[styles.filterChip, isSel && styles.filterChipActive]}
+                  onPress={() => setSelectedUnitFilter(isSel ? 'ALL' : u.id)}
+                >
+                  <Text style={[styles.filterChipText, isSel && styles.filterChipTextActive]}>
+                    {u.nameHi} ({ruleCount})
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* 4. Compact Conversions List (Shows maximum items per screen) */}
       {loading ? (
         <View style={styles.centerBox}>
           <ActivityIndicator size="large" color={Colors.primary} />
@@ -317,35 +441,87 @@ export const UomConversionScreen: React.FC = () => {
         </View>
       ) : (
         <FlatList
-          data={conversions}
+          data={filteredConversions}
           keyExtractor={(item) => item.id}
           renderItem={renderConversionItem}
-          contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 80 }]}
+          contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 85 }]}
           ListEmptyComponent={
             <View style={styles.emptyBox}>
-              <Ionicons name="swap-horizontal" size={48} color={Colors.textMuted} />
+              <Ionicons name="swap-horizontal" size={40} color={Colors.textMuted} />
               <Text style={styles.emptyTitle}>
-                {language === 'hi' ? 'कोई रूपांतरण नियम नहीं' : 'No conversion rules yet'}
+                {search || selectedUnitFilter !== 'ALL'
+                  ? language === 'hi'
+                    ? 'खोज के अनुसार कोई नियम नहीं मिला'
+                    : 'No matching conversion rules'
+                  : language === 'hi'
+                  ? 'कोई रूपांतरण नियम नहीं'
+                  : 'No conversion rules yet'}
               </Text>
               <Text style={styles.emptySub}>
-                {language === 'hi' ? 'नीचे दिए गए बटन से नया नियम (उदा. 1 पेटी = 10 नग) जोड़ें।' : 'Add a conversion rule using the button below.'}
+                {search || selectedUnitFilter !== 'ALL'
+                  ? language === 'hi'
+                    ? 'कृपया अन्य इकाई का नाम खोजें या फ़िल्टर हटाएं।'
+                    : 'Try another keyword or clear filters.'
+                  : language === 'hi'
+                  ? 'नीचे दिए गए बटन से नया नियम (उदा. 1 पेटी = 10 नग) जोड़ें।'
+                  : 'Add a conversion rule using the button below.'}
               </Text>
             </View>
           }
         />
       )}
 
-      {/* Floating Add Button */}
+      {/* Floating Add Rule Button */}
       <TouchableOpacity
         style={[styles.fab, { bottom: Math.max(insets.bottom, 16) + 16 }]}
         onPress={handleOpenAddModal}
         activeOpacity={0.8}
       >
-        <Ionicons name="add" size={24} color="#FFFFFF" />
+        <Ionicons name="add" size={22} color="#FFFFFF" />
         <Text style={styles.fabText}>{language === 'hi' ? 'नया नियम' : 'Add Rule'}</Text>
       </TouchableOpacity>
 
-      {/* Add Conversion Modal */}
+      {/* Calculator Unit Picker Modal */}
+      <Modal
+        visible={calcPickerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCalcPickerVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.pickerOverlay}
+          activeOpacity={1}
+          onPress={() => setCalcPickerVisible(false)}
+        >
+          <View style={styles.pickerModalBox}>
+            <Text style={styles.pickerModalTitle}>
+              {language === 'hi' ? 'कैलकुलेटर हेतु इकाई चुनें:' : 'Select Unit to Calculate:'}
+            </Text>
+            <ScrollView style={{ maxHeight: 250 }}>
+              {availableFilterUnits.map((u) => {
+                const isSel = calcFromUomId === u.id;
+                return (
+                  <TouchableOpacity
+                    key={u.id}
+                    style={[styles.pickerItemRow, isSel && styles.pickerItemRowActive]}
+                    onPress={() => {
+                      setCalcFromUomId(u.id);
+                      setCalcPickerVisible(false);
+                    }}
+                  >
+                    <Text style={[styles.pickerItemText, isSel && styles.pickerItemTextActive]}>
+                      {u.nameHi} ({u.code})
+                    </Text>
+                    {isSel && <Ionicons name="checkmark" size={16} color={Colors.primary} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Add / Edit Conversion Modal */}
       <Modal
         visible={modalVisible}
         transparent
@@ -357,8 +533,12 @@ export const UomConversionScreen: React.FC = () => {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
                 {editingConversion
-                  ? (language === 'hi' ? 'रूपांतरण नियम सुधारें (Edit Rule)' : 'Edit Conversion Rule')
-                  : (language === 'hi' ? 'नया इकाई रूपांतरण नियम' : 'New Conversion Rule')}
+                  ? language === 'hi'
+                    ? 'रूपांतरण नियम सुधारें (Edit Rule)'
+                    : 'Edit Conversion Rule'
+                  : language === 'hi'
+                  ? 'नया इकाई रूपांतरण नियम'
+                  : 'New Conversion Rule'}
               </Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
                 <Ionicons name="close" size={24} color={Colors.textSecondary} />
@@ -389,7 +569,11 @@ export const UomConversionScreen: React.FC = () => {
 
               {/* Step 2: Conversion Factor */}
               <Input
-                label={language === 'hi' ? '2. इसमें कितनी छोटी इकाइयाँ होंगी? (संख्या):' : '2. How many base units in 1 package?'}
+                label={
+                  language === 'hi'
+                    ? '2. इसमें कितनी छोटी इकाइयाँ होंगी? (संख्या):'
+                    : '2. How many base units in 1 package?'
+                }
                 placeholder="10, 20, 50, 1000..."
                 keyboardType="numeric"
                 value={factor}
@@ -423,7 +607,8 @@ export const UomConversionScreen: React.FC = () => {
                   {language === 'hi' ? 'रूपांतरण नियम का पूर्वावलोकन (Preview):' : 'Rule Preview:'}
                 </Text>
                 <Text style={styles.formulaPreviewFormula}>
-                  1 {uoms.find((u) => u.id === fromUomId)?.nameHi || 'इकाई'} = {factor || '0'} {uoms.find((u) => u.id === toUomId)?.nameHi || 'इकाई'}
+                  1 {uoms.find((u) => u.id === fromUomId)?.nameHi || 'इकाई'} = {factor || '0'}{' '}
+                  {uoms.find((u) => u.id === toUomId)?.nameHi || 'इकाई'}
                 </Text>
               </View>
 
@@ -445,8 +630,12 @@ export const UomConversionScreen: React.FC = () => {
               <Button
                 title={
                   editingConversion
-                    ? (language === 'hi' ? 'परिवर्तन सुरक्षित करें' : 'Update Rule')
-                    : (language === 'hi' ? 'नियम बनाएं' : 'Save Rule')
+                    ? language === 'hi'
+                      ? 'परिवर्तन सुरक्षित करें'
+                      : 'Update Rule'
+                    : language === 'hi'
+                    ? 'नियम बनाएं'
+                    : 'Save Rule'
                 }
                 variant="primary"
                 loading={saving}
@@ -466,79 +655,246 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8FAFC',
   },
-  calcContainer: {
+  // Single-Line Ultra-Slim Calculator Bar
+  singleLineCalcContainer: {
     paddingHorizontal: 16,
-    paddingTop: 12,
-    marginBottom: 6,
+    paddingTop: 8,
+    paddingBottom: 4,
   },
-  calcCard: {
+  singleLineCalcBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#FFFBEB',
     borderColor: '#FDE68A',
     borderWidth: 1,
-    padding: 14,
-    borderRadius: 14,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: 10,
+    height: 38,
   },
-  calcHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 10,
-  },
-  calcTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#92400E',
-  },
-  calcRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  fromUomPicker: {
-    flex: 1,
-  },
-  uomChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
+  calcInputInline: {
+    width: 36,
+    height: 28,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#FDE68A',
+    borderColor: '#FCD34D',
+    borderRadius: BorderRadius.sm,
+    textAlign: 'center',
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#92400E',
+    padding: 0,
     marginRight: 6,
   },
-  uomChipActive: {
-    backgroundColor: '#D97706',
-    borderColor: '#D97706',
+  calcUnitPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.sm,
+    gap: 3,
+    maxWidth: 90,
   },
-  uomChipText: {
+  calcUnitPillText: {
     fontSize: 12,
-    color: '#92400E',
-    fontWeight: '600',
-  },
-  uomChipTextActive: {
-    color: '#FFFFFF',
     fontWeight: '700',
-  },
-  calcResultBox: {
-    marginTop: 10,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#FEF3C7',
-  },
-  calcResultText: {
-    fontSize: 16,
     color: '#92400E',
-    fontWeight: '600',
   },
-  calcResultBold: {
-    fontSize: 18,
+  calcResultInline: {
+    flex: 1,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    paddingLeft: 6,
+  },
+  calcResultInlineText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#92400E',
+  },
+  calcResultInlineBold: {
+    fontSize: 15,
     fontWeight: '800',
     color: '#B45309',
   },
-  calcResultHint: {
+  calcNoRuleText: {
     fontSize: 11,
-    color: '#78350F',
-    marginTop: 2,
+    color: '#B45309',
+    fontStyle: 'italic',
+  },
+
+  // Search Bar
+  searchBarContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 4,
+  },
+
+  // Filter Chips Row
+  filterChipsRow: {
+    paddingVertical: 4,
+  },
+  filterChipsScroll: {
+    paddingHorizontal: 16,
+    gap: 6,
+  },
+  filterChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.full,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  filterChipActive: {
+    backgroundColor: '#D97706',
+    borderColor: '#D97706',
+  },
+  filterChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  filterChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+
+  // Compact List
+  listContent: {
+    paddingHorizontal: 16,
+    paddingTop: 4,
+  },
+  compactCard: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    marginBottom: 8,
+    borderRadius: BorderRadius.md,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  compactMainRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  compactFormulaWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    flexWrap: 'nowrap',
+  },
+  fromUnitPill: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  fromUnitText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  factorArrowPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.sm,
+    marginHorizontal: 5,
+    gap: 3,
+  },
+  factorArrowText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#B45309',
+  },
+  toUnitPill: {
+    backgroundColor: '#F0FDF4',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: '#DCFCE7',
+  },
+  toUnitText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#15803D',
+  },
+  actionButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginLeft: 8,
+  },
+  editBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: '#EEF2FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: '#FEF2F2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  compactSubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 5,
+    paddingTop: 5,
+    borderTopWidth: 1,
+    borderTopColor: '#F8FAFC',
+  },
+  descText: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    flex: 1,
+    marginRight: 6,
+  },
+  globalTag: {
+    fontSize: 10,
+    color: Colors.textMuted,
+    fontWeight: '600',
+  },
+  productTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  productTagText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#1E3A8A',
+  },
+
+  // Empty Box
+  emptyBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+  },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    marginTop: 8,
+  },
+  emptySub: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 3,
+    textAlign: 'center',
+    paddingHorizontal: 20,
   },
   centerBox: {
     flex: 1,
@@ -548,139 +904,11 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: 10,
-    fontSize: 14,
-    color: Colors.textSecondary,
-  },
-  listContent: {
-    paddingHorizontal: 16,
-    paddingTop: 6,
-  },
-  convCard: {
-    padding: 14,
-    marginBottom: 10,
-    borderRadius: 14,
-  },
-  ruleVisualRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  unitBox: {
-    flex: 1,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 10,
-    padding: 10,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  unitBoxTo: {
-    backgroundColor: '#F0FDF4',
-    borderColor: '#DCFCE7',
-  },
-  unitBoxCount: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: Colors.primary,
-  },
-  unitBoxCode: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.textSecondary,
-  },
-  unitBoxName: {
-    fontSize: 11,
-    color: Colors.textMuted,
-    marginTop: 2,
-  },
-  arrowBox: {
-    paddingHorizontal: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  factorPill: {
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-    marginBottom: 4,
-  },
-  factorPillText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#B45309',
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: 10,
-  },
-  descText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-  },
-  globalTag: {
-    fontSize: 11,
-    color: Colors.textMuted,
-    marginTop: 2,
-  },
-  productTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
-  },
-  productTagText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#1E3A8A',
-  },
-  actionButtonsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginLeft: 8,
-  },
-  editBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: '#EEF2FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  deleteBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: '#FEF2F2',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 8,
-  },
-  emptyBox: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-    marginTop: 12,
-  },
-  emptySub: {
     fontSize: 13,
     color: Colors.textSecondary,
-    marginTop: 4,
-    textAlign: 'center',
-    paddingHorizontal: 20,
   },
+
+  // FAB
   fab: {
     position: 'absolute',
     right: 20,
@@ -688,8 +916,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     backgroundColor: Colors.primary,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderRadius: 28,
     elevation: 6,
     shadowColor: Colors.primary,
@@ -698,10 +926,55 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
   },
   fabText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     color: '#FFFFFF',
   },
+
+  // Picker Modal
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  pickerModalBox: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: BorderRadius.md,
+    padding: 16,
+    width: '100%',
+    maxWidth: 320,
+  },
+  pickerModalTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    marginBottom: 10,
+  },
+  pickerItemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  pickerItemRowActive: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: BorderRadius.sm,
+  },
+  pickerItemText: {
+    fontSize: 13,
+    color: Colors.textPrimary,
+  },
+  pickerItemTextActive: {
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+
+  // Add / Edit Modal
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -720,23 +993,23 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 17,
+    fontWeight: '700',
     color: Colors.textPrimary,
   },
   inputLabel: {
     fontSize: 13,
-    fontWeight: '700',
-    color: Colors.textSecondary,
-    marginBottom: 8,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+    marginBottom: 6,
   },
   uomSelectChip: {
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 6,
     borderRadius: 8,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F1F5F9',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#CBD5E1',
     marginRight: 6,
   },
   uomSelectChipActive: {
@@ -744,39 +1017,38 @@ const styles = StyleSheet.create({
     borderColor: Colors.primary,
   },
   uomSelectChipActiveGreen: {
-    backgroundColor: '#10B981',
-    borderColor: '#10B981',
+    backgroundColor: '#16A34A',
+    borderColor: '#16A34A',
   },
   uomSelectChipText: {
     fontSize: 12,
-    color: Colors.textSecondary,
-    fontWeight: '600',
+    color: Colors.textPrimary,
   },
   uomSelectChipTextActive: {
     color: '#FFFFFF',
     fontWeight: '700',
   },
   formulaPreviewBox: {
-    backgroundColor: '#EFF6FF',
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 14,
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FDE68A',
     borderWidth: 1,
-    borderColor: '#BFDBFE',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 12,
+    alignItems: 'center',
   },
   formulaPreviewTitle: {
     fontSize: 11,
-    color: '#1E3A8A',
-    fontWeight: '600',
+    color: '#92400E',
+    marginBottom: 2,
   },
   formulaPreviewFormula: {
-    fontSize: 15,
-    color: '#1E3A8A',
+    fontSize: 14,
     fontWeight: '800',
-    marginTop: 2,
+    color: '#78350F',
   },
   modalActions: {
     flexDirection: 'row',
-    marginTop: 10,
+    marginTop: 16,
   },
 });
