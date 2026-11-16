@@ -31,17 +31,15 @@ export const UomConversionScreen: React.FC = () => {
   const [conversions, setConversions] = useState<UnitConversion[]>([]);
   const [uoms, setUoms] = useState<UnitOfMeasurement[]>([]);
 
-  // Search & Filter
+  // Search & Filter on main list
   const [search, setSearch] = useState('');
   const [selectedUnitFilter, setSelectedUnitFilter] = useState('ALL');
 
   // Interactive Live Calculator (Ultra-slim single line)
   const [calcQty, setCalcQty] = useState('5');
   const [calcFromUomId, setCalcFromUomId] = useState('uom_box');
-
-  // Searchable Unit Dropdown Picker Modal
-  const [unitPickerMode, setUnitPickerMode] = useState<'from' | 'to' | 'calc' | null>(null);
-  const [unitPickerSearch, setUnitPickerSearch] = useState('');
+  const [calcDropdownOpen, setCalcDropdownOpen] = useState(false);
+  const [calcDropdownSearch, setCalcDropdownSearch] = useState('');
 
   // Add / Edit Modal State
   const [modalVisible, setModalVisible] = useState(false);
@@ -51,6 +49,10 @@ export const UomConversionScreen: React.FC = () => {
   const [factor, setFactor] = useState('10');
   const [description, setDescription] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // In-Modal Searchable Dropdown State (Directly inside modal, NEVER goes behind popup)
+  const [modalDropdown, setModalDropdown] = useState<'from' | 'to' | null>(null);
+  const [modalDropdownSearch, setModalDropdownSearch] = useState('');
 
   const loadData = async () => {
     if (!business) return;
@@ -88,6 +90,8 @@ export const UomConversionScreen: React.FC = () => {
     setToUomId(pcUom ? pcUom.id : '');
     setFactor('10');
     setDescription('');
+    setModalDropdown(null);
+    setModalDropdownSearch('');
     setModalVisible(true);
   };
 
@@ -97,19 +101,9 @@ export const UomConversionScreen: React.FC = () => {
     setToUomId(item.toUOMId);
     setFactor(item.conversionFactor.toString());
     setDescription(item.description || '');
+    setModalDropdown(null);
+    setModalDropdownSearch('');
     setModalVisible(true);
-  };
-
-  const handleSelectPickerUnit = (uom: UnitOfMeasurement) => {
-    if (unitPickerMode === 'from') {
-      setFromUomId(uom.id);
-    } else if (unitPickerMode === 'to') {
-      setToUomId(uom.id);
-    } else if (unitPickerMode === 'calc') {
-      setCalcFromUomId(uom.id);
-    }
-    setUnitPickerMode(null);
-    setUnitPickerSearch('');
   };
 
   const handleSave = async () => {
@@ -240,7 +234,7 @@ export const UomConversionScreen: React.FC = () => {
     return uoms.filter((u) => unitIdSet.has(u.id));
   }, [conversions, uoms]);
 
-  // Search & Filter Memo
+  // Search & Filter Memo for main list
   const filteredConversions = useMemo(() => {
     const q = search.toLowerCase().trim();
     return conversions.filter((c) => {
@@ -267,17 +261,30 @@ export const UomConversionScreen: React.FC = () => {
     });
   }, [conversions, uoms, search, selectedUnitFilter]);
 
-  // Units filtered inside the Searchable Dropdown Picker Modal
-  const filteredPickerUoms = useMemo(() => {
-    const q = unitPickerSearch.toLowerCase().trim();
+  // Units filtered inside the In-Modal Searchable Dropdown
+  const filteredModalUoms = useMemo(() => {
+    const q = modalDropdownSearch.toLowerCase().trim();
     if (!q) return uoms;
-    return uoms.filter((u) =>
-      u.nameHi.toLowerCase().includes(q) ||
-      u.nameEn.toLowerCase().includes(q) ||
-      u.code.toLowerCase().includes(q) ||
-      (u.category && u.category.toLowerCase().includes(q))
+    return uoms.filter(
+      (u) =>
+        u.nameHi.toLowerCase().includes(q) ||
+        u.nameEn.toLowerCase().includes(q) ||
+        u.code.toLowerCase().includes(q) ||
+        (u.category && u.category.toLowerCase().includes(q))
     );
-  }, [uoms, unitPickerSearch]);
+  }, [uoms, modalDropdownSearch]);
+
+  // Units filtered inside the Calculator Dropdown
+  const filteredCalcUoms = useMemo(() => {
+    const q = calcDropdownSearch.toLowerCase().trim();
+    if (!q) return availableFilterUnits;
+    return availableFilterUnits.filter(
+      (u) =>
+        u.nameHi.toLowerCase().includes(q) ||
+        u.nameEn.toLowerCase().includes(q) ||
+        u.code.toLowerCase().includes(q)
+    );
+  }, [availableFilterUnits, calcDropdownSearch]);
 
   const activeFromUom = uoms.find((u) => u.id === fromUomId);
   const activeToUom = uoms.find((u) => u.id === toUomId);
@@ -379,19 +386,19 @@ export const UomConversionScreen: React.FC = () => {
             selectTextOnFocus
           />
 
-          {/* From Unit Selector Pill (Opens Searchable Picker) */}
+          {/* From Unit Selector Pill (Opens Inline Dropdown) */}
           <TouchableOpacity
-            style={styles.calcUnitPill}
+            style={[styles.calcUnitPill, calcDropdownOpen && styles.calcUnitPillActive]}
             onPress={() => {
-              setUnitPickerSearch('');
-              setUnitPickerMode('calc');
+              setCalcDropdownSearch('');
+              setCalcDropdownOpen(!calcDropdownOpen);
             }}
             activeOpacity={0.7}
           >
             <Text style={styles.calcUnitPillText} numberOfLines={1}>
               {uoms.find((u) => u.id === calcFromUomId)?.nameHi || 'इकाई'}
             </Text>
-            <Ionicons name="chevron-down" size={11} color="#92400E" />
+            <Ionicons name={calcDropdownOpen ? 'chevron-up' : 'chevron-down'} size={11} color="#92400E" />
           </TouchableOpacity>
 
           {/* Thin arrow */}
@@ -412,6 +419,49 @@ export const UomConversionScreen: React.FC = () => {
             )}
           </View>
         </View>
+
+        {/* Inline Calculator Dropdown */}
+        {calcDropdownOpen && (
+          <View style={styles.calcDropdownCard}>
+            <View style={styles.inlineSearchWrap}>
+              <Ionicons name="search" size={14} color={Colors.textSecondary} style={{ marginRight: 6 }} />
+              <TextInput
+                style={styles.inlineSearchInput}
+                placeholder={language === 'hi' ? 'इकाई खोजें...' : 'Search unit...'}
+                placeholderTextColor="#94A3B8"
+                value={calcDropdownSearch}
+                onChangeText={setCalcDropdownSearch}
+              />
+              {calcDropdownSearch ? (
+                <TouchableOpacity onPress={() => setCalcDropdownSearch('')}>
+                  <Ionicons name="close" size={16} color={Colors.textSecondary} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            <ScrollView style={{ maxHeight: 150 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+              {filteredCalcUoms.map((u) => {
+                const isSel = calcFromUomId === u.id;
+                return (
+                  <TouchableOpacity
+                    key={u.id}
+                    style={[styles.inlineItemRow, isSel && styles.inlineItemRowActive]}
+                    onPress={() => {
+                      setCalcFromUomId(u.id);
+                      setCalcDropdownOpen(false);
+                      setCalcDropdownSearch('');
+                    }}
+                  >
+                    <Text style={[styles.inlineItemName, isSel && styles.inlineItemNameActive]}>
+                      {u.nameHi} ({u.code})
+                    </Text>
+                    {isSel && <Ionicons name="checkmark-circle" size={16} color={Colors.primary} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
       </View>
 
       {/* 2. Fast Real-Time Search Bar */}
@@ -514,105 +564,15 @@ export const UomConversionScreen: React.FC = () => {
         <Text style={styles.fabText}>{language === 'hi' ? 'नया नियम' : 'Add Rule'}</Text>
       </TouchableOpacity>
 
-      {/* Searchable Unit Dropdown Picker Modal (Used for From Unit, To Unit, and Calculator) */}
-      <Modal
-        visible={unitPickerMode !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => {
-          setUnitPickerMode(null);
-          setUnitPickerSearch('');
-        }}
-      >
-        <TouchableOpacity
-          style={styles.pickerOverlay}
-          activeOpacity={1}
-          onPress={() => {
-            setUnitPickerMode(null);
-            setUnitPickerSearch('');
-          }}
-        >
-          <View style={styles.pickerModalBox} onStartShouldSetResponder={() => true}>
-            <View style={styles.pickerModalHeader}>
-              <Text style={styles.pickerModalTitle}>
-                {unitPickerMode === 'from'
-                  ? language === 'hi' ? 'बड़ी पैकेजिंग इकाई चुनें (From Unit):' : 'Select From Unit:'
-                  : unitPickerMode === 'to'
-                  ? language === 'hi' ? 'छोटी / बेस इकाई चुनें (To Unit):' : 'Select To Unit:'
-                  : language === 'hi' ? 'कैलकुलेटर हेतु इकाई चुनें:' : 'Select Calculation Unit:'}
-              </Text>
-              <TouchableOpacity
-                onPress={() => {
-                  setUnitPickerMode(null);
-                  setUnitPickerSearch('');
-                }}
-              >
-                <Ionicons name="close-circle" size={22} color={Colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-
-            {/* In-Modal Search Input */}
-            <View style={styles.pickerSearchWrap}>
-              <Ionicons name="search" size={16} color={Colors.textSecondary} style={{ marginRight: 6 }} />
-              <TextInput
-                style={styles.pickerSearchInput}
-                placeholder={language === 'hi' ? 'इकाई खोजें (उदा. पेटी, बोतल, BOX, PC)...' : 'Search unit name or code...'}
-                placeholderTextColor="#94A3B8"
-                value={unitPickerSearch}
-                onChangeText={setUnitPickerSearch}
-                autoFocus
-              />
-              {unitPickerSearch ? (
-                <TouchableOpacity onPress={() => setUnitPickerSearch('')}>
-                  <Ionicons name="close" size={16} color={Colors.textSecondary} />
-                </TouchableOpacity>
-              ) : null}
-            </View>
-
-            {/* Searchable Unit List */}
-            <ScrollView style={{ maxHeight: 280 }} keyboardShouldPersistTaps="handled">
-              {filteredPickerUoms.length === 0 ? (
-                <View style={{ paddingVertical: 20, alignItems: 'center' }}>
-                  <Text style={{ fontSize: 13, color: Colors.textMuted }}>
-                    {language === 'hi' ? 'कोई इकाई नहीं मिली' : 'No units match'}
-                  </Text>
-                </View>
-              ) : (
-                filteredPickerUoms.map((u) => {
-                  const currentSelectedId =
-                    unitPickerMode === 'from' ? fromUomId : unitPickerMode === 'to' ? toUomId : calcFromUomId;
-                  const isSel = currentSelectedId === u.id;
-
-                  return (
-                    <TouchableOpacity
-                      key={u.id}
-                      style={[styles.pickerItemRow, isSel && styles.pickerItemRowActive]}
-                      onPress={() => handleSelectPickerUnit(u)}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.pickerItemName, isSel && styles.pickerItemNameActive]}>
-                          {u.nameHi} ({u.code})
-                        </Text>
-                        <Text style={styles.pickerItemSub}>
-                          {u.nameEn} • {u.category || 'इकाई'}
-                        </Text>
-                      </View>
-                      {isSel && <Ionicons name="checkmark-circle" size={20} color={Colors.primary} />}
-                    </TouchableOpacity>
-                  );
-                })
-              )}
-            </ScrollView>
-          </View>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* Add / Edit Conversion Modal */}
+      {/* Add / Edit Conversion Modal (Searchable Dropdowns are INLINE, guaranteed in front!) */}
       <Modal
         visible={modalVisible}
         transparent
         animationType="slide"
-        onRequestClose={() => setModalVisible(false)}
+        onRequestClose={() => {
+          setModalDropdown(null);
+          setModalVisible(false);
+        }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -626,21 +586,34 @@ export const UomConversionScreen: React.FC = () => {
                   ? 'नया इकाई रूपांतरण नियम'
                   : 'New Conversion Rule'}
               </Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
+              <TouchableOpacity
+                onPress={() => {
+                  setModalDropdown(null);
+                  setModalVisible(false);
+                }}
+              >
                 <Ionicons name="close" size={24} color={Colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={{ maxHeight: 440 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <ScrollView
+              style={{ maxHeight: 460 }}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
               {/* Step 1: From Unit Searchable Dropdown */}
               <Text style={styles.inputLabel}>
                 {language === 'hi' ? '1. बड़ी पैकेजिंग इकाई (From Unit) *' : '1. From Unit (Larger Unit) *'}
               </Text>
+
               <TouchableOpacity
-                style={styles.dropdownSelector}
+                style={[
+                  styles.dropdownSelector,
+                  modalDropdown === 'from' && styles.dropdownSelectorActive,
+                ]}
                 onPress={() => {
-                  setUnitPickerSearch('');
-                  setUnitPickerMode('from');
+                  setModalDropdownSearch('');
+                  setModalDropdown(modalDropdown === 'from' ? null : 'from');
                 }}
                 activeOpacity={0.7}
               >
@@ -656,8 +629,77 @@ export const UomConversionScreen: React.FC = () => {
                     </Text>
                   )}
                 </View>
-                <Ionicons name="chevron-down" size={18} color={Colors.textSecondary} />
+                <Ionicons
+                  name={modalDropdown === 'from' ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color={modalDropdown === 'from' ? Colors.primary : Colors.textSecondary}
+                />
               </TouchableOpacity>
+
+              {/* Inline Searchable Dropdown for From Unit */}
+              {modalDropdown === 'from' && (
+                <View style={styles.inlineDropdownCard}>
+                  <View style={styles.inlineSearchWrap}>
+                    <Ionicons name="search" size={15} color={Colors.textSecondary} style={{ marginRight: 6 }} />
+                    <TextInput
+                      style={styles.inlineSearchInput}
+                      placeholder={
+                        language === 'hi'
+                          ? 'इकाई खोजें (उदा. पेटी, बोरी, BOX, KG)...'
+                          : 'Search unit name or code...'
+                      }
+                      placeholderTextColor="#94A3B8"
+                      value={modalDropdownSearch}
+                      onChangeText={setModalDropdownSearch}
+                      autoFocus
+                    />
+                    {modalDropdownSearch ? (
+                      <TouchableOpacity onPress={() => setModalDropdownSearch('')}>
+                        <Ionicons name="close" size={16} color={Colors.textSecondary} />
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+
+                  <ScrollView
+                    style={{ maxHeight: 180 }}
+                    nestedScrollEnabled
+                    keyboardShouldPersistTaps="handled"
+                  >
+                    {filteredModalUoms.length === 0 ? (
+                      <View style={{ paddingVertical: 14, alignItems: 'center' }}>
+                        <Text style={{ fontSize: 12, color: Colors.textMuted }}>
+                          {language === 'hi' ? 'कोई इकाई नहीं मिली' : 'No units match'}
+                        </Text>
+                      </View>
+                    ) : (
+                      filteredModalUoms.map((u) => {
+                        const isSel = fromUomId === u.id;
+                        return (
+                          <TouchableOpacity
+                            key={u.id}
+                            style={[styles.inlineItemRow, isSel && styles.inlineItemRowActive]}
+                            onPress={() => {
+                              setFromUomId(u.id);
+                              setModalDropdown(null);
+                              setModalDropdownSearch('');
+                            }}
+                          >
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.inlineItemName, isSel && styles.inlineItemNameActive]}>
+                                {u.nameHi} ({u.code})
+                              </Text>
+                              <Text style={styles.inlineItemSub}>
+                                {u.nameEn} • {u.category || 'इकाई'}
+                              </Text>
+                            </View>
+                            {isSel && <Ionicons name="checkmark-circle" size={18} color={Colors.primary} />}
+                          </TouchableOpacity>
+                        );
+                      })
+                    )}
+                  </ScrollView>
+                </View>
+              )}
 
               {/* Step 2: Conversion Factor */}
               <Input
@@ -676,11 +718,16 @@ export const UomConversionScreen: React.FC = () => {
               <Text style={styles.inputLabel}>
                 {language === 'hi' ? '3. छोटी / बेस इकाई (To Unit) *' : '3. To Unit (Base Unit) *'}
               </Text>
+
               <TouchableOpacity
-                style={[styles.dropdownSelector, styles.dropdownSelectorGreen]}
+                style={[
+                  styles.dropdownSelector,
+                  styles.dropdownSelectorGreen,
+                  modalDropdown === 'to' && styles.dropdownSelectorActiveGreen,
+                ]}
                 onPress={() => {
-                  setUnitPickerSearch('');
-                  setUnitPickerMode('to');
+                  setModalDropdownSearch('');
+                  setModalDropdown(modalDropdown === 'to' ? null : 'to');
                 }}
                 activeOpacity={0.7}
               >
@@ -696,8 +743,77 @@ export const UomConversionScreen: React.FC = () => {
                     </Text>
                   )}
                 </View>
-                <Ionicons name="chevron-down" size={18} color="#15803D" />
+                <Ionicons
+                  name={modalDropdown === 'to' ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color="#15803D"
+                />
               </TouchableOpacity>
+
+              {/* Inline Searchable Dropdown for To Unit */}
+              {modalDropdown === 'to' && (
+                <View style={[styles.inlineDropdownCard, styles.inlineDropdownCardGreen]}>
+                  <View style={styles.inlineSearchWrap}>
+                    <Ionicons name="search" size={15} color={Colors.textSecondary} style={{ marginRight: 6 }} />
+                    <TextInput
+                      style={styles.inlineSearchInput}
+                      placeholder={
+                        language === 'hi'
+                          ? 'इकाई खोजें (उदा. बोतल, नग, PC, ML, KG)...'
+                          : 'Search base unit...'
+                      }
+                      placeholderTextColor="#94A3B8"
+                      value={modalDropdownSearch}
+                      onChangeText={setModalDropdownSearch}
+                      autoFocus
+                    />
+                    {modalDropdownSearch ? (
+                      <TouchableOpacity onPress={() => setModalDropdownSearch('')}>
+                        <Ionicons name="close" size={16} color={Colors.textSecondary} />
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+
+                  <ScrollView
+                    style={{ maxHeight: 180 }}
+                    nestedScrollEnabled
+                    keyboardShouldPersistTaps="handled"
+                  >
+                    {filteredModalUoms.length === 0 ? (
+                      <View style={{ paddingVertical: 14, alignItems: 'center' }}>
+                        <Text style={{ fontSize: 12, color: Colors.textMuted }}>
+                          {language === 'hi' ? 'कोई इकाई नहीं मिली' : 'No units match'}
+                        </Text>
+                      </View>
+                    ) : (
+                      filteredModalUoms.map((u) => {
+                        const isSel = toUomId === u.id;
+                        return (
+                          <TouchableOpacity
+                            key={u.id}
+                            style={[styles.inlineItemRow, isSel && styles.inlineItemRowActiveGreen]}
+                            onPress={() => {
+                              setToUomId(u.id);
+                              setModalDropdown(null);
+                              setModalDropdownSearch('');
+                            }}
+                          >
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.inlineItemName, isSel && { color: '#15803D' }]}>
+                                {u.nameHi} ({u.code})
+                              </Text>
+                              <Text style={styles.inlineItemSub}>
+                                {u.nameEn} • {u.category || 'इकाई'}
+                              </Text>
+                            </View>
+                            {isSel && <Ionicons name="checkmark-circle" size={18} color="#15803D" />}
+                          </TouchableOpacity>
+                        );
+                      })
+                    )}
+                  </ScrollView>
+                </View>
+              )}
 
               {/* Visual Formula Preview in Modal */}
               <View style={styles.formulaPreviewBox}>
@@ -722,7 +838,10 @@ export const UomConversionScreen: React.FC = () => {
               <Button
                 title={language === 'hi' ? 'रद्द करें' : 'Cancel'}
                 variant="outline"
-                onPress={() => setModalVisible(false)}
+                onPress={() => {
+                  setModalDropdown(null);
+                  setModalVisible(false);
+                }}
                 style={{ flex: 1, marginRight: 8 }}
               />
               <Button
@@ -793,6 +912,11 @@ const styles = StyleSheet.create({
     gap: 3,
     maxWidth: 100,
   },
+  calcUnitPillActive: {
+    backgroundColor: '#FDE68A',
+    borderColor: '#D97706',
+    borderWidth: 1,
+  },
   calcUnitPillText: {
     fontSize: 12,
     fontWeight: '700',
@@ -818,6 +942,19 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#B45309',
     fontStyle: 'italic',
+  },
+  calcDropdownCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: BorderRadius.md,
+    padding: 8,
+    marginTop: 4,
+    elevation: 4,
+    shadowColor: '#D97706',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
 
   // Search Bar
@@ -986,11 +1123,19 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    marginBottom: 12,
+    marginBottom: 8,
+  },
+  dropdownSelectorActive: {
+    borderColor: Colors.primary,
+    backgroundColor: '#EEF2FF',
   },
   dropdownSelectorGreen: {
     backgroundColor: '#F0FDF4',
     borderColor: '#BBF7D0',
+  },
+  dropdownSelectorActiveGreen: {
+    borderColor: '#15803D',
+    backgroundColor: '#DCFCE7',
   },
   dropdownSelectedWrap: {
     flexDirection: 'row',
@@ -1008,77 +1153,68 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
   },
 
-  // Searchable Picker Modal
-  pickerOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  pickerModalBox: {
+  // Inline Dropdown Search & List Box (Directly in Modal Form)
+  inlineDropdownCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: BorderRadius.lg,
-    padding: 16,
-    width: '100%',
-    maxWidth: 380,
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    borderRadius: BorderRadius.md,
+    padding: 8,
+    marginBottom: 12,
+    elevation: 3,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
-  pickerModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
+  inlineDropdownCardGreen: {
+    borderColor: '#15803D',
+    shadowColor: '#15803D',
   },
-  pickerModalTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-  },
-  pickerSearchWrap: {
+  inlineSearchWrap: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F1F5F9',
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: 10,
-    height: 38,
-    marginBottom: 10,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: 8,
+    height: 34,
+    marginBottom: 6,
   },
-  pickerSearchInput: {
+  inlineSearchInput: {
     flex: 1,
-    fontSize: 13,
+    fontSize: 12,
     color: Colors.textPrimary,
     padding: 0,
   },
-  pickerItemRow: {
+  inlineItemRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: '#F8FAFC',
   },
-  pickerItemRowActive: {
+  inlineItemRowActive: {
     backgroundColor: '#EFF6FF',
     borderRadius: BorderRadius.sm,
   },
-  pickerItemName: {
+  inlineItemRowActiveGreen: {
+    backgroundColor: '#F0FDF4',
+    borderRadius: BorderRadius.sm,
+  },
+  inlineItemName: {
     fontSize: 13,
     fontWeight: '700',
     color: Colors.textPrimary,
   },
-  pickerItemNameActive: {
+  inlineItemNameActive: {
     color: Colors.primary,
   },
-  pickerItemSub: {
-    fontSize: 11,
+  inlineItemSub: {
+    fontSize: 10,
     color: Colors.textSecondary,
-    marginTop: 2,
+    marginTop: 1,
   },
 
   // Empty Box
