@@ -132,10 +132,21 @@ export const DatePickerField: React.FC<DatePickerFieldProps> = ({
         onPress={openPicker}
       >
         <Ionicons name="calendar" size={18} color={Colors.primary} style={styles.leadingIcon} />
-        <Text style={styles.valueText}>
-          {formatUpperDate(value)}
-          {isCurrentValueToday ? ' (Today)' : ''}
-        </Text>
+        <View style={styles.dateTextContainer}>
+          <Text
+            style={styles.valueText}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
+          >
+            {formatUpperDate(value)}
+          </Text>
+          {isCurrentValueToday ? (
+            <View style={styles.todayChip}>
+              <Text style={styles.todayChipText}>Today</Text>
+            </View>
+          ) : null}
+        </View>
         <View style={styles.calendarBadge}>
           <Text style={styles.calendarBadgeText}>Change</Text>
           <Ionicons name="chevron-down" size={14} color={Colors.primary} />
@@ -265,17 +276,35 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     backgroundColor: '#F0F9FF',
     paddingHorizontal: Spacing.md,
-    height: 48,
+    minHeight: 48,
+    paddingVertical: 6,
   },
   leadingIcon: {
     marginRight: Spacing.sm,
   },
-  valueText: {
+  dateTextContainer: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginRight: 6,
+  },
+  valueText: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '800',
     color: Colors.textPrimary,
     letterSpacing: 0.5,
+  },
+  todayChip: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.full,
+  },
+  todayChipText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#15803D',
   },
   calendarBadge: {
     flexDirection: 'row',

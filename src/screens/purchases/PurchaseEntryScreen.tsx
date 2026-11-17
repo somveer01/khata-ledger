@@ -789,24 +789,19 @@ export const PurchaseEntryScreen: React.FC = () => {
             }}
           />
 
-          <View style={styles.twoColRow}>
-            <View style={{ flex: 1 }}>
-              <Input
-                label={language === 'hi' ? 'बिल / चालान नंबर' : 'Invoice / Bill No.'}
-                placeholder="उदा. INV-8842"
-                value={invoiceNo}
-                onChangeText={setInvoiceNo}
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <DatePickerField
-                label={language === 'hi' ? 'बिल तारीख *' : 'Invoice Date *'}
-                value={invoiceDate}
-                onChange={setInvoiceDate}
-                containerStyle={{ marginBottom: 0 }}
-              />
-            </View>
-          </View>
+          <Input
+            label={language === 'hi' ? 'बिल / चालान नंबर' : 'Invoice / Bill No.'}
+            placeholder="उदा. INV-8842, B-1049"
+            value={invoiceNo}
+            onChangeText={setInvoiceNo}
+          />
+
+          <DatePickerField
+            label={language === 'hi' ? 'बिल तारीख (Invoice Date) *' : 'Invoice Date *'}
+            value={invoiceDate}
+            onChange={setInvoiceDate}
+            helperText={language === 'hi' ? 'डीलर के बिल पर दर्ज तारीख चुनें' : 'Select date from dealer bill'}
+          />
         </Card>
 
         {/* Section 2: Items in Bill */}
