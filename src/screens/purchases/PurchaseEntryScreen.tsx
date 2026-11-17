@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -552,6 +552,18 @@ export const PurchaseEntryScreen: React.FC = () => {
       );
     }
   };
+
+  const itemLiveTotalRupees = useMemo(() => {
+    if (!selectedProduct) return 0;
+    const qty = parseFloat(inputQty) || 0;
+    const rate = parseFloat(billingRate) || 0;
+    if (qty <= 0 || rate <= 0) return 0;
+    const unitsPerPack = selectedProduct.unitsPerCase || selectedProduct.conversionFactor || 1;
+    const totalBaseUnits = buyUnitType === 'CASE' ? qty * unitsPerPack : qty;
+    const appliedGst = isGstInvoice ? gstPercent : 0;
+    const withGstRate = rate * (1 + appliedGst / 100);
+    return Math.round(totalBaseUnits * withGstRate * 100) / 100;
+  }, [selectedProduct, inputQty, billingRate, buyUnitType, isGstInvoice, gstPercent]);
 
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -1121,252 +1133,340 @@ export const PurchaseEntryScreen: React.FC = () => {
       </ScrollView>
 
       {/* Item Selector & Cross-Packing Modal */}
-      <Modal visible={itemModalVisible} transparent animationType="slide" onRequestClose={() => setItemModalVisible(false)}>
+      <Modal
+        visible={itemModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setItemModalVisible(false)}
+      >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                {language === 'hi' ? 'खरीद माल जोड़ें (Add Item)' : 'Add Purchased Product'}
-              </Text>
-              <TouchableOpacity onPress={() => setItemModalVisible(false)}>
-                <Ionicons name="close" size={24} color={Colors.textPrimary} />
-              </TouchableOpacity>
-            </View>
-
-            {/* Bill Tax Mode Indicator inside Modal */}
-            <View style={[styles.modalModeNotice, isGstInvoice ? styles.modalModeNoticeGst : styles.modalModeNoticeNonGst]}>
-              <Ionicons
-                name={isGstInvoice ? 'shield-checkmark' : 'document-text'}
-                size={14}
-                color={isGstInvoice ? '#4F46E5' : '#D97706'}
-              />
-              <Text style={[styles.modalModeNoticeText, { color: isGstInvoice ? '#3730A3' : '#92400E' }]}>
-                {isGstInvoice
-                  ? (language === 'hi' ? 'जीएसटी बिल प्रविष्टि: उत्पाद का GST स्लैब स्वतः लागू होगा।' : 'GST Invoice: Applicable GST slab will be loaded.')
-                  : (language === 'hi' ? 'बिना जीएसटी बिल (कच्चा): 0% टैक्स, केवल बेस खरीद दर लागू होगी।' : 'Non-GST Invoice: 0% Tax, flat base rate applied.')}
-              </Text>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {/* Product Search & Picker */}
-              {!selectedProduct ? (
-                <>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    <View style={{ flex: 1 }}>
-                      <Input
-                        placeholder={language === 'hi' ? 'उत्पाद खोजें या बारकोड...' : 'Search product or barcode...'}
-                        value={productSearch}
-                        onChangeText={setProductSearch}
-                      />
-                    </View>
-                    <TouchableOpacity
-                      style={styles.purScanBtn}
-                      onPress={() => setBarcodeScannerVisible(true)}
-                    >
-                      <Ionicons name="camera" size={16} color="#FFFFFF" />
-                      <Text style={styles.purScanBtnText}>
-                        {language === 'hi' ? 'स्कैन' : 'Scan'}
-                      </Text>
-                    </TouchableOpacity>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={styles.modalKeyboardAvoid}
+          >
+            <View style={styles.modalContent}>
+              {/* Fixed Header */}
+              <View style={styles.modalHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <View style={styles.modalHeaderIconCircle}>
+                    <Ionicons name="cube" size={18} color="#047857" />
                   </View>
-                  <Text style={styles.fieldSubLabel}>
-                    {language === 'hi' ? 'उत्पाद सूची (Select Product):' : 'Available Products:'}
-                  </Text>
-                  <View style={{ maxHeight: 260 }}>
-                    <ScrollView nestedScrollEnabled>
-                      {filteredProducts.map((p) => {
-                        const unitsPerCase = p.unitsPerCase || p.conversionFactor || 1;
-                        const displayPrice = isGstInvoice
-                          ? (p.withGstRatePaise || Math.round(p.billingRatePaise * (1 + (p.gstPercent ?? 18) / 100)))
-                          : p.billingRatePaise;
-                        return (
-                          <TouchableOpacity
-                            key={p.id}
-                            style={styles.prodSelectItem}
-                            onPress={() => handleSelectProduct(p)}
-                          >
-                            <View style={{ flex: 1 }}>
-                              <Text style={styles.prodSelectName}>{p.productName}</Text>
-                              <Text style={styles.prodSelectSpec}>
-                                {p.brandName} • {p.packSize}{' '}
-                                {unitsPerCase > 1 ? `[${p.packSize} × ${unitsPerCase} = 1 ${p.purchasePackagingUnit || 'पेटी'}]` : ''}
-                              </Text>
-                            </View>
-                            <View style={{ alignItems: 'flex-end' }}>
-                              <Text style={styles.prodSelectPrice}>
-                                {formatCurrency(displayPrice)}
-                              </Text>
-                              <Text style={[styles.prodSelectTaxBadge, { color: isGstInvoice ? '#4F46E5' : '#D97706' }]}>
-                                {isGstInvoice ? `GST ${p.gstPercent ?? 18}% सहित` : 'बिना GST दर'}
-                              </Text>
-                            </View>
+                  <View>
+                    <Text style={styles.modalTitle}>
+                      {language === 'hi' ? 'खरीद माल जोड़ें' : 'Add Purchased Product'}
+                    </Text>
+                    <Text style={styles.modalSubtitle}>
+                      {selectedProduct
+                        ? `${selectedProduct.productName} (${selectedProduct.packSize})`
+                        : (language === 'hi' ? 'दवा या बीज का चयन करें' : 'Select product from catalog')}
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  style={styles.modalCloseBtn}
+                  onPress={() => setItemModalVisible(false)}
+                >
+                  <Ionicons name="close" size={20} color="#64748B" />
+                </TouchableOpacity>
+              </View>
+
+              {/* Bill Tax Mode Indicator inside Modal */}
+              <View style={[styles.modalModeNotice, isGstInvoice ? styles.modalModeNoticeGst : styles.modalModeNoticeNonGst]}>
+                <Ionicons
+                  name={isGstInvoice ? 'shield-checkmark' : 'document-text'}
+                  size={14}
+                  color={isGstInvoice ? '#4F46E5' : '#D97706'}
+                />
+                <Text style={[styles.modalModeNoticeText, { color: isGstInvoice ? '#3730A3' : '#92400E' }]}>
+                  {isGstInvoice
+                    ? (language === 'hi' ? 'जीएसटी बिल प्रविष्टि: उत्पाद का GST स्लैब स्वतः लागू होगा।' : 'GST Invoice: Applicable GST slab will be loaded.')
+                    : (language === 'hi' ? 'बिना जीएसटी बिल (कच्चा): 0% टैक्स, केवल बेस खरीद दर लागू होगी।' : 'Non-GST Invoice: 0% Tax, flat base rate applied.')}
+                </Text>
+              </View>
+
+              {/* Scrollable Body */}
+              <View style={styles.modalBody}>
+                {!selectedProduct ? (
+                  <>
+                    {/* Aligned Search Input & Barcode Scan Button */}
+                    <View style={styles.modalSearchBarRow}>
+                      <View style={styles.modalSearchInputBox}>
+                        <Ionicons name="search" size={18} color="#64748B" style={{ marginRight: 6 }} />
+                        <TextInput
+                          style={styles.modalSearchTextInput}
+                          placeholder={language === 'hi' ? 'उत्पाद खोजें या बारकोड...' : 'Search product or barcode...'}
+                          placeholderTextColor="#94A3B8"
+                          value={productSearch}
+                          onChangeText={setProductSearch}
+                          clearButtonMode="while-editing"
+                        />
+                        {productSearch.length > 0 && (
+                          <TouchableOpacity onPress={() => setProductSearch('')} style={{ padding: 4 }}>
+                            <Ionicons name="close-circle" size={16} color="#94A3B8" />
                           </TouchableOpacity>
-                        );
-                      })}
-                    </ScrollView>
-                  </View>
-                </>
-              ) : (
-                <>
-                  {/* Selected Product Card */}
-                  <View style={styles.selectedProdBanner}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.selectedProdName}>{selectedProduct.productName}</Text>
-                      <Text style={styles.selectedProdSub}>
-                        {selectedProduct.brandName} • {selectedProduct.packSize}
-                      </Text>
-                      {/* Cross Packing Formula Card */}
-                      <View style={styles.crossFormulaChip}>
-                        <Ionicons name="cube" size={14} color="#166534" />
-                        <Text style={styles.crossFormulaText}>
-                          {selectedProduct.packSize} × {selectedProduct.unitsPerCase || selectedProduct.conversionFactor || 1}{' '}
-                          {selectedProduct.primarySellingUnit || selectedProduct.unit || 'बोतल'} = 1{' '}
-                          {selectedProduct.purchasePackagingUnit || 'पेटी'}
-                        </Text>
+                        )}
                       </View>
-                    </View>
-                    <TouchableOpacity onPress={() => setSelectedProduct(null)} style={styles.changeProdBtn}>
-                      <Text style={styles.changeProdText}>{language === 'hi' ? 'बदलें' : 'Change'}</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Buy in Case vs Loose Bottles toggle */}
-                  {(selectedProduct.unitsPerCase || selectedProduct.conversionFactor || 1) > 1 && (
-                    <View style={{ marginVertical: Spacing.xs }}>
-                      <Text style={styles.fieldSubLabel}>{language === 'hi' ? 'खरीदने की इकाई:' : 'Buying Unit:'}</Text>
-                      <View style={styles.buyUnitRow}>
-                        <TouchableOpacity
-                          style={[styles.buyUnitChip, buyUnitType === 'CASE' && styles.buyUnitChipActive]}
-                          onPress={() => setBuyUnitType('CASE')}
-                        >
-                          <Ionicons name="cube-outline" size={16} color={buyUnitType === 'CASE' ? '#FFFFFF' : Colors.textPrimary} />
-                          <Text style={[styles.buyUnitText, buyUnitType === 'CASE' && styles.buyUnitTextActive]}>
-                            {language === 'hi' ? 'पेटी (Box / Case)' : 'Box / Case'}
-                          </Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={[styles.buyUnitChip, buyUnitType === 'BASE' && styles.buyUnitChipActive]}
-                          onPress={() => setBuyUnitType('BASE')}
-                        >
-                          <Ionicons name="flask-outline" size={16} color={buyUnitType === 'BASE' ? '#FFFFFF' : Colors.textPrimary} />
-                          <Text style={[styles.buyUnitText, buyUnitType === 'BASE' && styles.buyUnitTextActive]}>
-                            {language === 'hi' ? 'खुली बोतल / नग' : 'Loose Pieces'}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  )}
-
-                  <View style={styles.twoColRow}>
-                    <View style={{ flex: 1 }}>
-                      <Input
-                        label={
-                          buyUnitType === 'CASE'
-                            ? language === 'hi' ? 'कुल पेटी (Boxes) *' : 'Total Boxes *'
-                            : language === 'hi' ? 'कुल बोतलें / नग *' : 'Total Units *'
-                        }
-                        placeholder="1"
-                        value={inputQty}
-                        onChangeText={setInputQty}
-                        keyboardType="decimal-pad"
-                      />
+                      <TouchableOpacity
+                        style={styles.modalScanBtn}
+                        onPress={() => setBarcodeScannerVisible(true)}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="camera" size={16} color="#FFFFFF" />
+                        <Text style={styles.modalScanBtnText}>{language === 'hi' ? 'स्कैन' : 'Scan'}</Text>
+                      </TouchableOpacity>
                     </View>
 
-                    <View style={{ flex: 1 }}>
-                      <Input
-                        label={
-                          isGstInvoice
-                            ? (language === 'hi' ? 'खरीद दर - बिना GST (₹) *' : 'Rate without GST (₹) *')
-                            : (language === 'hi' ? 'खरीद दर - 0% Tax (₹) *' : 'Base Rate - 0% Tax (₹) *')
-                        }
-                        placeholder="0.00"
-                        value={billingRate}
-                        onChangeText={setBillingRate}
-                        keyboardType="decimal-pad"
-                        prefix="₹"
-                      />
-                    </View>
-                  </View>
+                    <Text style={styles.fieldSubLabel}>
+                      {language === 'hi' ? 'उत्पाद सूची (Select Product):' : 'Available Products:'}
+                    </Text>
 
-                  {/* GST Slab Selector or Non-GST Notice */}
-                  {isGstInvoice ? (
-                    <View style={{ marginVertical: Spacing.xs }}>
-                      <Text style={styles.fieldSubLabel}>
-                        {language === 'hi' ? 'GST टैक्स स्लैब:' : 'GST Tax Slab:'}
-                      </Text>
-                      <View style={styles.gstSlabRow}>
-                        {[0, 5, 12, 18, 28].map((slab) => {
-                          const isSel = gstPercent === slab;
-                          return (
-                            <TouchableOpacity
-                              key={`slab_${slab}`}
-                              style={[styles.gstSlabChip, isSel && styles.gstSlabChipActive]}
-                              onPress={() => setGstPercent(slab)}
-                            >
-                              <Text style={[styles.gstSlabChipText, isSel && styles.gstSlabChipTextActive]}>
-                                {slab}%
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
-
-                      {parseFloat(billingRate) > 0 && (
-                        <View style={styles.rateCalcNotice}>
-                          <Ionicons name="calculator" size={14} color="#4F46E5" />
-                          <Text style={styles.rateCalcNoticeText}>
-                            बेस दर: ₹{parseFloat(billingRate).toFixed(2)} + GST ({gstPercent}% = ₹{(parseFloat(billingRate) * (gstPercent / 100)).toFixed(2)}) ={' '}
-                            <Text style={{ fontWeight: '800', color: '#1E1B4B' }}>
-                              ₹{(parseFloat(billingRate) * (1 + gstPercent / 100)).toFixed(2)} / {selectedProduct.primarySellingUnit || selectedProduct.unit || 'यूनिट'} (GST सहित)
-                            </Text>
+                    <ScrollView
+                      style={styles.modalProductListScroll}
+                      showsVerticalScrollIndicator={true}
+                    >
+                      {filteredProducts.length === 0 ? (
+                        <View style={styles.emptyProductList}>
+                          <Ionicons name="alert-circle-outline" size={32} color="#94A3B8" />
+                          <Text style={styles.emptyProductText}>
+                            {language === 'hi' ? 'कोई उत्पाद नहीं मिला' : 'No product found'}
                           </Text>
                         </View>
+                      ) : (
+                        filteredProducts.map((p) => {
+                          const unitsPerCase = p.unitsPerCase || p.conversionFactor || 1;
+                          const displayPrice = isGstInvoice
+                            ? (p.withGstRatePaise || Math.round(p.billingRatePaise * (1 + (p.gstPercent ?? 18) / 100)))
+                            : p.billingRatePaise;
+                          return (
+                            <TouchableOpacity
+                              key={p.id}
+                              style={styles.prodSelectItem}
+                              onPress={() => handleSelectProduct(p)}
+                              activeOpacity={0.7}
+                            >
+                              <View style={{ flex: 1, paddingRight: 8 }}>
+                                <Text style={styles.prodSelectName}>{p.productName}</Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
+                                  <Text style={styles.prodSelectSpec}>
+                                    {p.brandName} • {p.packSize}
+                                  </Text>
+                                  {unitsPerCase > 1 && (
+                                    <View style={styles.prodSelectPackBadge}>
+                                      <Text style={styles.prodSelectPackBadgeText}>
+                                        {unitsPerCase} {p.primarySellingUnit || p.unit || 'नग'}/पेटी
+                                      </Text>
+                                    </View>
+                                  )}
+                                  {p.barcode && (
+                                    <View style={styles.prodSelectBarcodeBadge}>
+                                      <Ionicons name="barcode-outline" size={10} color="#047857" />
+                                      <Text style={styles.prodSelectBarcodeText}>{p.barcode}</Text>
+                                    </View>
+                                  )}
+                                </View>
+                              </View>
+                              <View style={{ alignItems: 'flex-end' }}>
+                                <Text style={styles.prodSelectPrice}>
+                                  {formatCurrency(displayPrice)}
+                                </Text>
+                                <Text style={[styles.prodSelectTaxBadge, { color: isGstInvoice ? '#4F46E5' : '#D97706' }]}>
+                                  {isGstInvoice ? `GST ${p.gstPercent ?? 18}% सहित` : 'बिना GST दर'}
+                                </Text>
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        })
                       )}
+                    </ScrollView>
+                  </>
+                ) : (
+                  <ScrollView
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={{ paddingBottom: Spacing.sm }}
+                  >
+                    {/* Selected Product Card */}
+                    <View style={styles.selectedProdBanner}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.selectedProdName}>{selectedProduct.productName}</Text>
+                        <Text style={styles.selectedProdSub}>
+                          {selectedProduct.brandName} • {selectedProduct.packSize}
+                        </Text>
+                        {/* Cross Packing Formula Card */}
+                        <View style={styles.crossFormulaChip}>
+                          <Ionicons name="cube" size={13} color="#166534" />
+                          <Text style={styles.crossFormulaText}>
+                            {selectedProduct.packSize} × {selectedProduct.unitsPerCase || selectedProduct.conversionFactor || 1}{' '}
+                            {selectedProduct.primarySellingUnit || selectedProduct.unit || 'बोतल'} = 1{' '}
+                            {selectedProduct.purchasePackagingUnit || 'पेटी'}
+                          </Text>
+                        </View>
+                      </View>
+                      <TouchableOpacity onPress={() => setSelectedProduct(null)} style={styles.changeProdBtn}>
+                        <Ionicons name="swap-horizontal" size={13} color="#166534" />
+                        <Text style={styles.changeProdText}>{language === 'hi' ? 'बदलें' : 'Change'}</Text>
+                      </TouchableOpacity>
                     </View>
-                  ) : (
-                    <View style={styles.nonGstItemNotice}>
-                      <Ionicons name="checkmark-circle" size={15} color="#15803D" />
-                      <Text style={styles.nonGstItemNoticeText}>
-                        {language === 'hi'
-                          ? 'बिना GST बिल: 0% टैक्स लागू। बेस खरीद दर ही अंतिम दर होगी।'
-                          : 'Non-GST Bill: 0% Tax applied. Base rate is final.'}
+
+                    {/* Buy in Case vs Loose Bottles toggle */}
+                    {(selectedProduct.unitsPerCase || selectedProduct.conversionFactor || 1) > 1 && (
+                      <View style={{ marginVertical: Spacing.xs }}>
+                        <Text style={styles.fieldSubLabel}>{language === 'hi' ? 'खरीदने की इकाई:' : 'Buying Unit:'}</Text>
+                        <View style={styles.buyUnitRow}>
+                          <TouchableOpacity
+                            style={[styles.buyUnitChip, buyUnitType === 'CASE' && styles.buyUnitChipActive]}
+                            onPress={() => setBuyUnitType('CASE')}
+                          >
+                            <Ionicons name="cube-outline" size={16} color={buyUnitType === 'CASE' ? '#FFFFFF' : Colors.textPrimary} />
+                            <Text style={[styles.buyUnitText, buyUnitType === 'CASE' && styles.buyUnitTextActive]}>
+                              {language === 'hi' ? 'पेटी (Box / Case)' : 'Box / Case'}
+                            </Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={[styles.buyUnitChip, buyUnitType === 'BASE' && styles.buyUnitChipActive]}
+                            onPress={() => setBuyUnitType('BASE')}
+                          >
+                            <Ionicons name="flask-outline" size={16} color={buyUnitType === 'BASE' ? '#FFFFFF' : Colors.textPrimary} />
+                            <Text style={[styles.buyUnitText, buyUnitType === 'BASE' && styles.buyUnitTextActive]}>
+                              {language === 'hi' ? 'खुली बोतल / नग' : 'Loose Pieces'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    )}
+
+                    <View style={styles.twoColRow}>
+                      <View style={{ flex: 1 }}>
+                        <Input
+                          label={
+                            buyUnitType === 'CASE'
+                              ? language === 'hi' ? 'कुल पेटी (Boxes) *' : 'Total Boxes *'
+                              : language === 'hi' ? 'कुल बोतलें / नग *' : 'Total Units *'
+                          }
+                          placeholder="1"
+                          value={inputQty}
+                          onChangeText={setInputQty}
+                          keyboardType="decimal-pad"
+                        />
+                      </View>
+
+                      <View style={{ flex: 1 }}>
+                        <Input
+                          label={
+                            isGstInvoice
+                              ? (language === 'hi' ? 'खरीद दर - बिना GST (₹) *' : 'Rate without GST (₹) *')
+                              : (language === 'hi' ? 'खरीद दर - 0% Tax (₹) *' : 'Base Rate - 0% Tax (₹) *')
+                          }
+                          placeholder="0.00"
+                          value={billingRate}
+                          onChangeText={setBillingRate}
+                          keyboardType="decimal-pad"
+                          prefix="₹"
+                        />
+                      </View>
+                    </View>
+
+                    {/* GST Slab Selector or Non-GST Notice */}
+                    {isGstInvoice ? (
+                      <View style={{ marginVertical: Spacing.xs }}>
+                        <Text style={styles.fieldSubLabel}>
+                          {language === 'hi' ? 'GST टैक्स स्लैब:' : 'GST Tax Slab:'}
+                        </Text>
+                        <View style={styles.gstSlabRow}>
+                          {[0, 5, 12, 18, 28].map((slab) => {
+                            const isSel = gstPercent === slab;
+                            return (
+                              <TouchableOpacity
+                                key={`slab_${slab}`}
+                                style={[styles.gstSlabChip, isSel && styles.gstSlabChipActive]}
+                                onPress={() => setGstPercent(slab)}
+                              >
+                                <Text style={[styles.gstSlabChipText, isSel && styles.gstSlabChipTextActive]}>
+                                  {slab}%
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+
+                        {parseFloat(billingRate) > 0 && (
+                          <View style={styles.rateCalcNotice}>
+                            <Ionicons name="calculator" size={14} color="#4F46E5" />
+                            <Text style={styles.rateCalcNoticeText}>
+                              बेस दर: ₹{parseFloat(billingRate).toFixed(2)} + GST ({gstPercent}% = ₹{(parseFloat(billingRate) * (gstPercent / 100)).toFixed(2)}) ={' '}
+                              <Text style={{ fontWeight: '800', color: '#1E1B4B' }}>
+                                ₹{(parseFloat(billingRate) * (1 + gstPercent / 100)).toFixed(2)} / {selectedProduct.primarySellingUnit || selectedProduct.unit || 'यूनिट'} (GST सहित)
+                              </Text>
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    ) : (
+                      <View style={styles.nonGstItemNotice}>
+                        <Ionicons name="checkmark-circle" size={15} color="#15803D" />
+                        <Text style={styles.nonGstItemNoticeText}>
+                          {language === 'hi'
+                            ? 'बिना GST बिल: 0% टैक्स लागू। बेस खरीद दर ही अंतिम दर होगी।'
+                            : 'Non-GST Bill: 0% Tax applied. Base rate is final.'}
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Live Conversion Preview */}
+                    {buyUnitType === 'CASE' && parseFloat(inputQty) > 0 && (
+                      <View style={styles.liveCalculationBox}>
+                        <Ionicons name="calculator-outline" size={16} color="#15803D" />
+                        <Text style={styles.liveCalculationText}>
+                          {parseFloat(inputQty)} पेटी × {selectedProduct.unitsPerCase || selectedProduct.conversionFactor || 1} ={' '}
+                          <Text style={{ fontWeight: '800' }}>
+                            {parseFloat(inputQty) * (selectedProduct.unitsPerCase || selectedProduct.conversionFactor || 1)}{' '}
+                            {selectedProduct.primarySellingUnit || selectedProduct.unit || 'बोतल'}
+                          </Text>{' '}
+                          स्टॉक में जुड़ेगी।
+                        </Text>
+                      </View>
+                    )}
+                  </ScrollView>
+                )}
+              </View>
+
+              {/* Fixed Footer (Always visible at bottom!) */}
+              <View style={styles.modalFooterPinned}>
+                {!selectedProduct ? (
+                  <Button
+                    title={language === 'hi' ? 'बंद करें (Close)' : 'Close'}
+                    variant="outline"
+                    onPress={() => setItemModalVisible(false)}
+                    style={{ flex: 1 }}
+                  />
+                ) : (
+                  <>
+                    <View style={styles.modalLiveTotalCol}>
+                      <Text style={styles.modalLiveTotalLabel}>
+                        {language === 'hi' ? 'कुल लागत (GST सहित)' : 'Total Item Cost'}
+                      </Text>
+                      <Text style={styles.modalLiveTotalVal}>
+                        ₹{itemLiveTotalRupees.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </Text>
                     </View>
-                  )}
-
-                  {/* Live Conversion Preview */}
-                  {buyUnitType === 'CASE' && parseFloat(inputQty) > 0 && (
-                    <View style={styles.liveCalculationBox}>
-                      <Ionicons name="calculator-outline" size={16} color="#15803D" />
-                      <Text style={styles.liveCalculationText}>
-                        {parseFloat(inputQty)} पेटी × {selectedProduct.unitsPerCase || selectedProduct.conversionFactor || 1} ={' '}
-                        <Text style={{ fontWeight: '800' }}>
-                          {parseFloat(inputQty) * (selectedProduct.unitsPerCase || selectedProduct.conversionFactor || 1)}{' '}
-                          {selectedProduct.primarySellingUnit || selectedProduct.unit || 'बोतल'}
-                        </Text>{' '}
-                        स्टॉक में जुड़ेगी।
-                      </Text>
+                    <View style={styles.modalFooterActionsRow}>
+                      <Button
+                        title={language === 'hi' ? 'रद्द करें' : 'Cancel'}
+                        variant="outline"
+                        onPress={() => setItemModalVisible(false)}
+                        style={{ flex: 1 }}
+                      />
+                      <Button
+                        title={language === 'hi' ? '➕ बिल में जोड़ें' : '➕ Add to Bill'}
+                        onPress={handleAddItemToBill}
+                        style={{ flex: 1.4 }}
+                      />
                     </View>
-                  )}
-
-                  <View style={styles.modalActions}>
-                    <Button
-                      title={language === 'hi' ? 'रद्द करें' : 'Cancel'}
-                      variant="outline"
-                      onPress={() => setItemModalVisible(false)}
-                      style={{ flex: 1, marginRight: 8 }}
-                    />
-                    <Button
-                      title={language === 'hi' ? 'बिल में जोड़ें' : 'Add to Bill'}
-                      onPress={handleAddItemToBill}
-                      style={{ flex: 1 }}
-                    />
-                  </View>
-                </>
-              )}
-            </ScrollView>
-          </View>
+                  </>
+                )}
+              </View>
+            </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
@@ -1950,29 +2050,180 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: Spacing.md,
+    padding: Spacing.sm,
+  },
+  modalKeyboardAvoid: {
+    width: '100%',
+    maxWidth: 520,
+    maxHeight: '92%',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalContent: {
     backgroundColor: '#FFFFFF',
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
+    borderRadius: BorderRadius.xl,
     width: '100%',
-    maxWidth: 480,
-    maxHeight: '90%',
+    maxHeight: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 12,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  modalHeaderIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#DCFCE7',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
     color: Colors.textPrimary,
+  },
+  modalSubtitle: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBody: {
+    flex: 1,
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.xs,
+  },
+  modalSearchBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  modalSearchInputBox: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: BorderRadius.md,
+    height: 44,
+    paddingHorizontal: 10,
+  },
+  modalSearchTextInput: {
+    flex: 1,
+    fontSize: 13,
+    color: Colors.textPrimary,
+    height: '100%',
+  },
+  modalScanBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#047857',
+    height: 44,
+    paddingHorizontal: 14,
+    borderRadius: BorderRadius.md,
+    justifyContent: 'center',
+  },
+  modalScanBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  modalProductListScroll: {
+    flex: 1,
+    minHeight: 220,
+    maxHeight: 380,
+  },
+  emptyProductList: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.xl,
+    gap: 6,
+  },
+  emptyProductText: {
+    fontSize: 13,
+    color: Colors.textMuted,
+  },
+  prodSelectPackBadge: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: BorderRadius.sm,
+  },
+  prodSelectPackBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  prodSelectBarcodeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: BorderRadius.sm,
+  },
+  prodSelectBarcodeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#065F46',
+  },
+  modalFooterPinned: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    backgroundColor: '#F8FAFC',
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    gap: 10,
+  },
+  modalLiveTotalCol: {
+    flex: 1,
+  },
+  modalLiveTotalLabel: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    fontWeight: '600',
+  },
+  modalLiveTotalVal: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#166534',
+  },
+  modalFooterActionsRow: {
+    flex: 1.6,
+    flexDirection: 'row',
+    gap: 8,
   },
   modalActions: {
     flexDirection: 'row',
