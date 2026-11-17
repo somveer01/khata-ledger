@@ -9,7 +9,7 @@ import {
   ScrollView,
   Modal,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Header } from '../../components/Header';
 import { Card } from '../../components/Card';
@@ -56,9 +56,11 @@ export const StockLedgerScreen: React.FC = () => {
     }
   }, [business]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);

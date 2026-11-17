@@ -1724,7 +1724,30 @@ export const DataRepository = {
   // SUPPLIERS (Vendors / Dealers)
   // -------------------------------------------------------------
   async getSuppliers(businessId: string): Promise<Supplier[]> {
-    return StorageService.getSuppliers(businessId);
+    let local = await StorageService.getSuppliers(businessId);
+    if (isFirebaseConfigured() && db) {
+      try {
+        const snap = await getDocs(query(collection(db, 'suppliers'), where('businessId', '==', businessId)));
+        if (!snap.empty) {
+          const remoteList = snap.docs.map((d) => d.data() as Supplier);
+          const mergedMap = new Map<string, Supplier>();
+          remoteList.forEach((s) => mergedMap.set(s.id, s));
+          local.forEach((s) => {
+            if (!mergedMap.has(s.id)) {
+              mergedMap.set(s.id, s);
+            }
+          });
+          const merged = Array.from(mergedMap.values()).sort(
+            (a, b) => (a.name || '').localeCompare(b.name || '')
+          );
+          await StorageService.saveSuppliers(businessId, merged);
+          return merged;
+        }
+      } catch (err) {
+        console.warn('Firestore getSuppliers error:', err);
+      }
+    }
+    return local;
   },
 
   async saveSupplier(supplier: Supplier): Promise<{ success: boolean; supplier?: Supplier; error?: string }> {
@@ -1781,7 +1804,30 @@ export const DataRepository = {
   // PURCHASES (Inward Bills)
   // -------------------------------------------------------------
   async getPurchases(businessId: string): Promise<PurchaseInvoice[]> {
-    return StorageService.getPurchases(businessId);
+    let local = await StorageService.getPurchases(businessId);
+    if (isFirebaseConfigured() && db) {
+      try {
+        const snap = await getDocs(query(collection(db, 'purchases'), where('businessId', '==', businessId)));
+        if (!snap.empty) {
+          const remoteList = snap.docs.map((d) => d.data() as PurchaseInvoice);
+          const mergedMap = new Map<string, PurchaseInvoice>();
+          remoteList.forEach((p) => mergedMap.set(p.id, p));
+          local.forEach((p) => {
+            if (!mergedMap.has(p.id)) {
+              mergedMap.set(p.id, p);
+            }
+          });
+          const merged = Array.from(mergedMap.values()).sort(
+            (a, b) => new Date(b.createdAt || b.invoiceDate).getTime() - new Date(a.createdAt || a.invoiceDate).getTime()
+          );
+          await StorageService.savePurchases(businessId, merged);
+          return merged;
+        }
+      } catch (err) {
+        console.warn('Firestore getPurchases error:', err);
+      }
+    }
+    return local;
   },
 
   async savePurchase(purchase: PurchaseInvoice): Promise<{ success: boolean; purchase?: PurchaseInvoice; error?: string }> {
@@ -1996,7 +2042,30 @@ export const DataRepository = {
   // STOCK ADJUSTMENTS (Damaged, Expiry, Physical Count Audit)
   // -------------------------------------------------------------
   async getStockAdjustments(businessId: string): Promise<StockAdjustment[]> {
-    return StorageService.getStockAdjustments(businessId);
+    let local = await StorageService.getStockAdjustments(businessId);
+    if (isFirebaseConfigured() && db) {
+      try {
+        const snap = await getDocs(query(collection(db, 'stock_adjustments'), where('businessId', '==', businessId)));
+        if (!snap.empty) {
+          const remoteList = snap.docs.map((d) => d.data() as StockAdjustment);
+          const mergedMap = new Map<string, StockAdjustment>();
+          remoteList.forEach((a) => mergedMap.set(a.id, a));
+          local.forEach((a) => {
+            if (!mergedMap.has(a.id)) {
+              mergedMap.set(a.id, a);
+            }
+          });
+          const merged = Array.from(mergedMap.values()).sort(
+            (a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
+          );
+          await StorageService.saveStockAdjustments(businessId, merged);
+          return merged;
+        }
+      } catch (err) {
+        console.warn('Firestore getStockAdjustments error:', err);
+      }
+    }
+    return local;
   },
 
   async saveStockAdjustment(
@@ -2063,55 +2132,60 @@ export const DataRepository = {
   async getStockLedgerSummary(businessId: string): Promise<StockItemSummary[]> {
     const [products, purchases, transactions, adjustments] = await Promise.all([
       this.getProducts(businessId),
-      StorageService.getPurchases(businessId),
-      StorageService.getTransactions(businessId),
-      StorageService.getStockAdjustments(businessId),
+      this.getPurchases(businessId),
+      this.getTransactions(businessId),
+      this.getStockAdjustments(businessId),
     ]);
-
-    // Calculate total purchased base units per product
-    const purchasedMap = new Map<string, number>();
-    for (const pur of purchases) {
-      for (const item of pur.items || []) {
-        const key = item.productId || item.productName?.toLowerCase().trim();
-        const prev = purchasedMap.get(key) || 0;
-        purchasedMap.set(key, prev + (item.totalBaseUnits || item.purchaseQty || 0));
-      }
-    }
-
-    // Calculate total sold units per product from transactions
-    const soldMap = new Map<string, number>();
-    for (const tx of transactions) {
-      if (tx.type === 'CREDIT_SALE' && !tx.isReversed) {
-        const key = tx.description?.toLowerCase().trim();
-        const prev = soldMap.get(key) || 0;
-        soldMap.set(key, prev + (tx.quantity || 1));
-      }
-    }
-
-    // Calculate net adjustments (+ surplus / - damage, expiry, loss)
-    const adjustedMap = new Map<string, number>();
-    for (const adj of adjustments) {
-      const key = adj.productId || adj.productName?.toLowerCase().trim();
-      const prev = adjustedMap.get(key) || 0;
-      let delta = 0;
-      if (adj.adjustmentType === 'AUDIT_SURPLUS' || adj.adjustmentType === 'MANUAL_IN') {
-        delta = Math.abs(adj.quantityBaseUnits);
-      } else {
-        // DAMAGE, EXPIRY, THEFT_LOSS, AUDIT_SHORT, MANUAL_OUT
-        delta = -Math.abs(adj.quantityBaseUnits);
-      }
-      adjustedMap.set(key, prev + delta);
-    }
 
     const summaries: StockItemSummary[] = products
       .filter((p) => p.isActive)
       .map((p) => {
         const idKey = p.id;
-        const nameKey = p.productName?.toLowerCase().trim();
+        const nameKey = (p.productName || '').toLowerCase().trim();
+        const brandKey = (p.brandName || '').toLowerCase().trim();
+        const packKey = (p.packSize || '').toLowerCase().trim();
 
-        const totalPurchased = (purchasedMap.get(idKey) || 0) + (purchasedMap.get(nameKey) || 0);
-        const totalSold = soldMap.get(nameKey) || 0;
-        const netAdjusted = (adjustedMap.get(idKey) || 0) + (adjustedMap.get(nameKey) || 0);
+        // Calculate total purchased base units for this product
+        let totalPurchased = 0;
+        for (const pur of purchases) {
+          for (const item of pur.items || []) {
+            const matchesId = Boolean(item.productId && item.productId === idKey);
+            const itemName = (item.productName || '').toLowerCase().trim();
+            const matchesName = Boolean(itemName && nameKey && itemName === nameKey);
+            if (matchesId || (!item.productId && matchesName)) {
+              totalPurchased += (item.totalBaseUnits || item.purchaseQty || 0);
+            }
+          }
+        }
+
+        // Calculate total sold units from transactions
+        let totalSold = 0;
+        for (const tx of transactions) {
+          if (tx.type === 'CREDIT_SALE' && !tx.isReversed) {
+            const desc = (tx.description || '').toLowerCase().trim();
+            if (desc && nameKey) {
+              const exactMatch = desc === nameKey;
+              const containsBoth = brandKey ? desc.includes(nameKey) && desc.includes(brandKey) : desc.includes(nameKey);
+              if (exactMatch || containsBoth) {
+                totalSold += (tx.quantity || 1);
+              }
+            }
+          }
+        }
+
+        // Calculate net adjustments (+ surplus / - damage, expiry, loss)
+        let netAdjusted = 0;
+        for (const adj of adjustments) {
+          const matchesId = Boolean(adj.productId && adj.productId === idKey);
+          const adjName = (adj.productName || '').toLowerCase().trim();
+          const matchesName = Boolean(adjName && nameKey && adjName === nameKey);
+          if (matchesId || (!adj.productId && matchesName)) {
+            const qty = Math.abs(adj.quantityBaseUnits || 0);
+            const isSurplus = adj.adjustmentType === 'AUDIT_SURPLUS' || adj.adjustmentType === 'MANUAL_IN';
+            netAdjusted += (isSurplus ? qty : -qty);
+          }
+        }
+
         const currentStock = Math.max(0, totalPurchased - totalSold + netAdjusted);
 
         const unitsPerCase = p.unitsPerCase || p.conversionFactor || 10;

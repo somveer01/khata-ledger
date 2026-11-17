@@ -11,7 +11,7 @@ import {
   Image,
   Platform,
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Header } from '../../components/Header';
 import { Card } from '../../components/Card';
@@ -57,9 +57,11 @@ export const PurchaseListScreen: React.FC = () => {
     }
   }, [business, filterSupplierId]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
