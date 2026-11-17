@@ -663,17 +663,12 @@ export const PurchaseEntryScreen: React.FC = () => {
 
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 {supplierName ? (
-                  <TouchableOpacity
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      setSelectedSupplierId('');
-                      setSupplierName('');
-                      setSupplierDropdownOpen(true);
-                    }}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <Ionicons name="close-circle" size={18} color={Colors.textSecondary} />
-                  </TouchableOpacity>
+                  <View style={styles.changeSupplierBadge}>
+                    <Text style={styles.changeSupplierBadgeText}>
+                      {language === 'hi' ? 'बदलें' : 'Change'}
+                    </Text>
+                    <Ionicons name="swap-horizontal" size={12} color={Colors.primary} />
+                  </View>
                 ) : null}
                 <Ionicons
                   name={supplierDropdownOpen ? 'chevron-up' : 'chevron-down'}
@@ -706,7 +701,7 @@ export const PurchaseEntryScreen: React.FC = () => {
 
                 {/* Supplier Items List */}
                 <ScrollView
-                  style={{ maxHeight: 220 }}
+                  style={{ maxHeight: 240 }}
                   nestedScrollEnabled
                   keyboardShouldPersistTaps="handled"
                 >
@@ -777,17 +772,6 @@ export const PurchaseEntryScreen: React.FC = () => {
               </View>
             )}
           </View>
-
-          <Input
-            label={language === 'hi' ? 'सप्लायर / डीलर का नाम (सत्यापित करें या बदलें) *' : 'Supplier / Dealer Name *'}
-            placeholder="उदा. श्रीराम कृषि केंद्र, बायर एजेंसी"
-            value={supplierName}
-            onChangeText={(txt) => {
-              setSupplierName(txt);
-              const matched = suppliers.find((s) => s.name.toLowerCase() === txt.trim().toLowerCase());
-              setSelectedSupplierId(matched ? matched.id : '');
-            }}
-          />
 
           <Input
             label={language === 'hi' ? 'बिल / चालान नंबर' : 'Invoice / Bill No.'}
@@ -2238,6 +2222,20 @@ const styles = StyleSheet.create({
   supplierDropdownTriggerSelected: {
     borderColor: '#93C5FD',
     backgroundColor: '#F0F9FF',
+  },
+  changeSupplierBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#DBEAFE',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.full,
+  },
+  changeSupplierBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.primary,
   },
   supplierTriggerText: {
     fontSize: 14,
