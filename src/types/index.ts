@@ -309,3 +309,74 @@ export interface StockAdjustment {
   updatedAt: string;
 }
 
+// ----------------------------------------------------------------------------
+// DAY-END CASH DRAWER & DAILY RECONCILIATION
+// ----------------------------------------------------------------------------
+export interface CashDenomination {
+  note500: number; // ₹500
+  note200: number; // ₹200
+  note100: number; // ₹100
+  note50: number;  // ₹50
+  note20: number;  // ₹20
+  note10: number;  // ₹10
+  coins: number;   // सिक्कों की कुल राशि (रुपयों में)
+}
+
+export type DailyExpenseCategory =
+  | 'TEA_SNACKS'        // चाय / नाश्ता
+  | 'LABOUR_LOADING'    // पल्लेदारी / मजदूरी
+  | 'FREIGHT_TRANSPORT' // भाड़ा / ढुलाई
+  | 'ELECTRICITY_FUEL'  // बिजली / डीज़ल / पेट्रोल
+  | 'PERSONAL_DRAWING'  // मालिक द्वारा निजी खर्च
+  | 'OTHER';            // अन्य दुकान खर्चा
+
+export interface DailyExpenseItem {
+  id: string;
+  businessId: string;
+  date: string; // YYYY-MM-DD
+  category: DailyExpenseCategory;
+  title: string;
+  amountPaise: CurrencyPaise;
+  paymentMethod: 'CASH' | 'UPI';
+  paidTo?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface DailyCashClosing {
+  id: string;                   // "close_YYYY-MM-DD"
+  businessId: string;
+  date: string;                 // YYYY-MM-DD
+  closedAt: string;             // ISO Timestamp
+  closedBy?: string;            // User Name / Owner / Munim
+
+  // 1. Cash Opening & Movements
+  openingCashPaise: CurrencyPaise;
+  cashSalesPaise: CurrencyPaise;
+  cashRecoveriesPaise: CurrencyPaise;
+  cashSupplierPaidPaise: CurrencyPaise;
+  cashExpensesPaise: CurrencyPaise;
+  expectedCashPaise: CurrencyPaise;
+
+  // 2. Physical Count & Variance
+  denominations: CashDenomination;
+  physicalCashPaise: CurrencyPaise;
+  variancePaise: CurrencyPaise;         // physicalCashPaise - expectedCashPaise
+  varianceReason?: string;             // अंतर का कारण
+
+  // 3. Non-Cash & Business Totals
+  upiSalesPaise: CurrencyPaise;
+  upiRecoveriesPaise: CurrencyPaise;
+  upiExpensesPaise: CurrencyPaise;
+  creditSalesPaise: CurrencyPaise;     // आज की कुल उधारी
+  totalDaySalesPaise: CurrencyPaise;   // कुल बिक्री (Cash + UPI + Credit)
+  totalDayCollectionsPaise: CurrencyPaise; // कुल वसूली (Cash + UPI)
+
+  // 4. Status & Lock
+  isLocked: boolean;            // क्लोज़िंग लॉक
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+

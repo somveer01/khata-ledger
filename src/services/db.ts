@@ -13,7 +13,7 @@ import {
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './firebase';
 import { StorageService, AttachmentService } from './storage';
-import { Business, Village, Customer, Transaction, VillageSummary, DashboardMetrics, AppUser, StoreActivityStats, Product, UnitOfMeasurement, UnitConversion, Supplier, SupplierPayment, PurchaseInvoice, StockItemSummary, StockAdjustment } from '../types';
+import { Business, Village, Customer, Transaction, VillageSummary, DashboardMetrics, AppUser, StoreActivityStats, Product, UnitOfMeasurement, UnitConversion, Supplier, SupplierPayment, PurchaseInvoice, StockItemSummary, StockAdjustment, DailyExpenseItem, DailyCashClosing } from '../types';
 import { calculateCustomerBalance, calculateVillageSummaries, calculateDashboardMetrics, calculateCustomerDueDate } from './accounting';
 import { toPaise } from '../utils/money';
 import { getBusinessIdFromEmail, isLegacyOwner, LEGACY_BUSINESS_ID, LEGACY_BUSINESS_TENANT_ID, LEGACY_OWNER_EMAIL } from '../utils/tenant';
@@ -2234,6 +2234,267 @@ export const DataRepository = {
       });
 
     return summaries;
+  },
+
+  // -------------------------------------------------------------
+  // DAILY PETTY EXPENSES
+  // -------------------------------------------------------------
+  async getDailyExpenses(businessId: string, date?: string): Promise<DailyExpenseItem[]> {
+    const local = await StorageService.getDailyExpenses(businessId, date);
+    if (isFirebaseConfigured() && db) {
+      try {
+        let q = query(collection(db, 'daily_expenses'), where('businessId', '==', businessId));
+        if (date) {
+          q = query(collection(db, 'daily_expenses'), where('businessId', '==', businessId), where('date', '==', date));
+        }
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          const remoteMap = new Map<string, DailyExpenseItem>();
+          snap.docs.forEach((d) => remoteMap.set(d.id, { ...(d.data() as any), id: d.id }));
+          const allCurrent = await StorageService.getDailyExpenses(businessId);
+          allCurrent.forEach((item) => {
+            if (!remoteMap.has(item.id)) remoteMap.set(item.id, item);
+          });
+          const merged = Array.from(remoteMap.values());
+          await StorageService.saveDailyExpenses(businessId, merged);
+          return date ? merged.filter((e) => e.date === date) : merged;
+        }
+      } catch (err) {
+        console.warn('Firestore getDailyExpenses sync error:', err);
+      }
+    }
+    return local;
+  },
+
+  async saveDailyExpense(expense: DailyExpenseItem): Promise<{ success: boolean; expense?: DailyExpenseItem; error?: string }> {
+    try {
+      const all = await StorageService.getDailyExpenses(expense.businessId);
+      const idx = all.findIndex((e) => e.id === expense.id);
+      const savedItem = { ...expense, updatedAt: new Date().toISOString() };
+      if (idx >= 0) {
+        all[idx] = savedItem;
+      } else {
+        all.unshift(savedItem);
+      }
+      await StorageService.saveDailyExpenses(expense.businessId, all);
+
+      if (isFirebaseConfigured() && db) {
+        setDoc(
+          doc(db, 'daily_expenses', expense.id),
+          cleanForFirestore({
+            ...savedItem,
+            updatedAt: serverTimestamp(),
+          }),
+          { merge: true }
+        ).catch((err) => console.warn('Firestore saveDailyExpense error:', err));
+      }
+      return { success: true, expense: savedItem };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  async deleteDailyExpense(businessId: string, expenseId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const all = await StorageService.getDailyExpenses(businessId);
+      const filtered = all.filter((e) => e.id !== expenseId);
+      await StorageService.saveDailyExpenses(businessId, filtered);
+
+      if (isFirebaseConfigured() && db) {
+        deleteDoc(doc(db, 'daily_expenses', expenseId)).catch((err) =>
+          console.warn('Firestore deleteDailyExpense error:', err)
+        );
+      }
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  // -------------------------------------------------------------
+  // DAILY CASH CLOSINGS (Galla Reconciliation)
+  // -------------------------------------------------------------
+  async getDailyCashClosings(businessId: string): Promise<DailyCashClosing[]> {
+    const local = await StorageService.getDailyCashClosings(businessId);
+    if (isFirebaseConfigured() && db) {
+      try {
+        const snap = await getDocs(
+          query(collection(db, 'daily_cash_closings'), where('businessId', '==', businessId))
+        );
+        if (!snap.empty) {
+          const remoteMap = new Map<string, DailyCashClosing>();
+          snap.docs.forEach((d) => remoteMap.set(d.id, { ...(d.data() as any), id: d.id }));
+          local.forEach((c) => {
+            if (!remoteMap.has(c.id)) remoteMap.set(c.id, c);
+          });
+          const merged = Array.from(remoteMap.values());
+          await StorageService.saveDailyCashClosings(businessId, merged);
+          return merged;
+        }
+      } catch (err) {
+        console.warn('Firestore getDailyCashClosings sync error:', err);
+      }
+    }
+    return local;
+  },
+
+  async getDailyCashClosing(businessId: string, date: string): Promise<DailyCashClosing | null> {
+    const list = await this.getDailyCashClosings(businessId);
+    return list.find((c) => c.date === date) || null;
+  },
+
+  async saveDailyCashClosing(closing: DailyCashClosing): Promise<{ success: boolean; closing?: DailyCashClosing; error?: string }> {
+    try {
+      const list = await StorageService.getDailyCashClosings(closing.businessId);
+      const idx = list.findIndex((c) => c.id === closing.id || c.date === closing.date);
+      const savedItem = { ...closing, updatedAt: new Date().toISOString() };
+      if (idx >= 0) {
+        list[idx] = savedItem;
+      } else {
+        list.unshift(savedItem);
+      }
+      await StorageService.saveDailyCashClosings(closing.businessId, list);
+
+      if (isFirebaseConfigured() && db) {
+        setDoc(
+          doc(db, 'daily_cash_closings', closing.id),
+          cleanForFirestore({
+            ...savedItem,
+            updatedAt: serverTimestamp(),
+          }),
+          { merge: true }
+        ).catch((err) => console.warn('Firestore saveDailyCashClosing error:', err));
+      }
+      return { success: true, closing: savedItem };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  /**
+   * Dynamically calculates full daily cash flow summary for a given business and date
+   */
+  async calculateDailyCashSummary(businessId: string, targetDate: string): Promise<{
+    openingCashPaise: number;
+    cashSalesPaise: number;
+    cashRecoveriesPaise: number;
+    cashSupplierPaidPaise: number;
+    cashExpensesPaise: number;
+    expectedCashPaise: number;
+    upiSalesPaise: number;
+    upiRecoveriesPaise: number;
+    upiExpensesPaise: number;
+    creditSalesPaise: number;
+    totalDaySalesPaise: number;
+    totalDayCollectionsPaise: number;
+    existingClosing: DailyCashClosing | null;
+  }> {
+    const [txs, purchases, supPayments, expenses, closings] = await Promise.all([
+      this.getTransactions(businessId),
+      this.getPurchases(businessId),
+      this.getSupplierPayments(businessId),
+      this.getDailyExpenses(businessId, targetDate),
+      this.getDailyCashClosings(businessId),
+    ]);
+
+    const existingClosing = closings.find((c) => c.date === targetDate) || null;
+
+    let openingCashPaise = 0;
+    if (existingClosing) {
+      openingCashPaise = existingClosing.openingCashPaise || 0;
+    } else {
+      const sortedPrior = closings
+        .filter((c) => c.date < targetDate)
+        .sort((a, b) => b.date.localeCompare(a.date));
+      if (sortedPrior.length > 0) {
+        openingCashPaise = sortedPrior[0].physicalCashPaise || sortedPrior[0].expectedCashPaise || 0;
+      }
+    }
+
+    let cashSalesPaise = 0;
+    let cashRecoveriesPaise = 0;
+    let upiSalesPaise = 0;
+    let upiRecoveriesPaise = 0;
+    let creditSalesPaise = 0;
+
+    for (const t of txs) {
+      const tDate = t.date ? t.date.split('T')[0] : '';
+      if (tDate !== targetDate) continue;
+
+      const pMethod = t.paymentMethod || 'CASH';
+
+      if (t.type === 'CREDIT_SALE') {
+        creditSalesPaise += t.amountPaise || 0;
+        const recv = t.receivedAmountPaise || 0;
+        if (recv > 0) {
+          if (pMethod === 'UPI') {
+            upiSalesPaise += recv;
+          } else {
+            cashSalesPaise += recv;
+          }
+        }
+      } else if (t.type === 'PAYMENT') {
+        if (pMethod === 'UPI') {
+          upiRecoveriesPaise += t.amountPaise || 0;
+        } else {
+          cashRecoveriesPaise += t.amountPaise || 0;
+        }
+      }
+    }
+
+    let cashSupplierPaidPaise = 0;
+    for (const p of purchases) {
+      const pDate = p.invoiceDate || (p.createdAt ? p.createdAt.split('T')[0] : '');
+      if (pDate === targetDate && (p.paidAmountPaise || 0) > 0) {
+        const pMethod = p.paymentMethod || 'CASH';
+        if (pMethod === 'CASH') {
+          cashSupplierPaidPaise += p.paidAmountPaise;
+        }
+      }
+    }
+
+    for (const sp of supPayments) {
+      const spDate = sp.date ? sp.date.split('T')[0] : (sp.createdAt ? sp.createdAt.split('T')[0] : '');
+      if (spDate === targetDate && (sp.amountPaise || 0) > 0) {
+        const spMethod = sp.paymentMethod || 'CASH';
+        if (spMethod === 'CASH') {
+          cashSupplierPaidPaise += sp.amountPaise;
+        }
+      }
+    }
+
+    let cashExpensesPaise = 0;
+    let upiExpensesPaise = 0;
+    for (const exp of expenses) {
+      if (exp.paymentMethod === 'UPI') {
+        upiExpensesPaise += exp.amountPaise || 0;
+      } else {
+        cashExpensesPaise += exp.amountPaise || 0;
+      }
+    }
+
+    const expectedCashPaise = Math.max(
+      0,
+      openingCashPaise + cashSalesPaise + cashRecoveriesPaise - cashSupplierPaidPaise - cashExpensesPaise
+    );
+    const totalDaySalesPaise = cashSalesPaise + upiSalesPaise + creditSalesPaise;
+    const totalDayCollectionsPaise = cashSalesPaise + upiSalesPaise + cashRecoveriesPaise + upiRecoveriesPaise;
+
+    return {
+      openingCashPaise,
+      cashSalesPaise,
+      cashRecoveriesPaise,
+      cashSupplierPaidPaise,
+      cashExpensesPaise,
+      expectedCashPaise,
+      upiSalesPaise,
+      upiRecoveriesPaise,
+      upiExpensesPaise,
+      creditSalesPaise,
+      totalDaySalesPaise,
+      totalDayCollectionsPaise,
+      existingClosing,
+    };
   },
 
   // -------------------------------------------------------------

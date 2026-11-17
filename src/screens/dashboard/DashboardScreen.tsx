@@ -200,6 +200,35 @@ export const DashboardScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
 
+        {/* Daily Cash Closing & Galla Banner */}
+        <TouchableOpacity
+          style={styles.gallaBanner}
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate('DayEndClosing')}
+        >
+          <View style={styles.gallaBannerIconCircle}>
+            <Ionicons name="wallet" size={20} color="#D97706" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={styles.gallaBannerTitle}>
+                {language === 'hi' ? 'दैनिक गल्ला व शाम की क्लोज़िंग' : 'Daily Cash Closing'}
+              </Text>
+              <View style={styles.gallaPill}>
+                <Text style={styles.gallaPillText}>
+                  {language === 'hi' ? 'हिसाब मिलान' : 'Reconciliation'}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.gallaBannerSub}>
+              {language === 'hi'
+                ? 'नोट गिनती (₹500, ₹200...), दुकान खर्चा व दैनिक बैलेंस'
+                : 'Currency counter, shop expenses & daily balance'}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#D97706" />
+        </TouchableOpacity>
+
         {/* Customer & Village Metrics Bar */}
         <View style={styles.kpiBar}>
           <View style={styles.kpiItem}>
@@ -537,6 +566,46 @@ const styles = StyleSheet.create({
   recentListCard: {
     padding: 0,
     overflow: 'hidden',
+  },
+  gallaBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1.5,
+    borderColor: '#FDE68A',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.sm,
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  gallaBannerIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#FEF3C7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gallaBannerTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#92400E',
+  },
+  gallaPill: {
+    backgroundColor: '#FDE68A',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.full,
+  },
+  gallaPillText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#78350F',
+  },
+  gallaBannerSub: {
+    fontSize: 11,
+    color: '#B45309',
+    marginTop: 2,
   },
   fab: {
     position: 'absolute',

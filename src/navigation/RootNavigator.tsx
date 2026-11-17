@@ -21,6 +21,7 @@ import { PurchaseListScreen } from '../screens/purchases/PurchaseListScreen';
 import { PurchaseEntryScreen } from '../screens/purchases/PurchaseEntryScreen';
 import { StockLedgerScreen } from '../screens/inventory/StockLedgerScreen';
 import { StockAdjustmentScreen } from '../screens/inventory/StockAdjustmentScreen';
+import { DayEndClosingScreen } from '../screens/reconciliation/DayEndClosingScreen';
 import { Colors } from '../constants/theme';
 import { useApp } from '../context/AppContext';
 import { t } from '../i18n';
@@ -51,6 +52,7 @@ const SharedScreens = (Stack: any) => (
     <Stack.Screen name="PurchaseEntry" component={PurchaseEntryScreen} />
     <Stack.Screen name="StockLedger" component={StockLedgerScreen} />
     <Stack.Screen name="StockAdjustment" component={StockAdjustmentScreen} />
+    <Stack.Screen name="DayEndClosing" component={DayEndClosingScreen} />
   </>
 );
 

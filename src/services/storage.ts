@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Business, Village, Customer, Transaction, AppUser, Product, UnitOfMeasurement, UnitConversion, Supplier, SupplierPayment, PurchaseInvoice, StockAdjustment } from '../types';
+import { Business, Village, Customer, Transaction, AppUser, Product, UnitOfMeasurement, UnitConversion, Supplier, SupplierPayment, PurchaseInvoice, StockAdjustment, DailyExpenseItem, DailyCashClosing } from '../types';
 
 const STORAGE_KEYS = {
   CURRENT_BUSINESS: '@khata_book_current_business',
@@ -14,6 +14,8 @@ const STORAGE_KEYS = {
   PURCHASES: '@khata_book_purchases',
   SUPPLIER_PAYMENTS: '@khata_book_supplier_payments',
   STOCK_ADJUSTMENTS: '@khata_book_stock_adjustments',
+  DAILY_EXPENSES: '@khata_book_daily_expenses',
+  DAILY_CASH_CLOSINGS: '@khata_book_daily_cash_closings',
   PENDING_SYNC: '@khata_book_pending_sync',
   APP_LANGUAGE: '@khata_book_language',
   CURRENT_USER: '@khata_book_current_user',
@@ -365,6 +367,47 @@ export const StorageService = {
     await AsyncStorage.setItem(key, JSON.stringify(adjustments));
   },
 
+  // Daily Expenses (Petty cash & shop expenses)
+  async getDailyExpenses(businessId: string, date?: string): Promise<DailyExpenseItem[]> {
+    const key = `${STORAGE_KEYS.DAILY_EXPENSES}_${businessId}`;
+    let list: DailyExpenseItem[];
+    if (memoryCache.has(key)) {
+      list = memoryCache.get(key);
+    } else {
+      const raw = await AsyncStorage.getItem(key);
+      list = raw ? JSON.parse(raw) : [];
+      memoryCache.set(key, list);
+    }
+    if (date) {
+      return list.filter((e) => e.date === date);
+    }
+    return [...list];
+  },
+
+  async saveDailyExpenses(businessId: string, expenses: DailyExpenseItem[]): Promise<void> {
+    const key = `${STORAGE_KEYS.DAILY_EXPENSES}_${businessId}`;
+    memoryCache.set(key, [...expenses]);
+    await AsyncStorage.setItem(key, JSON.stringify(expenses));
+  },
+
+  // Daily Cash Closings (Reconciled day-end closings)
+  async getDailyCashClosings(businessId: string): Promise<DailyCashClosing[]> {
+    const key = `${STORAGE_KEYS.DAILY_CASH_CLOSINGS}_${businessId}`;
+    if (memoryCache.has(key)) {
+      return [...memoryCache.get(key)];
+    }
+    const raw = await AsyncStorage.getItem(key);
+    const list = raw ? JSON.parse(raw) : [];
+    memoryCache.set(key, list);
+    return [...list];
+  },
+
+  async saveDailyCashClosings(businessId: string, closings: DailyCashClosing[]): Promise<void> {
+    const key = `${STORAGE_KEYS.DAILY_CASH_CLOSINGS}_${businessId}`;
+    memoryCache.set(key, [...closings]);
+    await AsyncStorage.setItem(key, JSON.stringify(closings));
+  },
+
   // Pending Sync
   async getPendingSyncCount(businessId: string): Promise<number> {
     const raw = await AsyncStorage.getItem(`${STORAGE_KEYS.PENDING_SYNC}_${businessId}`);
@@ -384,6 +427,8 @@ export const StorageService = {
     const purKey = `${STORAGE_KEYS.PURCHASES}_${businessId}`;
     const supPayKey = `${STORAGE_KEYS.SUPPLIER_PAYMENTS}_${businessId}`;
     const adjKey = `${STORAGE_KEYS.STOCK_ADJUSTMENTS}_${businessId}`;
+    const expKey = `${STORAGE_KEYS.DAILY_EXPENSES}_${businessId}`;
+    const closeKey = `${STORAGE_KEYS.DAILY_CASH_CLOSINGS}_${businessId}`;
     const sKey = `${STORAGE_KEYS.PENDING_SYNC}_${businessId}`;
 
     memoryCache.delete(vKey);
@@ -396,6 +441,8 @@ export const StorageService = {
     memoryCache.delete(purKey);
     memoryCache.delete(supPayKey);
     memoryCache.delete(adjKey);
+    memoryCache.delete(expKey);
+    memoryCache.delete(closeKey);
     memoryCache.delete(sKey);
 
     await AsyncStorage.removeItem(vKey);
@@ -408,6 +455,8 @@ export const StorageService = {
     await AsyncStorage.removeItem(purKey);
     await AsyncStorage.removeItem(supPayKey);
     await AsyncStorage.removeItem(adjKey);
+    await AsyncStorage.removeItem(expKey);
+    await AsyncStorage.removeItem(closeKey);
     await AsyncStorage.removeItem(sKey);
   },
 
