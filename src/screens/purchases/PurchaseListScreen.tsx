@@ -39,6 +39,38 @@ export const PurchaseListScreen: React.FC = () => {
 
   // Bill Detail Modal
   const [selectedBill, setSelectedBill] = useState<PurchaseInvoice | null>(null);
+  // Full-Screen Bill Preview Modal
+  const [previewBill, setPreviewBill] = useState<{ uri: string; fileType: 'image' | 'pdf'; fileName: string } | null>(null);
+
+  const openInNewWindowSafe = (dataUri: string, isPdf: boolean, fileName?: string) => {
+    if (typeof window === 'undefined') return;
+    try {
+      if (dataUri.startsWith('data:')) {
+        const arr = dataUri.split(',');
+        const mime = arr[0].match(/:(.*?);/)?.[1] || (isPdf ? 'application/pdf' : 'image/jpeg');
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
+        }
+        const blob = new Blob([u8arr], { type: mime });
+        const blobUrl = URL.createObjectURL(blob);
+        window.open(blobUrl, '_blank');
+        return;
+      }
+      window.open(dataUri, '_blank');
+    } catch (e) {
+      const win = window.open('', '_blank');
+      if (win) {
+        if (isPdf) {
+          win.document.write(`<title>${fileName || 'Dealer Bill PDF'}</title><iframe src="${dataUri}" frameborder="0" style="border:0; width:100vw; height:100vh;" allowfullscreen></iframe>`);
+        } else {
+          win.document.write(`<title>${fileName || 'Dealer Bill'}</title><body style="margin:0; background:#0F172A; display:flex; align-items:center; justify-content:center; min-height:100vh;"><img src="${dataUri}" style="max-width:100%; max-height:100vh; object-fit:contain;" /></body>`);
+        }
+      }
+    }
+  };
 
   const loadData = useCallback(async () => {
     if (!business) return;
@@ -306,6 +338,26 @@ export const PurchaseListScreen: React.FC = () => {
                   </View>
 
                   <View style={styles.actionButtonsRow}>
+                    {item.billPhotoUri ? (
+                      <TouchableOpacity
+                        style={styles.cardViewBillBtn}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          setPreviewBill({
+                            uri: item.billPhotoUri!,
+                            fileType: item.billFileType || 'image',
+                            fileName: item.billFileName || `Bill_${item.invoiceNo || item.id}`,
+                          });
+                        }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Ionicons name="eye-outline" size={14} color="#059669" />
+                        <Text style={styles.cardViewBillBtnText}>
+                          {language === 'hi' ? 'बिल देखें' : 'View Bill'}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+
                     <TouchableOpacity
                       style={styles.actionIconBtn}
                       onPress={(e) => {
@@ -423,9 +475,11 @@ export const PurchaseListScreen: React.FC = () => {
                         <TouchableOpacity
                           style={styles.modalPdfBtn}
                           onPress={() => {
-                            if (Platform.OS === 'web' && typeof window !== 'undefined' && selectedBill.billPhotoUri) {
-                              window.open(selectedBill.billPhotoUri, '_blank');
-                            }
+                            setPreviewBill({
+                              uri: selectedBill.billPhotoUri!,
+                              fileType: 'pdf',
+                              fileName: selectedBill.billFileName || 'Bill_Document.pdf',
+                            });
                           }}
                         >
                           <Ionicons name="document-text" size={24} color="#DC2626" />
@@ -434,29 +488,42 @@ export const PurchaseListScreen: React.FC = () => {
                               {selectedBill.billFileName || 'Bill_Document.pdf'}
                             </Text>
                             <Text style={styles.modalPdfActionText}>
-                              {language === 'hi' ? 'दस्तावेज़ खोलने के लिए टैप करें' : 'Tap to open document'}
+                              {language === 'hi' ? 'दस्तावेज़ देखने के लिए टैप करें' : 'Tap to view bill document'}
                             </Text>
                           </View>
-                          <Ionicons name="open-outline" size={18} color={Colors.primary} />
+                          <Ionicons name="eye-outline" size={18} color="#059669" />
                         </TouchableOpacity>
                       ) : (
                         <View style={styles.modalImageContainer}>
-                          <Image
-                            source={{ uri: selectedBill.billPhotoUri }}
-                            style={styles.modalBillImage}
-                            resizeMode="contain"
-                          />
+                          <TouchableOpacity
+                            activeOpacity={0.8}
+                            onPress={() => {
+                              setPreviewBill({
+                                uri: selectedBill.billPhotoUri!,
+                                fileType: 'image',
+                                fileName: selectedBill.billFileName || 'Bill_Photo.jpg',
+                              });
+                            }}
+                          >
+                            <Image
+                              source={{ uri: selectedBill.billPhotoUri }}
+                              style={styles.modalBillImage}
+                              resizeMode="contain"
+                            />
+                          </TouchableOpacity>
                           <TouchableOpacity
                             style={styles.modalOpenImageBtn}
                             onPress={() => {
-                              if (Platform.OS === 'web' && typeof window !== 'undefined' && selectedBill.billPhotoUri) {
-                                window.open(selectedBill.billPhotoUri, '_blank');
-                              }
+                              setPreviewBill({
+                                uri: selectedBill.billPhotoUri!,
+                                fileType: 'image',
+                                fileName: selectedBill.billFileName || 'Bill_Photo.jpg',
+                              });
                             }}
                           >
-                            <Ionicons name="expand-outline" size={16} color={Colors.primary} />
-                            <Text style={styles.modalOpenImageText}>
-                              {language === 'hi' ? 'फुल स्क्रीन में देखें' : 'View Full Image'}
+                            <Ionicons name="eye-outline" size={16} color="#059669" />
+                            <Text style={[styles.modalOpenImageText, { color: '#059669', fontWeight: '700' }]}>
+                              {language === 'hi' ? 'बिल देखें (View Bill)' : 'View Bill'}
                             </Text>
                           </TouchableOpacity>
                         </View>
@@ -484,6 +551,94 @@ export const PurchaseListScreen: React.FC = () => {
                 </View>
               </>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Full-Screen Bill Preview Modal */}
+      <Modal
+        visible={!!previewBill}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPreviewBill(null)}
+      >
+        <View style={styles.billPreviewOverlay}>
+          <View style={styles.billPreviewModal}>
+            <View style={styles.billPreviewHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.billPreviewTitle}>
+                  {previewBill?.fileType === 'pdf' ? '📄 डीलर बिल (PDF)' : '📷 डीलर बिल (Photo)'}
+                </Text>
+                <Text style={styles.billPreviewSubtitle} numberOfLines={1}>
+                  {previewBill?.fileName || 'dealer_bill'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.billPreviewCloseBtn}
+                onPress={() => setPreviewBill(null)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="close-circle" size={28} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.billPreviewBody}>
+              {previewBill?.fileType === 'image' && previewBill?.uri ? (
+                <ScrollView
+                  style={{ flex: 1, width: '100%' }}
+                  contentContainerStyle={{ alignItems: 'center', justifyContent: 'center', minHeight: '100%' }}
+                  maximumZoomScale={3}
+                  minimumZoomScale={1}
+                >
+                  <Image
+                    source={{ uri: previewBill.uri }}
+                    style={styles.billPreviewFullImage}
+                    resizeMode="contain"
+                  />
+                </ScrollView>
+              ) : previewBill?.fileType === 'pdf' && previewBill?.uri ? (
+                <View style={styles.billPreviewPdfBox}>
+                  <Ionicons name="document-text" size={68} color="#DC2626" />
+                  <Text style={styles.billPreviewPdfName}>
+                    {previewBill.fileName || 'Dealer_Bill_Document.pdf'}
+                  </Text>
+                  <Text style={styles.billPreviewPdfHint}>
+                    {language === 'hi'
+                      ? 'PDF दस्तावेज़ सुरक्षित रूप से संलग्न है। बड़ी स्क्रीन में देखने या प्रिंट करने हेतु नीचे दिए बटन पर टैप करें।'
+                      : 'PDF Document attached safely. Tap below to view or print in full window.'}
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.openExternalBtn}
+                    onPress={() => openInNewWindowSafe(previewBill.uri, true, previewBill.fileName)}
+                  >
+                    <Ionicons name="open-outline" size={18} color="#FFFFFF" />
+                    <Text style={styles.openExternalBtnText}>
+                      {language === 'hi' ? 'अलग विंडो में PDF खोलें' : 'Open PDF in New Window'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+            </View>
+
+            <View style={styles.billPreviewFooter}>
+              {previewBill?.fileType === 'image' && previewBill?.uri && (
+                <TouchableOpacity
+                  style={styles.billPreviewExternalBtn}
+                  onPress={() => openInNewWindowSafe(previewBill.uri, false, previewBill.fileName)}
+                >
+                  <Ionicons name="expand-outline" size={16} color={Colors.primary} />
+                  <Text style={styles.billPreviewExternalBtnText}>
+                    {language === 'hi' ? 'अलग विंडो में देखें' : 'Open Full Window'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              <Button
+                title={language === 'hi' ? 'बंद करें (Close)' : 'Close'}
+                variant="outline"
+                onPress={() => setPreviewBill(null)}
+                style={{ flex: 1, backgroundColor: '#FFFFFF' }}
+              />
+            </View>
           </View>
         </View>
       </Modal>
@@ -817,6 +972,132 @@ const styles = StyleSheet.create({
   },
   deleteIconBtn: {
     backgroundColor: '#FEF2F2',
+  },
+  cardViewBillBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: BorderRadius.sm,
+  },
+  cardViewBillBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#059669',
+  },
+  billPreviewOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.sm,
+  },
+  billPreviewModal: {
+    backgroundColor: '#1E293B',
+    borderRadius: BorderRadius.lg,
+    width: '100%',
+    maxWidth: 600,
+    height: '85%',
+    maxHeight: 720,
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  billPreviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    backgroundColor: '#0F172A',
+    borderBottomWidth: 1,
+    borderBottomColor: '#334155',
+  },
+  billPreviewTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#F8FAFC',
+  },
+  billPreviewSubtitle: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  billPreviewCloseBtn: {
+    padding: 4,
+  },
+  billPreviewBody: {
+    flex: 1,
+    backgroundColor: '#0B1120',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  billPreviewFullImage: {
+    width: '100%',
+    height: 480,
+    maxWidth: 580,
+  },
+  billPreviewPdfBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.lg,
+    maxWidth: 420,
+  },
+  billPreviewPdfName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#F8FAFC',
+    marginTop: Spacing.sm,
+    textAlign: 'center',
+  },
+  billPreviewPdfHint: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginTop: Spacing.xs,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  openExternalBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#DC2626',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.md,
+    marginTop: Spacing.md,
+  },
+  openExternalBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  billPreviewFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    padding: Spacing.sm,
+    backgroundColor: '#0F172A',
+    borderTopWidth: 1,
+    borderTopColor: '#334155',
+  },
+  billPreviewExternalBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.md,
+  },
+  billPreviewExternalBtnText: {
+    color: Colors.primary,
+    fontWeight: '700',
+    fontSize: 12,
   },
   modalActionButtonsRow: {
     flexDirection: 'row',

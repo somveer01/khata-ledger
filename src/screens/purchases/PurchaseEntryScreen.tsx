@@ -11,6 +11,7 @@ import {
   Alert,
   Modal,
   Image,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,6 +19,7 @@ import { Header } from '../../components/Header';
 import { Input } from '../../components/Input';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
+import { DatePickerField } from '../../components/DatePickerField';
 import { Colors, Spacing, Typography, BorderRadius } from '../../constants/theme';
 import { useApp } from '../../context/AppContext';
 import { DataRepository } from '../../services/db';
@@ -79,47 +81,177 @@ export const PurchaseEntryScreen: React.FC = () => {
   const [billFileType, setBillFileType] = useState<'image' | 'pdf'>(editInvoice?.billFileType || 'image');
   const [notes, setNotes] = useState(editInvoice?.notes || '');
   const [saving, setSaving] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [viewBillModalVisible, setViewBillModalVisible] = useState(false);
+
+  // Safe Image Compression Helper (Downscale high-res camera photos to prevent local storage quota & Firestore limits)
+  const compressImage = (file: File, maxWidth = 1280, maxHeight = 1280, quality = 0.75): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error(language === 'hi' ? 'फ़ाइल लोड नहीं हो सकी' : 'Failed to read file'));
+      reader.onload = (e) => {
+        const rawDataUrl = e.target?.result as string;
+        if (!rawDataUrl) {
+          reject(new Error(language === 'hi' ? 'फ़ाइल डेटा रिक्त है' : 'Empty file data'));
+          return;
+        }
+
+        if (typeof window === 'undefined' || !(window as any).Image) {
+          resolve(rawDataUrl);
+          return;
+        }
+
+        const img = new (window as any).Image();
+        img.onerror = () => resolve(rawDataUrl);
+        img.onload = () => {
+          try {
+            let { width, height } = img;
+            if (width > maxWidth || height > maxHeight) {
+              const ratio = Math.min(maxWidth / width, maxHeight / height);
+              width = Math.round(width * ratio);
+              height = Math.round(height * ratio);
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              resolve(rawDataUrl);
+              return;
+            }
+
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, width, height);
+            ctx.drawImage(img, 0, 0, width, height);
+
+            const compressed = canvas.toDataURL('image/jpeg', quality);
+            resolve(compressed);
+          } catch (canvasErr) {
+            console.warn('Canvas compression error, using raw:', canvasErr);
+            resolve(rawDataUrl);
+          }
+        };
+        img.src = rawDataUrl;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Safe window opener that works in modern Chrome without top-frame data URI blocking
+  const openInNewWindowSafe = (dataUri: string, isPdf: boolean, fileName?: string) => {
+    if (typeof window === 'undefined') return;
+    try {
+      if (dataUri.startsWith('data:')) {
+        const arr = dataUri.split(',');
+        const mime = arr[0].match(/:(.*?);/)?.[1] || (isPdf ? 'application/pdf' : 'image/jpeg');
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
+        }
+        const blob = new Blob([u8arr], { type: mime });
+        const blobUrl = URL.createObjectURL(blob);
+        window.open(blobUrl, '_blank');
+        return;
+      }
+      window.open(dataUri, '_blank');
+    } catch (e) {
+      const win = window.open('', '_blank');
+      if (win) {
+        if (isPdf) {
+          win.document.write(`<title>${fileName || 'Dealer Bill PDF'}</title><iframe src="${dataUri}" frameborder="0" style="border:0; width:100vw; height:100vh;" allowfullscreen></iframe>`);
+        } else {
+          win.document.write(`<title>${fileName || 'Dealer Bill'}</title><body style="margin:0; background:#0F172A; display:flex; align-items:center; justify-content:center; min-height:100vh;"><img src="${dataUri}" style="max-width:100%; max-height:100vh; object-fit:contain;" /></body>`);
+        }
+      }
+    }
+  };
 
   // File / Camera Picker
   const handlePickFile = (useCamera: boolean = false) => {
-    if (typeof document !== 'undefined') {
+    if (typeof document === 'undefined') {
+      showAlert(
+        language === 'hi' ? 'सूचना' : 'Notice',
+        language === 'hi' ? 'फ़ाइल अपलोड वेब/मोबाइल ब्राउज़र में समर्थित है।' : 'File upload supported in browser mode.'
+      );
+      return;
+    }
+
+    try {
       const input = document.createElement('input');
       input.type = 'file';
+
+      const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+
       if (useCamera) {
         input.accept = 'image/*';
-        input.capture = 'environment';
+        if (isMobile) {
+          input.setAttribute('capture', 'environment');
+        }
       } else {
         input.accept = 'image/*,application/pdf';
       }
 
-      input.onchange = (e: any) => {
+      input.onchange = async (e: any) => {
         const file = e.target?.files?.[0];
         if (!file) return;
 
-        if (file.size > 8 * 1024 * 1024) {
+        setUploadingFile(true);
+        try {
+          const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+          if (isPdf) {
+            if (file.size > 8 * 1024 * 1024) {
+              showAlert(
+                language === 'hi' ? 'PDF बहुत बड़ी है' : 'PDF Too Large',
+                language === 'hi' ? 'कृपया 8MB से छोटी PDF चुनें।' : 'Please choose a PDF under 8MB.',
+                undefined,
+                'danger'
+              );
+              return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = () => {
+              setBillPhotoUri(reader.result as string);
+              setBillFileName(file.name || 'dealer_bill.pdf');
+              setBillFileType('pdf');
+            };
+            reader.onerror = () => {
+              showAlert(language === 'hi' ? 'त्रुटि' : 'Error', 'PDF पढ़ने में विफल रहा', undefined, 'danger');
+            };
+            reader.readAsDataURL(file);
+          } else {
+            // Compress image to ~1280px and ~150-250KB for crystal-clear bill text without crashing storage
+            const compressedUri = await compressImage(file, 1280, 1280, 0.75);
+            setBillPhotoUri(compressedUri);
+            setBillFileName(file.name || 'dealer_bill.jpg');
+            setBillFileType('image');
+          }
+        } catch (err: any) {
+          console.error('Error processing bill file:', err);
           showAlert(
-            language === 'hi' ? 'फ़ाइल बहुत बड़ी है' : 'File Too Large',
-            language === 'hi'
-              ? 'कृपया 8MB से छोटी फ़ोटो या PDF चुनें।'
-              : 'Please choose an image or PDF under 8MB.',
+            language === 'hi' ? 'फ़ोटो लोड करने में त्रुटि' : 'Error Attaching File',
+            err.message || (language === 'hi' ? 'फ़ोटो अटैच करने में समस्या आई' : 'Failed to attach image'),
             undefined,
             'danger'
           );
-          return;
+        } finally {
+          setUploadingFile(false);
         }
-
-        const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-        const reader = new FileReader();
-        reader.onload = () => {
-          const result = reader.result as string;
-          setBillPhotoUri(result);
-          setBillFileName(file.name);
-          setBillFileType(isPdf ? 'pdf' : 'image');
-        };
-        reader.readAsDataURL(file);
       };
 
       input.click();
+    } catch (err: any) {
+      console.error('File picker trigger error:', err);
+      showAlert(
+        language === 'hi' ? 'कैमरा / फ़ाइल त्रुटि' : 'Camera Error',
+        err.message || (language === 'hi' ? 'कैमरा खोलने में समस्या आई' : 'Failed to launch camera'),
+        undefined,
+        'danger'
+      );
     }
   };
 
@@ -667,11 +799,11 @@ export const PurchaseEntryScreen: React.FC = () => {
               />
             </View>
             <View style={{ flex: 1 }}>
-              <Input
-                label={language === 'hi' ? 'बिल तारीख' : 'Invoice Date'}
-                placeholder="YYYY-MM-DD"
+              <DatePickerField
+                label={language === 'hi' ? 'बिल तारीख *' : 'Invoice Date *'}
                 value={invoiceDate}
-                onChangeText={setInvoiceDate}
+                onChange={setInvoiceDate}
+                containerStyle={{ marginBottom: 0 }}
               />
             </View>
           </View>
@@ -827,11 +959,29 @@ export const PurchaseEntryScreen: React.FC = () => {
                 {language === 'hi' ? 'डीलर का बिल / चालान (Photo / PDF)' : 'Dealer Bill Attachment (Photo / PDF)'}
               </Text>
 
+              {uploadingFile && (
+                <View style={styles.uploadingBox}>
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                  <Text style={styles.uploadingText}>
+                    {language === 'hi' ? 'फ़ोटो प्रोसेस एवं संकुचित हो रही है...' : 'Processing & optimizing bill image...'}
+                  </Text>
+                </View>
+              )}
+
               {billPhotoUri ? (
                 <View style={styles.attachedFileBox}>
                   {billFileType === 'image' ? (
                     <View style={styles.attachedImageWrapper}>
-                      <Image source={{ uri: billPhotoUri }} style={styles.billPreviewImage} resizeMode="cover" />
+                      <TouchableOpacity
+                        activeOpacity={0.8}
+                        onPress={() => setViewBillModalVisible(true)}
+                        style={styles.thumbnailContainer}
+                      >
+                        <Image source={{ uri: billPhotoUri }} style={styles.billPreviewImage} resizeMode="cover" />
+                        <View style={styles.zoomHintBadge}>
+                          <Ionicons name="expand" size={12} color="#FFFFFF" />
+                        </View>
+                      </TouchableOpacity>
                       <View style={styles.attachedInfoCol}>
                         <Text style={styles.attachedFileName} numberOfLines={1}>
                           📷 {billFileName || (language === 'hi' ? 'बिल फोटो' : 'Bill Photo')}
@@ -840,6 +990,15 @@ export const PurchaseEntryScreen: React.FC = () => {
                           ✓ {language === 'hi' ? 'फ़ोटो सुरक्षित है' : 'Image Attached'}
                         </Text>
                         <View style={styles.attachedActionsRow}>
+                          <TouchableOpacity
+                            style={styles.viewBillActionBtn}
+                            onPress={() => setViewBillModalVisible(true)}
+                          >
+                            <Ionicons name="eye-outline" size={14} color="#059669" />
+                            <Text style={styles.viewBillActionText}>
+                              {language === 'hi' ? 'बिल देखें' : 'View Bill'}
+                            </Text>
+                          </TouchableOpacity>
                           <TouchableOpacity style={styles.changeFileBtn} onPress={() => handlePickFile(false)}>
                             <Text style={styles.changeFileBtnText}>
                               {language === 'hi' ? 'बदलें' : 'Change'}
@@ -861,7 +1020,9 @@ export const PurchaseEntryScreen: React.FC = () => {
                     </View>
                   ) : (
                     <View style={styles.attachedPdfWrapper}>
-                      <Ionicons name="document-text" size={36} color="#DC2626" />
+                      <TouchableOpacity activeOpacity={0.8} onPress={() => setViewBillModalVisible(true)}>
+                        <Ionicons name="document-text" size={36} color="#DC2626" />
+                      </TouchableOpacity>
                       <View style={styles.attachedInfoCol}>
                         <Text style={styles.attachedFileName} numberOfLines={1}>
                           📄 {billFileName || 'Bill_Document.pdf'}
@@ -871,15 +1032,17 @@ export const PurchaseEntryScreen: React.FC = () => {
                         </Text>
                         <View style={styles.attachedActionsRow}>
                           <TouchableOpacity
-                            style={styles.changeFileBtn}
-                            onPress={() => {
-                              if (Platform.OS === 'web' && typeof window !== 'undefined') {
-                                window.open(billPhotoUri, '_blank');
-                              }
-                            }}
+                            style={styles.viewBillActionBtn}
+                            onPress={() => setViewBillModalVisible(true)}
                           >
+                            <Ionicons name="eye-outline" size={14} color="#059669" />
+                            <Text style={styles.viewBillActionText}>
+                              {language === 'hi' ? 'बिल देखें' : 'View Bill'}
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={styles.changeFileBtn} onPress={() => handlePickFile(false)}>
                             <Text style={styles.changeFileBtnText}>
-                              {language === 'hi' ? 'देखें (Open)' : 'Open'}
+                              {language === 'hi' ? 'बदलें' : 'Change'}
                             </Text>
                           </TouchableOpacity>
                           <TouchableOpacity
@@ -1182,6 +1345,100 @@ export const PurchaseEntryScreen: React.FC = () => {
                 </>
               )}
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Full-Screen Bill Preview Modal (View Bill Option) */}
+      <Modal
+        visible={viewBillModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setViewBillModalVisible(false)}
+      >
+        <View style={styles.billPreviewOverlay}>
+          <View style={styles.billPreviewModal}>
+            <View style={styles.billPreviewHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.billPreviewTitle}>
+                  {billFileType === 'pdf' ? '📄 डीलर बिल (PDF)' : '📷 डीलर बिल (Photo)'}
+                </Text>
+                <Text style={styles.billPreviewSubtitle} numberOfLines={1}>
+                  {billFileName || (billFileType === 'pdf' ? 'dealer_bill.pdf' : 'dealer_bill.jpg')}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.billPreviewCloseBtn}
+                onPress={() => setViewBillModalVisible(false)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="close-circle" size={28} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.billPreviewBody}>
+              {billFileType === 'image' && billPhotoUri ? (
+                <ScrollView
+                  style={{ flex: 1, width: '100%' }}
+                  contentContainerStyle={{ alignItems: 'center', justifyContent: 'center', minHeight: '100%' }}
+                  maximumZoomScale={3}
+                  minimumZoomScale={1}
+                >
+                  <Image
+                    source={{ uri: billPhotoUri }}
+                    style={styles.billPreviewFullImage}
+                    resizeMode="contain"
+                  />
+                </ScrollView>
+              ) : billFileType === 'pdf' && billPhotoUri ? (
+                <View style={styles.billPreviewPdfBox}>
+                  <Ionicons name="document-text" size={68} color="#DC2626" />
+                  <Text style={styles.billPreviewPdfName}>
+                    {billFileName || 'Dealer_Bill_Document.pdf'}
+                  </Text>
+                  <Text style={styles.billPreviewPdfHint}>
+                    {language === 'hi'
+                      ? 'PDF दस्तावेज़ सुरक्षित रूप से जुड़ा हुआ है। बड़ी स्क्रीन में देखने या प्रिंट करने हेतु नीचे दिए बटन पर टैप करें।'
+                      : 'PDF Document attached safely. Tap below to view or print in full window.'}
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.openExternalBtn}
+                    onPress={() => openInNewWindowSafe(billPhotoUri, true, billFileName)}
+                  >
+                    <Ionicons name="open-outline" size={18} color="#FFFFFF" />
+                    <Text style={styles.openExternalBtnText}>
+                      {language === 'hi' ? 'अलग विंडो में PDF खोलें' : 'Open PDF in New Window'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={{ alignItems: 'center', justifyContent: 'center', padding: Spacing.xl }}>
+                  <Text style={{ color: '#94A3B8' }}>
+                    {language === 'hi' ? 'कोई फ़ाइल संलग्न नहीं है' : 'No file attached'}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.billPreviewFooter}>
+              {billFileType === 'image' && billPhotoUri && (
+                <TouchableOpacity
+                  style={styles.billPreviewExternalBtn}
+                  onPress={() => openInNewWindowSafe(billPhotoUri, false, billFileName)}
+                >
+                  <Ionicons name="expand-outline" size={16} color={Colors.primary} />
+                  <Text style={styles.billPreviewExternalBtnText}>
+                    {language === 'hi' ? 'अलग विंडो में देखें' : 'Open Full Window'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              <Button
+                title={language === 'hi' ? 'बंद करें (Close)' : 'Close'}
+                variant="outline"
+                onPress={() => setViewBillModalVisible(false)}
+                style={{ flex: 1, backgroundColor: '#FFFFFF' }}
+              />
+            </View>
           </View>
         </View>
       </Modal>
@@ -1505,6 +1762,159 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#DC2626',
+  },
+  thumbnailContainer: {
+    position: 'relative',
+  },
+  zoomHintBadge: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    backgroundColor: 'rgba(15, 23, 42, 0.7)',
+    borderRadius: 4,
+    padding: 2,
+  },
+  viewBillActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.sm,
+  },
+  viewBillActionText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#059669',
+  },
+  uploadingBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.sm,
+    marginBottom: Spacing.xs,
+  },
+  uploadingText: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    fontWeight: '600',
+  },
+  billPreviewOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.sm,
+  },
+  billPreviewModal: {
+    backgroundColor: '#1E293B',
+    borderRadius: BorderRadius.lg,
+    width: '100%',
+    maxWidth: 600,
+    height: '85%',
+    maxHeight: 720,
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  billPreviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    backgroundColor: '#0F172A',
+    borderBottomWidth: 1,
+    borderBottomColor: '#334155',
+  },
+  billPreviewTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#F8FAFC',
+  },
+  billPreviewSubtitle: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  billPreviewCloseBtn: {
+    padding: 4,
+  },
+  billPreviewBody: {
+    flex: 1,
+    backgroundColor: '#0B1120',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  billPreviewFullImage: {
+    width: '100%',
+    height: 480,
+    maxWidth: 580,
+  },
+  billPreviewPdfBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.lg,
+    maxWidth: 420,
+  },
+  billPreviewPdfName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#F8FAFC',
+    marginTop: Spacing.sm,
+    textAlign: 'center',
+  },
+  billPreviewPdfHint: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginTop: Spacing.xs,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  openExternalBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#DC2626',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.md,
+    marginTop: Spacing.md,
+  },
+  openExternalBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  billPreviewFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    padding: Spacing.sm,
+    backgroundColor: '#0F172A',
+    borderTopWidth: 1,
+    borderTopColor: '#334155',
+  },
+  billPreviewExternalBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.md,
+  },
+  billPreviewExternalBtnText: {
+    color: Colors.primary,
+    fontWeight: '700',
+    fontSize: 12,
   },
   actionContainer: {
     marginTop: Spacing.xs,
