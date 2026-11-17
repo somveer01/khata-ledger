@@ -18,11 +18,12 @@ import { Card } from '../../components/Card';
 import { Colors, Spacing, Typography, BorderRadius } from '../../constants/theme';
 import { useApp } from '../../context/AppContext';
 import { t } from '../../i18n';
-import { toPaise, formatCurrency } from '../../utils/money';
+import { toPaise, toRupees, formatCurrency } from '../../utils/money';
 import { getTodayIST, formatDisplayDate } from '../../utils/date';
 import { DataRepository } from '../../services/db';
 import { Customer, Transaction } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
+import { BarcodeScannerModal } from '../../components/BarcodeScannerModal';
 
 export const AddUdhaarScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -47,7 +48,30 @@ export const AddUdhaarScreen: React.FC = () => {
   const [refNumber, setRefNumber] = useState('');
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
+  const [barcodeScannerVisible, setBarcodeScannerVisible] = useState(false);
   const [idempotencyKey] = useState(`idemp_udhaar_${Date.now()}_${Math.random().toString(36).substring(7)}`);
+
+  const handleBarcodeScanned = async (scannedBarcode: string) => {
+    if (!business) return;
+    const clean = scannedBarcode.trim();
+    if (!clean) return;
+
+    const prod = await DataRepository.getProductByBarcode(business.id, clean);
+    if (prod) {
+      const fullDesc = `${prod.brandName ? prod.brandName + ' ' : ''}${prod.productName} ${prod.packSize}`.trim();
+      setDescription(fullDesc);
+      if (prod.unit) setUnit(prod.unit);
+      if (prod.sellingRatePaise) setRate(toRupees(prod.sellingRatePaise).toString());
+      if (!quantity || quantity === '0') setQuantity('1');
+    } else {
+      Alert.alert(
+        language === 'hi' ? 'उत्पाद नहीं मिला' : 'Not Found',
+        language === 'hi'
+          ? `बारकोड "${clean}" रेट मास्टर में नहीं मिला।`
+          : `Barcode "${clean}" not found in catalog.`
+      );
+    }
+  };
 
   const loadCustomers = useCallback(async () => {
     if (!business) return;
@@ -213,8 +237,19 @@ export const AddUdhaarScreen: React.FC = () => {
           />
 
           {/* Particulars / Goods */}
+          <View style={styles.descHeaderRow}>
+            <Text style={styles.descHeaderLabel}>{`${t('itemDescription', language)} *`}</Text>
+            <TouchableOpacity
+              style={styles.barcodeBtnMini}
+              onPress={() => setBarcodeScannerVisible(true)}
+            >
+              <Ionicons name="camera" size={13} color="#FFFFFF" />
+              <Text style={styles.barcodeBtnMiniText}>
+                {language === 'hi' ? '📷 बारकोड स्कैन' : '📷 Scan Barcode'}
+              </Text>
+            </TouchableOpacity>
+          </View>
           <Input
-            label={`${t('itemDescription', language)} *`}
             placeholder={language === 'hi' ? 'जैसे: धान बीज, खाद, कीटनाशक' : 'e.g. Rice seeds, Fertilizer'}
             value={description}
             onChangeText={setDescription}
@@ -341,6 +376,14 @@ export const AddUdhaarScreen: React.FC = () => {
           </View>
         </View>
       </Modal>
+
+      {/* Barcode Scanner Modal */}
+      <BarcodeScannerModal
+        visible={barcodeScannerVisible}
+        onClose={() => setBarcodeScannerVisible(false)}
+        onScan={handleBarcodeScanned}
+        title={language === 'hi' ? 'बारकोड बिलिंग' : 'Barcode Billing'}
+      />
     </View>
   );
 };
@@ -461,5 +504,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: Colors.creditSale,
+  },
+  descHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  descHeaderLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  barcodeBtnMini: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#047857',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.full,
+  },
+  barcodeBtnMiniText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

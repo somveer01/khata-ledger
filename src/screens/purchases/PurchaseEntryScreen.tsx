@@ -26,6 +26,7 @@ import { DataRepository } from '../../services/db';
 import { Product, Supplier, PurchaseInvoice, PurchaseItemDetail, PaymentMethod } from '../../types';
 import { formatCurrency, toPaise, toRupees } from '../../utils/money';
 import { showAlert, confirmAction } from '../../utils/dialog';
+import { BarcodeScannerModal } from '../../components/BarcodeScannerModal';
 
 export const PurchaseEntryScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -67,6 +68,7 @@ export const PurchaseEntryScreen: React.FC = () => {
   const [billingRate, setBillingRate] = useState('');
   const [gstPercent, setGstPercent] = useState<number>(18);
   const [productSearch, setProductSearch] = useState('');
+  const [barcodeScannerVisible, setBarcodeScannerVisible] = useState(false);
 
   // Payment Status
   const [paymentStatus, setPaymentStatus] = useState<'PAID' | 'UNPAID' | 'PARTIAL'>(
@@ -521,8 +523,35 @@ export const PurchaseEntryScreen: React.FC = () => {
 
   const filteredProducts = products.filter((p) => {
     const q = productSearch.toLowerCase();
-    return p.productName.toLowerCase().includes(q) || p.brandName.toLowerCase().includes(q);
+    return (
+      p.productName.toLowerCase().includes(q) ||
+      p.brandName.toLowerCase().includes(q) ||
+      (p.barcode && p.barcode.toLowerCase().includes(q))
+    );
   });
+
+  const handleBarcodeScanned = (scannedBarcode: string) => {
+    const clean = scannedBarcode.trim();
+    if (!clean) return;
+    const found = products.find(
+      (p) =>
+        p.barcode === clean ||
+        (p.secondaryBarcodes && p.secondaryBarcodes.includes(clean))
+    );
+    if (found) {
+      handleSelectProduct(found);
+    } else {
+      setProductSearch(clean);
+      showAlert(
+        language === 'hi' ? 'उत्पाद नहीं मिला' : 'Product Not Found',
+        language === 'hi'
+          ? `बारकोड "${clean}" रेट मास्टर में दर्ज नहीं है।`
+          : `Barcode "${clean}" not found in catalog.`,
+        undefined,
+        'warning'
+      );
+    }
+  };
 
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -1122,11 +1151,24 @@ export const PurchaseEntryScreen: React.FC = () => {
               {/* Product Search & Picker */}
               {!selectedProduct ? (
                 <>
-                  <Input
-                    placeholder={language === 'hi' ? 'उत्पाद का नाम खोजें...' : 'Search product...'}
-                    value={productSearch}
-                    onChangeText={setProductSearch}
-                  />
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <View style={{ flex: 1 }}>
+                      <Input
+                        placeholder={language === 'hi' ? 'उत्पाद खोजें या बारकोड...' : 'Search product or barcode...'}
+                        value={productSearch}
+                        onChangeText={setProductSearch}
+                      />
+                    </View>
+                    <TouchableOpacity
+                      style={styles.purScanBtn}
+                      onPress={() => setBarcodeScannerVisible(true)}
+                    >
+                      <Ionicons name="camera" size={16} color="#FFFFFF" />
+                      <Text style={styles.purScanBtnText}>
+                        {language === 'hi' ? 'स्कैन' : 'Scan'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                   <Text style={styles.fieldSubLabel}>
                     {language === 'hi' ? 'उत्पाद सूची (Select Product):' : 'Available Products:'}
                   </Text>
@@ -1421,6 +1463,14 @@ export const PurchaseEntryScreen: React.FC = () => {
           </View>
         </View>
       </Modal>
+
+      {/* Barcode Scanner Modal */}
+      <BarcodeScannerModal
+        visible={barcodeScannerVisible}
+        onClose={() => setBarcodeScannerVisible(false)}
+        onScan={handleBarcodeScanned}
+        title={language === 'hi' ? 'खरीद माल बारकोड स्कैन' : 'Scan Inward Product'}
+      />
     </KeyboardAvoidingView>
   );
 };
@@ -2335,5 +2385,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#166534',
+  },
+  purScanBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#047857',
+    paddingHorizontal: 12,
+    height: 44,
+    borderRadius: BorderRadius.md,
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+    marginTop: 24,
+  },
+  purScanBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

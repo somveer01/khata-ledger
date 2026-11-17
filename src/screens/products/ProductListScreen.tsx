@@ -117,7 +117,8 @@ export const ProductListScreen: React.FC = () => {
           p.productName.toLowerCase().includes(q) ||
           p.brandName.toLowerCase().includes(q) ||
           (p.technicalName && p.technicalName.toLowerCase().includes(q)) ||
-          p.packSize.toLowerCase().includes(q)
+          p.packSize.toLowerCase().includes(q) ||
+          (p.barcode && p.barcode.toLowerCase().includes(q))
       );
     }
 

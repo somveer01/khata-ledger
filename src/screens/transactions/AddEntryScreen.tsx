@@ -26,6 +26,7 @@ import { getTodayIST, formatDisplayDate, addDaysToDate } from '../../utils/date'
 import { DataRepository } from '../../services/db';
 import { Customer, Transaction, PaymentMethod, Product } from '../../types';
 import { ProductPickerModal } from '../../components/ProductPickerModal';
+import { BarcodeScannerModal } from '../../components/BarcodeScannerModal';
 import { confirmAction, showAlert } from '../../utils/dialog';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -54,6 +55,10 @@ export const AddEntryScreen: React.FC = () => {
   const [searchCust, setSearchCust] = useState('');
   const [productPickerVisible, setProductPickerVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [barcodeScannerVisible, setBarcodeScannerVisible] = useState(false);
+  const [unregisteredModalVisible, setUnregisteredModalVisible] = useState(false);
+  const [pendingBarcode, setPendingBarcode] = useState('');
+  const [linkPickerVisible, setLinkPickerVisible] = useState(false);
 
   const formatCleanProductDescription = (prod: Product): string => {
     const brand = (prod.brandName || '').trim();
@@ -97,6 +102,45 @@ export const AddEntryScreen: React.FC = () => {
 
   const handleClearSelectedProduct = () => {
     setSelectedProduct(null);
+  };
+
+  const handleBarcodeScanned = async (scannedBarcode: string) => {
+    if (!business) return;
+    const clean = scannedBarcode.trim();
+    if (!clean) return;
+
+    const prod = await DataRepository.getProductByBarcode(business.id, clean);
+    if (prod) {
+      if (selectedProduct && selectedProduct.id === prod.id) {
+        const currentQ = parseFloat(quantity) || 1;
+        setQuantity(String(currentQ + 1));
+      } else {
+        handleSelectProduct(prod);
+      }
+    } else {
+      setPendingBarcode(clean);
+      setUnregisteredModalVisible(true);
+    }
+  };
+
+  const handleLinkProduct = async (productToLink: Product) => {
+    if (!business || !pendingBarcode) return;
+    setLinkPickerVisible(false);
+    const res = await DataRepository.linkProductBarcode(business.id, productToLink.id, pendingBarcode);
+    if (res.success && res.product) {
+      handleSelectProduct(res.product);
+      showAlert(
+        language === 'hi' ? 'बारकोड लिंक हुआ' : 'Barcode Linked',
+        language === 'hi'
+          ? `बारकोड ${pendingBarcode} अब "${res.product.productName}" से लिंक हो गया है।`
+          : `Barcode ${pendingBarcode} is now linked to "${res.product.productName}".`,
+        undefined,
+        'success'
+      );
+    } else {
+      showAlert(language === 'hi' ? 'त्रुटि' : 'Error', res.error || 'Failed to link barcode', undefined, 'danger');
+    }
+    setPendingBarcode('');
   };
 
   // Common fields
@@ -935,16 +979,29 @@ export const AddEntryScreen: React.FC = () => {
                 <Text style={[styles.fieldLabel, { flex: 1, marginBottom: 0 }]} numberOfLines={1}>
                   {language === 'hi' ? 'सामान का विवरण *' : 'Item Description *'}
                 </Text>
-                <TouchableOpacity
-                  style={styles.pickFromMasterBtn}
-                  onPress={() => setProductPickerVisible(true)}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="cube" size={13} color="#FFFFFF" />
-                  <Text style={styles.pickFromMasterBtnText}>
-                    {language === 'hi' ? '📋 रेट मास्टर से चुनें' : '📋 Pick from Catalog'}
-                  </Text>
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  <TouchableOpacity
+                    style={styles.barcodeScanBtnTop}
+                    onPress={() => setBarcodeScannerVisible(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="camera" size={13} color="#FFFFFF" />
+                    <Text style={styles.barcodeScanBtnTopText}>
+                      {language === 'hi' ? '📷 बारकोड बिलिंग' : '📷 Scan Barcode'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.pickFromMasterBtn}
+                    onPress={() => setProductPickerVisible(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="cube" size={13} color="#FFFFFF" />
+                    <Text style={styles.pickFromMasterBtnText}>
+                      {language === 'hi' ? 'रेट मास्टर' : 'Catalog'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
 
               {/* Highlight Card when product is selected from Rate Master */}
@@ -1421,6 +1478,97 @@ export const AddEntryScreen: React.FC = () => {
         selectedProductId={selectedProduct?.id}
         onAddNewProduct={() => navigation.navigate('AddEditProduct')}
       />
+
+      {/* Barcode Scanner Modal */}
+      <BarcodeScannerModal
+        visible={barcodeScannerVisible}
+        onClose={() => setBarcodeScannerVisible(false)}
+        onScan={handleBarcodeScanned}
+        title={language === 'hi' ? 'बारकोड बिलिंग' : 'Barcode Billing'}
+      />
+
+      {/* Unregistered Barcode Action Modal */}
+      <Modal
+        visible={unregisteredModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setUnregisteredModalVisible(false);
+          setPendingBarcode('');
+        }}
+      >
+        <View style={styles.modalOverlayCenter}>
+          <View style={styles.unregisteredDialog}>
+            <View style={styles.unregIconBox}>
+              <Ionicons name="barcode" size={28} color="#D97706" />
+            </View>
+            <Text style={styles.unregTitle}>
+              {language === 'hi' ? 'नया / अज्ञात बारकोड मिला' : 'Unregistered Barcode'}
+            </Text>
+            <View style={styles.unregCodeBadge}>
+              <Text style={styles.unregCodeText}>{pendingBarcode}</Text>
+            </View>
+            <Text style={styles.unregDesc}>
+              {language === 'hi'
+                ? 'यह बारकोड आपके रेट मास्टर में दर्ज नहीं है। आप इसे क्या करना चाहते हैं?'
+                : 'This barcode is not linked to any product in your catalog.'}
+            </Text>
+
+            <TouchableOpacity
+              style={styles.unregActionBtnPrimary}
+              onPress={() => {
+                setUnregisteredModalVisible(false);
+                setLinkPickerVisible(true);
+              }}
+            >
+              <Ionicons name="link" size={16} color="#FFFFFF" />
+              <Text style={styles.unregActionBtnText}>
+                {language === 'hi' ? 'मौजूदा उत्पाद से लिंक करें' : 'Link to Existing Product'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.unregActionBtnSecondary}
+              onPress={() => {
+                setUnregisteredModalVisible(false);
+                const codeToPass = pendingBarcode;
+                setPendingBarcode('');
+                navigation.navigate('AddEditProduct', { initialBarcode: codeToPass });
+              }}
+            >
+              <Ionicons name="add-circle" size={16} color="#166534" />
+              <Text style={styles.unregActionBtnTextSecondary}>
+                {language === 'hi' ? '+ नया उत्पाद बनाएं' : '+ Create New Product'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.unregCancelBtn}
+              onPress={() => {
+                setUnregisteredModalVisible(false);
+                setPendingBarcode('');
+              }}
+            >
+              <Text style={styles.unregCancelText}>
+                {language === 'hi' ? 'रद्द करें' : 'Cancel'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Link Product Picker Modal */}
+      <ProductPickerModal
+        visible={linkPickerVisible}
+        onClose={() => setLinkPickerVisible(false)}
+        onSelectProduct={handleLinkProduct}
+        onAddNewProduct={() => {
+          setLinkPickerVisible(false);
+          const code = pendingBarcode;
+          setPendingBarcode('');
+          navigation.navigate('AddEditProduct', { initialBarcode: code });
+        }}
+      />
     </View>
   );
 };
@@ -1450,6 +1598,126 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  barcodeScanBtnTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#047857',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: BorderRadius.full,
+    shadowColor: '#047857',
+    shadowOpacity: 0.25,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  barcodeScanBtnTopText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  modalOverlayCenter: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.lg,
+  },
+  unregisteredDialog: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#FFFFFF',
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  unregIconBox: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#FEF3C7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.sm,
+  },
+  unregTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+    textAlign: 'center',
+  },
+  unregCodeBadge: {
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    marginVertical: 8,
+  },
+  unregCodeText: {
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1E293B',
+    letterSpacing: 1,
+  },
+  unregDesc: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: Spacing.md,
+  },
+  unregActionBtnPrimary: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: Colors.primary,
+    paddingVertical: 12,
+    borderRadius: BorderRadius.md,
+    marginBottom: 8,
+  },
+  unregActionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  unregActionBtnSecondary: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1.5,
+    borderColor: '#86EFAC',
+    paddingVertical: 12,
+    borderRadius: BorderRadius.md,
+    marginBottom: 8,
+  },
+  unregActionBtnTextSecondary: {
+    color: '#166534',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  unregCancelBtn: {
+    paddingVertical: 8,
+    marginTop: 4,
+  },
+  unregCancelText: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    fontWeight: '600',
   },
   selectedProductCard: {
     backgroundColor: '#F0FDF4',

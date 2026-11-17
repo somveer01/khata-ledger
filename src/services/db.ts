@@ -1532,6 +1532,65 @@ export const DataRepository = {
     return { success: true };
   },
 
+  async getProductByBarcode(businessId: string, rawBarcode: string): Promise<Product | null> {
+    if (!rawBarcode || !rawBarcode.trim()) return null;
+    const clean = rawBarcode.trim();
+    const products = await this.getProducts(businessId);
+    const found = products.find(
+      (p) =>
+        p.isActive !== false &&
+        (p.barcode === clean ||
+          (p.secondaryBarcodes && p.secondaryBarcodes.includes(clean)))
+    );
+    return found || null;
+  },
+
+  async isBarcodeUsed(
+    businessId: string,
+    rawBarcode: string,
+    excludeProductId?: string
+  ): Promise<{ isUsed: boolean; product?: Product }> {
+    if (!rawBarcode || !rawBarcode.trim()) return { isUsed: false };
+    const clean = rawBarcode.trim();
+    const products = await this.getProducts(businessId);
+    const found = products.find(
+      (p) =>
+        p.id !== excludeProductId &&
+        (p.barcode === clean ||
+          (p.secondaryBarcodes && p.secondaryBarcodes.includes(clean)))
+    );
+    return found ? { isUsed: true, product: found } : { isUsed: false };
+  },
+
+  async linkProductBarcode(
+    businessId: string,
+    productId: string,
+    rawBarcode: string
+  ): Promise<{ success: boolean; product?: Product; error?: string }> {
+    if (!rawBarcode || !rawBarcode.trim()) {
+      return { success: false, error: 'Invalid barcode' };
+    }
+    const clean = rawBarcode.trim();
+    const check = await this.isBarcodeUsed(businessId, clean, productId);
+    if (check.isUsed && check.product) {
+      return {
+        success: false,
+        error: `यह बारकोड पहले से "${check.product.productName} (${check.product.packSize})" पर रजिस्टर्ड है।`,
+      };
+    }
+
+    const products = await StorageService.getProducts(businessId);
+    const prod = products.find((p) => p.id === productId);
+    if (!prod) {
+      return { success: false, error: 'उत्पाद नहीं मिला' };
+    }
+
+    prod.barcode = clean;
+    prod.updatedAt = new Date().toISOString();
+    await this.saveProduct(prod);
+    return { success: true, product: prod };
+  },
+
   // -------------------------------------------------------------
   // UNIT OF MEASUREMENT (UOM)
   // -------------------------------------------------------------

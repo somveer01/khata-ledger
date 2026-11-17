@@ -20,6 +20,7 @@ import { DataRepository } from '../../services/db';
 import { Product, ProductCategory, UnitOfMeasurement } from '../../types';
 import { toPaise, toRupees, formatCurrency } from '../../utils/money';
 import { showAlert } from '../../utils/dialog';
+import { BarcodeScannerModal } from '../../components/BarcodeScannerModal';
 
 const CATEGORIES: { key: ProductCategory; labelHi: string; labelEn: string }[] = [
   { key: 'PESTICIDE', labelHi: 'कीटनाशक (Pesticide)', labelEn: 'Pesticide' },
@@ -49,6 +50,8 @@ export const AddEditProductScreen: React.FC = () => {
   const [packSize, setPackSize] = useState(existingProduct?.packSize || '');
   const [casePacking, setCasePacking] = useState(existingProduct?.casePacking || '');
   const [unit, setUnit] = useState(existingProduct?.unit || 'Bottle');
+  const [barcode, setBarcode] = useState(existingProduct?.barcode || route.params?.initialBarcode || '');
+  const [barcodeScannerVisible, setBarcodeScannerVisible] = useState(false);
   const [uoms, setUoms] = useState<UnitOfMeasurement[]>([]);
   const [selectedUomId, setSelectedUomId] = useState<string>(existingProduct?.uomId || '');
   const [purchaseUomId, setPurchaseUomId] = useState<string>(existingProduct?.purchaseUomId || '');
@@ -155,6 +158,22 @@ export const AddEditProductScreen: React.FC = () => {
       return;
     }
 
+    const cleanBarcode = barcode.trim();
+    if (cleanBarcode) {
+      const check = await DataRepository.isBarcodeUsed(business.id, cleanBarcode, existingProduct?.id);
+      if (check.isUsed && check.product) {
+        showAlert(
+          language === 'hi' ? 'डुप्लीकेट बारकोड' : 'Duplicate Barcode',
+          language === 'hi'
+            ? `यह बारकोड पहले से "${check.product.productName} (${check.product.packSize})" पर दर्ज है। कृपया दूसरा बारकोड स्कैन करें या बदलें।`
+            : `This barcode is already linked to "${check.product.productName} (${check.product.packSize})".`,
+          undefined,
+          'danger'
+        );
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       const productToSave: Product = {
@@ -178,6 +197,7 @@ export const AddEditProductScreen: React.FC = () => {
         withGstRatePaise: toPaise(withGstNum),
         marginPercent: parseFloat(marginPercent) || 0,
         sellingRatePaise: toPaise(sellingNum),
+        barcode: cleanBarcode || undefined,
         notes: notes.trim() || '',
         isActive: true,
         createdAt: existingProduct?.createdAt || new Date().toISOString(),
@@ -283,6 +303,47 @@ export const AddEditProductScreen: React.FC = () => {
             value={technicalName}
             onChangeText={setTechnicalName}
           />
+        </Card>
+
+        {/* Section: Barcode / QR Code */}
+        <Card style={styles.card}>
+          <View style={styles.cardHeaderWithAction}>
+            <Text style={styles.sectionHeader}>
+              📷 {language === 'hi' ? 'बारकोड / QR कोड (Barcode Billing)' : 'Barcode / QR Code'}
+            </Text>
+            <TouchableOpacity
+              style={styles.scanBtnMini}
+              onPress={() => setBarcodeScannerVisible(true)}
+            >
+              <Ionicons name="camera" size={15} color="#047857" />
+              <Text style={styles.scanBtnMiniText}>
+                {language === 'hi' ? 'कैमरे से स्कैन करें' : 'Scan Barcode'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.fieldSubLabel}>
+            {language === 'hi'
+              ? 'बोतल या पैकेट का बारकोड स्कैन करें। बिलिंग के समय सीधे कैमरे से प्रोडक्ट सेलेक्ट होगा।'
+              : 'Scan product barcode. Enables instant 1-second billing by pointing phone camera.'}
+          </Text>
+          <View style={styles.barcodeInputRow}>
+            <View style={{ flex: 1 }}>
+              <Input
+                label={language === 'hi' ? 'बारकोड नंबर (Optional)' : 'Barcode Number (Optional)'}
+                placeholder="उदा. 8901234567890"
+                value={barcode}
+                onChangeText={setBarcode}
+              />
+            </View>
+            {barcode ? (
+              <TouchableOpacity
+                style={styles.barcodeClearBtn}
+                onPress={() => setBarcode('')}
+              >
+                <Ionicons name="close-circle" size={20} color="#9CA3AF" />
+              </TouchableOpacity>
+            ) : null}
+          </View>
         </Card>
 
         {/* Section 2: Pack Size & UOM */}
@@ -569,6 +630,18 @@ export const AddEditProductScreen: React.FC = () => {
           />
         </View>
       </ScrollView>
+
+      {/* Barcode Scanner Modal */}
+      <BarcodeScannerModal
+        visible={barcodeScannerVisible}
+        onClose={() => setBarcodeScannerVisible(false)}
+        onScan={(scanned) => {
+          setBarcode(scanned);
+          setBarcodeScannerVisible(false);
+        }}
+        title={language === 'hi' ? 'प्रोडक्ट बारकोड स्कैन करें' : 'Scan Product Barcode'}
+        allowContinuous={false}
+      />
     </KeyboardAvoidingView>
   );
 };
@@ -862,5 +935,38 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#15803D',
+  },
+  cardHeaderWithAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.xs,
+  },
+  scanBtnMini: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#DCFCE7',
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  scanBtnMiniText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#065F46',
+  },
+  barcodeInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  barcodeClearBtn: {
+    padding: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

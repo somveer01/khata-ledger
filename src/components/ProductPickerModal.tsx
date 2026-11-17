@@ -17,6 +17,7 @@ import { useApp } from '../context/AppContext';
 import { DataRepository } from '../services/db';
 import { Product, ProductCategory } from '../types';
 import { formatCurrency, toRupees } from '../utils/money';
+import { BarcodeScannerModal } from './BarcodeScannerModal';
 
 interface ProductPickerModalProps {
   visible: boolean;
@@ -50,6 +51,7 @@ export const ProductPickerModal: React.FC<ProductPickerModalProps> = ({
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [selectedBrand, setSelectedBrand] = useState<string>('ALL');
+  const [scannerVisible, setScannerVisible] = useState(false);
 
   useEffect(() => {
     if (visible && business) {
@@ -83,7 +85,8 @@ export const ProductPickerModal: React.FC<ProductPickerModalProps> = ({
           p.productName.toLowerCase().includes(q) ||
           p.brandName.toLowerCase().includes(q) ||
           (p.technicalName && p.technicalName.toLowerCase().includes(q)) ||
-          p.packSize.toLowerCase().includes(q)
+          p.packSize.toLowerCase().includes(q) ||
+          (p.barcode && p.barcode.toLowerCase().includes(q))
       );
     }
 
@@ -150,6 +153,13 @@ export const ProductPickerModal: React.FC<ProductPickerModalProps> = ({
             </Text>
           </View>
 
+          {item.barcode ? (
+            <View style={styles.barcodeChip}>
+              <Ionicons name="barcode-outline" size={11} color="#047857" />
+              <Text style={styles.barcodeChipText} numberOfLines={1}>{item.barcode}</Text>
+            </View>
+          ) : null}
+
           <View style={{ flex: 1 }} />
 
           <View style={styles.sellingRateBox}>
@@ -208,8 +218,8 @@ export const ProductPickerModal: React.FC<ProductPickerModalProps> = ({
               style={styles.searchInput}
               placeholder={
                 language === 'hi'
-                  ? 'उत्पाद का नाम, ब्रांड या केमिकल खोजें...'
-                  : 'Search product, brand or chemical...'
+                  ? 'उत्पाद का नाम, ब्रांड या बारकोड खोजें...'
+                  : 'Search product, brand or barcode...'
               }
               placeholderTextColor={Colors.textMuted}
               value={search}
@@ -218,10 +228,17 @@ export const ProductPickerModal: React.FC<ProductPickerModalProps> = ({
               clearButtonMode="while-editing"
             />
             {search.length > 0 && (
-              <TouchableOpacity onPress={() => setSearch('')}>
+              <TouchableOpacity onPress={() => setSearch('')} style={{ marginRight: 6 }}>
                 <Ionicons name="close-circle" size={18} color={Colors.textMuted} />
               </TouchableOpacity>
             )}
+            <TouchableOpacity
+              style={styles.searchScanBtn}
+              onPress={() => setScannerVisible(true)}
+            >
+              <Ionicons name="camera" size={15} color="#047857" />
+              <Text style={styles.searchScanBtnText}>{language === 'hi' ? 'स्कैन' : 'Scan'}</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Category Filter Chips */}
@@ -338,6 +355,27 @@ export const ProductPickerModal: React.FC<ProductPickerModalProps> = ({
           </View>
         </View>
       </View>
+
+      <BarcodeScannerModal
+        visible={scannerVisible}
+        onClose={() => setScannerVisible(false)}
+        onScan={(scanned) => {
+          setScannerVisible(false);
+          const found = products.find(
+            (p) =>
+              p.barcode === scanned ||
+              (p.secondaryBarcodes && p.secondaryBarcodes.includes(scanned))
+          );
+          if (found) {
+            onSelectProduct(found);
+            onClose();
+          } else {
+            setSearch(scanned);
+          }
+        }}
+        title={language === 'hi' ? 'बारकोड से उत्पाद खोजें' : 'Scan to Find Product'}
+        allowContinuous={false}
+      />
     </Modal>
   );
 };
@@ -630,5 +668,38 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: Colors.textSecondary,
+  },
+  searchScanBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#DCFCE7',
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  searchScanBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#065F46',
+  },
+  barcodeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginLeft: 6,
+  },
+  barcodeChipText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#065F46',
   },
 });

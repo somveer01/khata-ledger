@@ -155,6 +155,8 @@ export interface Product {
   withGstRatePaise: CurrencyPaise; // billingRate + GST
   marginPercent?: number; // profit margin % over withGstRate
   sellingRatePaise: CurrencyPaise; // customer selling price
+  barcode?: string; // Primary barcode (EAN-13, UPC-A, Code-128, QR Code)
+  secondaryBarcodes?: string[]; // Alternate / outer carton barcodes
   notes?: string;
   isActive: boolean;
   createdAt: string;
