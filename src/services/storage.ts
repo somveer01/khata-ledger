@@ -24,6 +24,76 @@ const STORAGE_KEYS = {
 // High-speed in-memory L1 cache for instant (0ms) data retrieval
 const memoryCache = new Map<string, any>();
 
+// IndexedDB Attachment Store for large files (bill photos & PDFs) that would exceed localStorage 5MB quota
+let idbPromise: Promise<IDBDatabase | null> | null = null;
+function getAttachmentDB(): Promise<IDBDatabase | null> {
+  if (typeof window === 'undefined' || !(window as any).indexedDB) {
+    return Promise.resolve(null);
+  }
+  if (!idbPromise) {
+    idbPromise = new Promise((resolve) => {
+      try {
+        const req = (window as any).indexedDB.open('KhataBookAttachments', 1);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains('attachments')) {
+            db.createObjectStore('attachments', { keyPath: 'id' });
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => {
+          console.warn('IndexedDB open error:', req.error);
+          resolve(null);
+        };
+      } catch (err) {
+        console.warn('IndexedDB not available:', err);
+        resolve(null);
+      }
+    });
+  }
+  return idbPromise;
+}
+
+export const AttachmentService = {
+  async save(id: string, dataUri: string): Promise<void> {
+    try {
+      const db = await getAttachmentDB();
+      if (!db) return;
+      const tx = db.transaction('attachments', 'readwrite');
+      tx.objectStore('attachments').put({ id, dataUri, updatedAt: Date.now() });
+    } catch (e) {
+      console.warn('Attachment save error:', e);
+    }
+  },
+
+  async get(id: string): Promise<string | null> {
+    try {
+      const db = await getAttachmentDB();
+      if (!db) return null;
+      return new Promise((resolve) => {
+        const tx = db.transaction('attachments', 'readonly');
+        const req = tx.objectStore('attachments').get(id);
+        req.onsuccess = () => resolve(req.result?.dataUri || null);
+        req.onerror = () => resolve(null);
+      });
+    } catch (e) {
+      console.warn('Attachment get error:', e);
+      return null;
+    }
+  },
+
+  async remove(id: string): Promise<void> {
+    try {
+      const db = await getAttachmentDB();
+      if (!db) return;
+      const tx = db.transaction('attachments', 'readwrite');
+      tx.objectStore('attachments').delete(id);
+    } catch (e) {
+      console.warn('Attachment remove error:', e);
+    }
+  },
+};
+
 export const StorageService = {
   // Clear all in-memory L1 cache (crucial on login/logout to prevent tenant data leakage)
   clearMemoryCache(): void {
@@ -209,19 +279,54 @@ export const StorageService = {
   // Purchase Invoices
   async getPurchases(businessId: string): Promise<PurchaseInvoice[]> {
     const key = `${STORAGE_KEYS.PURCHASES}_${businessId}`;
+    let list: PurchaseInvoice[];
     if (memoryCache.has(key)) {
-      return [...memoryCache.get(key)];
+      list = memoryCache.get(key);
+    } else {
+      const raw = await AsyncStorage.getItem(key);
+      list = raw ? JSON.parse(raw) : [];
+      memoryCache.set(key, list);
     }
-    const raw = await AsyncStorage.getItem(key);
-    const list = raw ? JSON.parse(raw) : [];
-    memoryCache.set(key, list);
+
+    // Hydrate attachments from IndexedDB if not already in memory
+    for (const p of list) {
+      if (!p.billPhotoUri && p.billFileName) {
+        const attached = await AttachmentService.get(p.id);
+        if (attached) {
+          p.billPhotoUri = attached;
+        }
+      }
+    }
+
     return [...list];
   },
 
   async savePurchases(businessId: string, purchases: PurchaseInvoice[]): Promise<void> {
     const key = `${STORAGE_KEYS.PURCHASES}_${businessId}`;
     memoryCache.set(key, [...purchases]);
-    await AsyncStorage.setItem(key, JSON.stringify(purchases));
+
+    // Save all attachments into high-capacity IndexedDB so they are safely preserved
+    for (const p of purchases) {
+      if (p.billPhotoUri) {
+        await AttachmentService.save(p.id, p.billPhotoUri);
+      }
+    }
+
+    try {
+      await AsyncStorage.setItem(key, JSON.stringify(purchases));
+    } catch (quotaErr) {
+      console.warn('AsyncStorage quota hit on savePurchases. Storing lightweight purchases with IndexedDB attachments:', quotaErr);
+      try {
+        // Strip heavy billPhotoUri from AsyncStorage JSON since it is safely stored in IndexedDB
+        const strippedPurchases = purchases.map((p) => ({
+          ...p,
+          billPhotoUri: undefined,
+        }));
+        await AsyncStorage.setItem(key, JSON.stringify(strippedPurchases));
+      } catch (fatalErr) {
+        console.error('Fatal AsyncStorage savePurchases error:', fatalErr);
+      }
+    }
   },
 
   // Supplier Payments

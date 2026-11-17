@@ -85,7 +85,7 @@ export const PurchaseEntryScreen: React.FC = () => {
   const [viewBillModalVisible, setViewBillModalVisible] = useState(false);
 
   // Safe Image Compression Helper (Downscale high-res camera photos to prevent local storage quota & Firestore limits)
-  const compressImage = (file: File, maxWidth = 1280, maxHeight = 1280, quality = 0.75): Promise<string> => {
+  const compressImage = (file: File, maxWidth = 1080, maxHeight = 1080, quality = 0.68): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onerror = () => reject(new Error(language === 'hi' ? 'फ़ाइल लोड नहीं हो सकी' : 'Failed to read file'));
@@ -224,8 +224,8 @@ export const PurchaseEntryScreen: React.FC = () => {
             };
             reader.readAsDataURL(file);
           } else {
-            // Compress image to ~1280px and ~150-250KB for crystal-clear bill text without crashing storage
-            const compressedUri = await compressImage(file, 1280, 1280, 0.75);
+            // Compress image to ~1080px and ~80-120KB for crystal-clear bill text without crashing storage
+            const compressedUri = await compressImage(file, 1080, 1080, 0.68);
             setBillPhotoUri(compressedUri);
             setBillFileName(file.name || 'dealer_bill.jpg');
             setBillFileType('image');

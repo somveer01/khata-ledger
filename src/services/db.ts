@@ -12,7 +12,7 @@ import {
   writeBatch 
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './firebase';
-import { StorageService } from './storage';
+import { StorageService, AttachmentService } from './storage';
 import { Business, Village, Customer, Transaction, VillageSummary, DashboardMetrics, AppUser, StoreActivityStats, Product, UnitOfMeasurement, UnitConversion, Supplier, SupplierPayment, PurchaseInvoice, StockItemSummary, StockAdjustment } from '../types';
 import { calculateCustomerBalance, calculateVillageSummaries, calculateDashboardMetrics, calculateCustomerDueDate } from './accounting';
 import { toPaise } from '../utils/money';
@@ -1916,10 +1916,17 @@ export const DataRepository = {
       }
 
       if (isFirebaseConfigured() && db) {
+        const firestoreData: any = { ...savedItem };
+        // Cloud Firestore documents must be strictly under 1,048,576 bytes.
+        // If billPhotoUri > 400KB, omit it from the remote Firestore doc to avoid Firebase document size errors
+        if (firestoreData.billPhotoUri && firestoreData.billPhotoUri.length > 500000) {
+          delete firestoreData.billPhotoUri;
+        }
+
         setDoc(
           doc(db, 'purchases', purchase.id),
           cleanForFirestore({
-            ...savedItem,
+            ...firestoreData,
             updatedAt: serverTimestamp(),
           }),
           { merge: true }
@@ -1938,6 +1945,7 @@ export const DataRepository = {
       const toDelete = list.find((p) => p.id === purchaseId);
       const filtered = list.filter((p) => p.id !== purchaseId);
       await StorageService.savePurchases(businessId, filtered);
+      AttachmentService.remove(purchaseId);
 
       // Revert supplier balance if needed
       if (toDelete && toDelete.supplierId) {
