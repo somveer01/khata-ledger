@@ -12,8 +12,27 @@ import {
   Easing,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import {
+  BrowserMultiFormatReader,
+  BarcodeFormat,
+  DecodeHintType,
+} from '@zxing/library';
 import { Colors, Spacing, Typography, BorderRadius } from '../constants/theme';
 import { notifyBarcodeScanned } from '../utils/feedback';
+
+const zxingHints = new Map<DecodeHintType, any>();
+zxingHints.set(DecodeHintType.POSSIBLE_FORMATS, [
+  BarcodeFormat.QR_CODE,
+  BarcodeFormat.DATA_MATRIX,
+  BarcodeFormat.EAN_13,
+  BarcodeFormat.EAN_8,
+  BarcodeFormat.CODE_128,
+  BarcodeFormat.CODE_39,
+  BarcodeFormat.UPC_A,
+  BarcodeFormat.UPC_E,
+  BarcodeFormat.ITF,
+]);
+zxingHints.set(DecodeHintType.TRY_HARDER, true);
 
 interface BarcodeScannerModalProps {
   visible: boolean;
@@ -36,6 +55,8 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   const [continuousMode, setContinuousMode] = useState(false);
   const [torchEnabled, setTorchEnabled] = useState(false);
   const [hasTorchCapability, setHasTorchCapability] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [hasZoomCapability, setHasZoomCapability] = useState<boolean>(false);
   const [lastScannedCode, setLastScannedCode] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -43,6 +64,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   const scanningRef = useRef<boolean>(false);
   const lastScanTimeRef = useRef<number>(0);
   const laserAnim = useRef(new Animated.Value(0)).current;
+  const zxingReaderRef = useRef<BrowserMultiFormatReader | null>(null);
 
   // Animate laser scanning line up and down
   useEffect(() => {
@@ -68,15 +90,22 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     }
   }, [visible, laserAnim]);
 
-  // Clean up media stream
+  // Clean up media stream and ZXing scanner
   const stopStream = useCallback(() => {
     scanningRef.current = false;
+    if (zxingReaderRef.current) {
+      try {
+        zxingReaderRef.current.reset();
+      } catch {}
+      zxingReaderRef.current = null;
+    }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
     setCameraActive(false);
     setTorchEnabled(false);
+    setZoomLevel(1);
   }, []);
 
   const handleBarcodeDetected = useCallback(
@@ -122,8 +151,9 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
         .getUserMedia({
           video: {
             facingMode: { ideal: 'environment' },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
+            width: { ideal: 1920, min: 1280 },
+            height: { ideal: 1080, min: 720 },
+            advanced: [{ focusMode: 'continuous' }] as any,
           },
           audio: false,
         })
@@ -131,15 +161,26 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           streamRef.current = stream;
           setCameraActive(true);
 
-          // Check torch capability
+          // Check torch, focus, and zoom capabilities
           try {
             const track = stream.getVideoTracks()[0];
             const caps: any = track.getCapabilities ? track.getCapabilities() : {};
             if (caps && caps.torch) {
               setHasTorchCapability(true);
             }
+            if (caps && caps.zoom) {
+              setHasZoomCapability(true);
+            }
+            if (track.applyConstraints) {
+              track.applyConstraints({
+                advanced: [
+                  ...(caps.focusMode ? [{ focusMode: 'continuous' }] : []),
+                ] as any,
+              }).catch(() => {});
+            }
           } catch {
             setHasTorchCapability(false);
+            setHasZoomCapability(false);
           }
 
           if (videoRef.current) {
@@ -148,7 +189,27 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
             videoRef.current.play().catch(() => {});
           }
 
-          // Start Barcode Detection Loop
+          // 1. Start ZXing MultiFormat Engine (Handles QR with logos, dot-matrix, DataMatrix, curved bottles)
+          try {
+            const reader = new BrowserMultiFormatReader(zxingHints);
+            zxingReaderRef.current = reader;
+
+            if (videoRef.current) {
+              reader.decodeFromVideoElement(videoRef.current, (result, err) => {
+                if (!scanningRef.current) return;
+                if (result) {
+                  const text = result.getText();
+                  if (text) {
+                    handleBarcodeDetected(text);
+                  }
+                }
+              });
+            }
+          } catch (zxingErr) {
+            console.warn('ZXing initialization warning:', zxingErr);
+          }
+
+          // 2. Also run native BarcodeDetector if available in browser for dual-engine acceleration
           const windowAny = window as any;
           if ('BarcodeDetector' in windowAny) {
             try {
@@ -219,6 +280,24 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     }
   };
 
+  // Toggle Zoom (1x / 2x for small QR codes on bottles)
+  const toggleZoom = async () => {
+    if (!streamRef.current) return;
+    try {
+      const track = streamRef.current.getVideoTracks()[0];
+      const caps: any = track.getCapabilities ? track.getCapabilities() : {};
+      if (caps && caps.zoom) {
+        const nextZoom = zoomLevel === 1 ? Math.min(2, caps.zoom.max || 2) : 1;
+        await (track as any).applyConstraints({
+          advanced: [{ zoom: nextZoom }],
+        });
+        setZoomLevel(nextZoom);
+      }
+    } catch (err) {
+      console.warn('Zoom toggle error:', err);
+    }
+  };
+
   const handleManualSubmit = () => {
     const clean = manualInput.trim();
     if (!clean) return;
@@ -262,6 +341,17 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           </View>
 
           <View style={styles.headerActions}>
+            {hasZoomCapability && (
+              <TouchableOpacity
+                style={[styles.actionIconBtn, zoomLevel > 1 && styles.actionIconBtnActive]}
+                onPress={toggleZoom}
+              >
+                <Text style={{ color: zoomLevel > 1 ? '#10B981' : '#FFFFFF', fontWeight: '800', fontSize: 13 }}>
+                  {zoomLevel > 1 ? '2x' : '1x'}
+                </Text>
+              </TouchableOpacity>
+            )}
+
             {hasTorchCapability && (
               <TouchableOpacity
                 style={[styles.actionIconBtn, torchEnabled && styles.actionIconBtnActive]}
@@ -346,7 +436,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           <View style={styles.instructionBanner}>
             <Ionicons name="scan-outline" size={18} color="#A7F3D0" />
             <Text style={styles.instructionText}>
-              दवा की बोतल या बीज के पैकेट का बारकोड बॉक्स के बीच लाएं
+              दवा की बोतल या बीज के पैकेट का बारकोड / QR कोड बॉक्स के बीच लाएं
             </Text>
           </View>
         </View>
