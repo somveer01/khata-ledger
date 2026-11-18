@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, BorderRadius, Spacing, Typography } from '../constants/theme';
 import { formatUpperDate, getTodayIST, isToday } from '../utils/date';
 import { format } from 'date-fns';
+import { useApp } from '../context/AppContext';
 
 interface DatePickerFieldProps {
   label?: string;
@@ -34,6 +35,14 @@ export const DatePickerField: React.FC<DatePickerFieldProps> = ({
   helperText,
   containerStyle,
 }) => {
+  let language = 'hi';
+  try {
+    const app = useApp();
+    language = app.language;
+  } catch {
+    // fallback
+  }
+
   const [modalVisible, setModalVisible] = useState(false);
 
   // Initialize view year & month from value or today
@@ -143,12 +152,12 @@ export const DatePickerField: React.FC<DatePickerFieldProps> = ({
           </Text>
           {isCurrentValueToday ? (
             <View style={styles.todayChip}>
-              <Text style={styles.todayChipText}>Today</Text>
+              <Text style={styles.todayChipText}>{language === 'hi' ? 'आज' : 'Today'}</Text>
             </View>
           ) : null}
         </View>
         <View style={styles.calendarBadge}>
-          <Text style={styles.calendarBadgeText}>Change</Text>
+          <Text style={styles.calendarBadgeText}>{language === 'hi' ? 'कैलेंडर / बदलें' : 'Change'}</Text>
           <Ionicons name="chevron-down" size={14} color={Colors.primary} />
         </View>
       </TouchableOpacity>
@@ -161,13 +170,14 @@ export const DatePickerField: React.FC<DatePickerFieldProps> = ({
         transparent
         animationType="fade"
         onRequestClose={() => setModalVisible(false)}
+        statusBarTranslucent
       >
         <View style={styles.modalOverlay}>
           <View style={styles.calendarCard}>
             {/* Modal Header */}
             <View style={styles.modalHeader}>
               <View>
-                <Text style={styles.modalSubTitle}>{label || 'Select Date'}</Text>
+                <Text style={styles.modalSubTitle}>{label || (language === 'hi' ? 'तारीख चुनें' : 'Select Date')}</Text>
                 <Text style={styles.modalDateTitle}>{formatUpperDate(value)}</Text>
               </View>
               <TouchableOpacity
@@ -181,10 +191,10 @@ export const DatePickerField: React.FC<DatePickerFieldProps> = ({
             {/* Quick Short Cuts */}
             <View style={styles.shortcutsRow}>
               <TouchableOpacity style={styles.shortcutBtn} onPress={selectToday}>
-                <Text style={styles.shortcutBtnText}>Today ({formatUpperDate(todayStr)})</Text>
+                <Text style={styles.shortcutBtnText}>{language === 'hi' ? 'आज' : 'Today'} ({formatUpperDate(todayStr)})</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.shortcutBtn} onPress={selectYesterday}>
-                <Text style={styles.shortcutBtnText}>Yesterday</Text>
+                <Text style={styles.shortcutBtnText}>{language === 'hi' ? 'कल (Yesterday)' : 'Yesterday'}</Text>
               </TouchableOpacity>
             </View>
 
@@ -249,7 +259,7 @@ export const DatePickerField: React.FC<DatePickerFieldProps> = ({
               style={styles.doneBtn}
               onPress={() => setModalVisible(false)}
             >
-              <Text style={styles.doneBtnText}>Confirm Date</Text>
+              <Text style={styles.doneBtnText}>{language === 'hi' ? 'तारीख चुनें (Confirm)' : 'Confirm Date'}</Text>
             </TouchableOpacity>
           </View>
         </View>

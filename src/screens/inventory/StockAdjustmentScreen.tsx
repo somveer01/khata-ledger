@@ -17,20 +17,22 @@ import { Header } from '../../components/Header';
 import { Card } from '../../components/Card';
 import { Input } from '../../components/Input';
 import { Button } from '../../components/Button';
+import { DatePickerField } from '../../components/DatePickerField';
 import { Colors, Spacing, Typography, BorderRadius } from '../../constants/theme';
 import { useApp } from '../../context/AppContext';
 import { DataRepository } from '../../services/db';
 import { StockAdjustment, StockAdjustmentType, Product } from '../../types';
 import { showAlert, confirmAction } from '../../utils/dialog';
+import { getTodayIST } from '../../utils/date';
 
 const ADJUSTMENT_TYPES: { key: StockAdjustmentType; labelHi: string; labelEn: string; isDeduction: boolean; color: string; bg: string }[] = [
+  { key: 'MANUAL_IN', labelHi: 'अन्य आवक (+)', labelEn: 'Manual In (+)', isDeduction: false, color: '#059669', bg: '#D1FAE5' },
+  { key: 'MANUAL_OUT', labelHi: 'अन्य जावक (-)', labelEn: 'Manual Out (-)', isDeduction: true, color: '#991B1B', bg: '#FEE2E2' },
   { key: 'DAMAGE', labelHi: 'टूट-फूट / डैमेज', labelEn: 'Damage / Broken', isDeduction: true, color: '#DC2626', bg: '#FEF2F2' },
   { key: 'EXPIRY', labelHi: 'एक्सपायरी (Expiry)', labelEn: 'Expired', isDeduction: true, color: '#EA580C', bg: '#FFF7ED' },
   { key: 'AUDIT_SHORT', labelHi: 'गिनती में कमी (Shortage)', labelEn: 'Audit Shortage', isDeduction: true, color: '#D97706', bg: '#FFFBEB' },
-  { key: 'THEFT_LOSS', labelHi: 'चोरी / नुकसान', labelEn: 'Loss / Theft', isDeduction: true, color: '#B91C1C', bg: '#FEE2E2' },
   { key: 'AUDIT_SURPLUS', labelHi: 'गिनती में अधिक (Surplus)', labelEn: 'Audit Surplus', isDeduction: false, color: '#16A34A', bg: '#DCFCE7' },
-  { key: 'MANUAL_IN', labelHi: 'अन्य आवक (+)', labelEn: 'Manual In (+)', isDeduction: false, color: '#059669', bg: '#D1FAE5' },
-  { key: 'MANUAL_OUT', labelHi: 'अन्य जावक (-)', labelEn: 'Manual Out (-)', isDeduction: true, color: '#991B1B', bg: '#FEE2E2' },
+  { key: 'THEFT_LOSS', labelHi: 'चोरी / नुकसान', labelEn: 'Loss / Theft', isDeduction: true, color: '#B91C1C', bg: '#FEE2E2' },
 ];
 
 export const StockAdjustmentScreen: React.FC = () => {
@@ -50,10 +52,11 @@ export const StockAdjustmentScreen: React.FC = () => {
   const [editingAdjustment, setEditingAdjustment] = useState<StockAdjustment | null>(null);
   const [selectedProductId, setSelectedProductId] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [adjustmentType, setAdjustmentType] = useState<StockAdjustmentType>('DAMAGE');
+  const [adjustmentType, setAdjustmentType] = useState<StockAdjustmentType>('MANUAL_IN');
+  const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
   const [quantity, setQuantity] = useState('');
   const [reason, setReason] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(() => getTodayIST());
   const [saving, setSaving] = useState(false);
   const [productSearch, setProductSearch] = useState('');
 
@@ -89,10 +92,11 @@ export const StockAdjustmentScreen: React.FC = () => {
     setEditingAdjustment(null);
     setSelectedProductId('');
     setSelectedProduct(null);
-    setAdjustmentType('DAMAGE');
+    setAdjustmentType('MANUAL_IN');
+    setTypeDropdownOpen(false);
     setQuantity('');
     setReason('');
-    setDate(new Date().toISOString().split('T')[0]);
+    setDate(getTodayIST());
     setProductSearch('');
     setModalVisible(true);
   };
@@ -103,9 +107,10 @@ export const StockAdjustmentScreen: React.FC = () => {
     const prod = products.find((p) => p.id === item.productId) || null;
     setSelectedProduct(prod);
     setAdjustmentType(item.adjustmentType);
+    setTypeDropdownOpen(false);
     setQuantity(item.quantityBaseUnits.toString());
     setReason(item.reason || '');
-    setDate(item.date || new Date().toISOString().split('T')[0]);
+    setDate(item.date || getTodayIST());
     setProductSearch('');
     setModalVisible(true);
   };
@@ -232,6 +237,8 @@ export const StockAdjustmentScreen: React.FC = () => {
     const q = productSearch.toLowerCase();
     return p.productName.toLowerCase().includes(q) || p.brandName.toLowerCase().includes(q);
   });
+
+  const currentTypeMeta = ADJUSTMENT_TYPES.find((t) => t.key === adjustmentType) || ADJUSTMENT_TYPES[0];
 
   return (
     <View style={styles.screen}>
@@ -391,8 +398,8 @@ export const StockAdjustmentScreen: React.FC = () => {
         }}
       />
 
-      {/* Add / Edit Modal */}
-      <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
+      {/* Add / Edit Form Overlay */}
+      {modalVisible && (
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
@@ -469,55 +476,110 @@ export const StockAdjustmentScreen: React.FC = () => {
 
               {/* Adjustment Reason/Type Selector */}
               <Text style={styles.fieldLabel}>
-                {language === 'hi' ? '2. समायोजन का प्रकार (Reason Type) *' : '2. Adjustment Type *'}
+                {language === 'hi' ? '2. समायोजन का प्रकार (Adjustment Type) *' : '2. Adjustment Type *'}
               </Text>
-              <View style={styles.typeGrid}>
-                {ADJUSTMENT_TYPES.map((t) => {
-                  const isSel = adjustmentType === t.key;
-                  return (
-                    <TouchableOpacity
-                      key={t.key}
-                      style={[
-                        styles.typeChip,
-                        { borderColor: isSel ? t.color : '#E2E8F0', backgroundColor: isSel ? t.bg : '#F8FAFC' },
-                      ]}
-                      onPress={() => setAdjustmentType(t.key)}
-                    >
-                      <Text style={[styles.typeChipText, { color: isSel ? t.color : Colors.textPrimary, fontWeight: isSel ? '700' : '500' }]}>
-                        {t.isDeduction ? '🔻' : '🔺'} {language === 'hi' ? t.labelHi : t.labelEn}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
 
-              {/* Quantity and Date */}
-              <View style={styles.twoColRow}>
-                <View style={{ flex: 1 }}>
-                  <Input
-                    label={
-                      language === 'hi'
-                        ? `मात्रा (${selectedProduct?.primarySellingUnit || selectedProduct?.unit || 'नग/बोतल'}) *`
-                        : 'Quantity *'
-                    }
-                    placeholder="उदा. 2"
-                    keyboardType="numeric"
-                    value={quantity}
-                    onChangeText={setQuantity}
+              {/* Selected Type Box (Takes just 1 compact row) */}
+              <TouchableOpacity
+                style={[
+                  styles.typeSelectorBox,
+                  { borderColor: currentTypeMeta.color, backgroundColor: currentTypeMeta.bg },
+                ]}
+                activeOpacity={0.7}
+                onPress={() => setTypeDropdownOpen((prev) => !prev)}
+              >
+                <View style={styles.typeSelectorLeft}>
+                  <Text style={styles.typeSelectorIcon}>{currentTypeMeta.isDeduction ? '🔻' : '🔺'}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.typeSelectorTitle, { color: currentTypeMeta.color }]}>
+                      {language === 'hi' ? currentTypeMeta.labelHi : currentTypeMeta.labelEn}
+                    </Text>
+                    <Text style={styles.typeSelectorSub}>
+                      {currentTypeMeta.isDeduction
+                        ? (language === 'hi' ? 'स्टॉक से घटेगा (-)' : 'Deducts from stock (-)')
+                        : (language === 'hi' ? 'स्टॉक में जुड़ेगा (+)' : 'Adds to stock (+)')}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.typeSelectorRight}>
+                  <Text style={[styles.changeTypeText, { color: currentTypeMeta.color }]}>
+                    {typeDropdownOpen ? (language === 'hi' ? 'बंद करें' : 'Close') : (language === 'hi' ? 'सूची देखें' : 'Change')}
+                  </Text>
+                  <Ionicons
+                    name={typeDropdownOpen ? 'chevron-up' : 'chevron-down'}
+                    size={16}
+                    color={currentTypeMeta.color}
                   />
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Input
-                    label={language === 'hi' ? 'तारीख (YYYY-MM-DD)' : 'Date'}
-                    value={date}
-                    onChangeText={setDate}
-                  />
+              </TouchableOpacity>
+
+              {/* Expandable List if opened */}
+              {typeDropdownOpen && (
+                <View style={styles.typeDropdownList}>
+                  {ADJUSTMENT_TYPES.map((t) => {
+                    const isSel = adjustmentType === t.key;
+                    return (
+                      <TouchableOpacity
+                        key={t.key}
+                        style={[
+                          styles.typeListItem,
+                          isSel && { backgroundColor: t.bg },
+                        ]}
+                        activeOpacity={0.7}
+                        onPress={() => {
+                          setAdjustmentType(t.key);
+                          setTypeDropdownOpen(false);
+                        }}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 }}>
+                          <Text style={{ fontSize: 16 }}>{t.isDeduction ? '🔻' : '🔺'}</Text>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.typeListTitle, isSel && { color: t.color, fontWeight: '700' }]}>
+                              {language === 'hi' ? t.labelHi : t.labelEn}
+                            </Text>
+                            <Text style={styles.typeListSub}>
+                              {t.isDeduction
+                                ? (language === 'hi' ? 'स्टॉक घटेगा (-)' : 'Stock deduction (-)')
+                                : (language === 'hi' ? 'स्टॉक बढ़ेगा (+)' : 'Stock addition (+)')}
+                            </Text>
+                          </View>
+                        </View>
+                        {isSel ? (
+                          <Ionicons name="checkmark-circle" size={20} color={t.color} />
+                        ) : (
+                          <View style={styles.unselectedRadio} />
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
-              </View>
+              )}
+
+              {/* Quantity */}
+              <Input
+                label={
+                  language === 'hi'
+                    ? `3. मात्रा (${selectedProduct?.primarySellingUnit || selectedProduct?.unit || 'नग/बोतल'}) *`
+                    : '3. Quantity *'
+                }
+                placeholder="उदा. 2"
+                keyboardType="numeric"
+                value={quantity}
+                onChangeText={setQuantity}
+              />
+
+              {/* Date with Calendar Picker */}
+              <DatePickerField
+                label={language === 'hi' ? '4. तारीख (Date) *' : '4. Date *'}
+                value={date}
+                onChange={setDate}
+                containerStyle={{ marginBottom: Spacing.md }}
+              />
 
               {/* Notes / Reason Details */}
               <Input
-                label={language === 'hi' ? 'विवरण या टिप्पणी (Notes / Remarks)' : 'Remarks / Reason'}
+                label={language === 'hi' ? '5. विवरण या टिप्पणी (Notes / Remarks)' : '5. Remarks / Reason'}
                 placeholder={language === 'hi' ? 'उदा. गोदाम में शीशी टूटी, ऑडिट मिलान' : 'e.g. Broken in transit, audit difference'}
                 value={reason}
                 onChangeText={setReason}
@@ -546,7 +608,7 @@ export const StockAdjustmentScreen: React.FC = () => {
             </View>
           </View>
         </View>
-      </Modal>
+      )}
     </View>
   );
 };
@@ -724,11 +786,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#FEF2F2',
   },
   modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.55)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: Spacing.md,
+    zIndex: 999,
   },
   modalContent: {
     backgroundColor: '#FFFFFF',
@@ -797,6 +860,79 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.primary,
     marginLeft: 8,
+  },
+  typeSelectorBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1.5,
+    marginBottom: 10,
+  },
+  typeSelectorLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  typeSelectorIcon: {
+    fontSize: 18,
+  },
+  typeSelectorTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  typeSelectorSub: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginTop: 1,
+  },
+  typeSelectorRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingLeft: 8,
+  },
+  changeTypeText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  typeDropdownList: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginTop: -4,
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  typeListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  typeListTitle: {
+    fontSize: 13,
+    color: Colors.textPrimary,
+    fontWeight: '500',
+  },
+  typeListSub: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginTop: 1,
+  },
+  unselectedRadio: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
   },
   typeGrid: {
     flexDirection: 'row',
