@@ -16,6 +16,9 @@ import {
   BrowserMultiFormatReader,
   BarcodeFormat,
   DecodeHintType,
+  BinaryBitmap,
+  HybridBinarizer,
+  RGBLuminanceSource,
 } from '@zxing/library';
 import { Colors, Spacing, Typography, BorderRadius } from '../constants/theme';
 import { notifyBarcodeScanned } from '../utils/feedback';
@@ -33,6 +36,16 @@ zxingHints.set(DecodeHintType.POSSIBLE_FORMATS, [
   BarcodeFormat.ITF,
 ]);
 zxingHints.set(DecodeHintType.TRY_HARDER, true);
+
+interface DetectedTarget {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  format?: string;
+  code?: string;
+  analyzing?: boolean;
+}
 
 interface BarcodeScannerModalProps {
   visible: boolean;
@@ -58,13 +71,18 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [hasZoomCapability, setHasZoomCapability] = useState<boolean>(false);
   const [lastScannedCode, setLastScannedCode] = useState<string | null>(null);
+  const [detectedTarget, setDetectedTarget] = useState<DetectedTarget | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const scanningRef = useRef<boolean>(false);
   const lastScanTimeRef = useRef<number>(0);
   const laserAnim = useRef(new Animated.Value(0)).current;
+  const targetPulseAnim = useRef(new Animated.Value(1)).current;
   const zxingReaderRef = useRef<BrowserMultiFormatReader | null>(null);
+  const detectedTimeoutRef = useRef<any>(null);
+  const analyzeIntervalRef = useRef<any>(null);
 
   // Animate laser scanning line up and down
   useEffect(() => {
@@ -90,9 +108,39 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     }
   }, [visible, laserAnim]);
 
-  // Clean up media stream and ZXing scanner
+  // Pulse animation when a target square is detected on screen (Google Lens / Native Camera style)
+  useEffect(() => {
+    if (detectedTarget) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(targetPulseAnim, {
+            toValue: 1.05,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+          Animated.timing(targetPulseAnim, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      targetPulseAnim.setValue(1);
+    }
+  }, [detectedTarget, targetPulseAnim]);
+
+  // Clean up media stream, intervals, and ZXing scanner
   const stopStream = useCallback(() => {
     scanningRef.current = false;
+    if (detectedTimeoutRef.current) {
+      clearTimeout(detectedTimeoutRef.current);
+      detectedTimeoutRef.current = null;
+    }
+    if (analyzeIntervalRef.current) {
+      clearInterval(analyzeIntervalRef.current);
+      analyzeIntervalRef.current = null;
+    }
     if (zxingReaderRef.current) {
       try {
         zxingReaderRef.current.reset();
@@ -106,10 +154,11 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     setCameraActive(false);
     setTorchEnabled(false);
     setZoomLevel(1);
+    setDetectedTarget(null);
   }, []);
 
   const handleBarcodeDetected = useCallback(
-    (rawCode: string) => {
+    (rawCode: string, format?: string) => {
       const code = rawCode.trim();
       if (!code) return;
 
@@ -133,13 +182,96 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     [continuousMode, lastScannedCode, onClose, onScan, stopStream]
   );
 
-  // Initialize camera and scanner loop
+  // High-Resolution Sub-Region Deep Analyzer (Crops target square and enhances contrast for curved / dot-matrix codes)
+  const runDeepAnalyzeCrop = useCallback(
+    (targetBox?: { x: number; y: number; width: number; height: number }) => {
+      if (!videoRef.current || videoRef.current.readyState < 2 || !scanningRef.current) return;
+      try {
+        const video = videoRef.current;
+        const vw = video.videoWidth;
+        const vh = video.videoHeight;
+        if (!vw || !vh) return;
+
+        if (!canvasRef.current && typeof document !== 'undefined') {
+          canvasRef.current = document.createElement('canvas');
+        }
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        // If a specific target box was found, crop that area; otherwise crop high-res center reticle
+        let cropX = Math.floor(vw * 0.2);
+        let cropY = Math.floor(vh * 0.25);
+        let cropW = Math.floor(vw * 0.6);
+        let cropH = Math.floor(vh * 0.5);
+
+        if (targetBox) {
+          const cw = video.clientWidth;
+          const ch = video.clientHeight;
+          if (cw > 0 && ch > 0) {
+            const scale = Math.max(cw / vw, ch / vh);
+            const offsetX = (cw - vw * scale) / 2;
+            const offsetY = (ch - vh * scale) / 2;
+
+            const vx = Math.max(0, (targetBox.x - offsetX) / scale);
+            const vy = Math.max(0, (targetBox.y - offsetY) / scale);
+            const vwBox = targetBox.width / scale;
+            const vhBox = targetBox.height / scale;
+
+            cropX = Math.max(0, Math.floor(vx - vwBox * 0.15));
+            cropY = Math.max(0, Math.floor(vy - vhBox * 0.15));
+            cropW = Math.min(vw - cropX, Math.floor(vwBox * 1.3));
+            cropH = Math.min(vh - cropY, Math.floor(vhBox * 1.3));
+          }
+        }
+
+        canvas.width = cropW;
+        canvas.height = cropH;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) return;
+
+        // Draw cropped high-res frame
+        ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+        // Enhance contrast for dot-matrix and shiny bottle codes
+        const imgData = ctx.getImageData(0, 0, cropW, cropH);
+        const data = imgData.data;
+        const len = data.length;
+        for (let i = 0; i < len; i += 4) {
+          const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+          // Contrast stretch
+          const enhanced = gray > 140 ? 255 : gray < 90 ? 0 : (gray - 90) * 5.1;
+          data[i] = enhanced;
+          data[i + 1] = enhanced;
+          data[i + 2] = enhanced;
+        }
+        ctx.putImageData(imgData, 0, 0);
+
+        // Decode enhanced sub-frame using RGBLuminanceSource & HybridBinarizer
+        if (zxingReaderRef.current) {
+          const lum = new RGBLuminanceSource(data, cropW, cropH);
+          const bitmap = new BinaryBitmap(new HybridBinarizer(lum));
+          try {
+            const res = (zxingReaderRef.current as any).decodeBitmap(bitmap, zxingHints);
+            if (res && res.getText()) {
+              handleBarcodeDetected(res.getText(), res.getBarcodeFormat()?.toString());
+            }
+          } catch {}
+        }
+      } catch (err) {
+        // Deep analyze frame skip
+      }
+    },
+    [handleBarcodeDetected]
+  );
+
+  // Initialize camera, tracking bounding box, and scanner loops
   useEffect(() => {
     if (!visible) {
       stopStream();
       setManualInput('');
       setLastScannedCode(null);
       setCameraError(null);
+      setDetectedTarget(null);
       return;
     }
 
@@ -195,12 +327,57 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
             zxingReaderRef.current = reader;
 
             if (videoRef.current) {
-              reader.decodeFromVideoElement(videoRef.current, (result, err) => {
+              reader.decodeFromStream(stream, videoRef.current, (result: any, err: any) => {
                 if (!scanningRef.current) return;
                 if (result) {
+                  const points = result.getResultPoints ? result.getResultPoints() : [];
+                  if (points && points.length >= 2 && videoRef.current) {
+                    const video = videoRef.current;
+                    const vw = video.videoWidth || 1920;
+                    const vh = video.videoHeight || 1080;
+                    const cw = video.clientWidth;
+                    const ch = video.clientHeight;
+
+                    if (cw > 0 && ch > 0) {
+                      const scale = Math.max(cw / vw, ch / vh);
+                      const offsetX = (cw - vw * scale) / 2;
+                      const offsetY = (ch - vh * scale) / 2;
+
+                      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+                      points.forEach((pt: any) => {
+                        const px = pt.getX ? pt.getX() : pt.x;
+                        const py = pt.getY ? pt.getY() : pt.y;
+                        if (px < minX) minX = px;
+                        if (px > maxX) maxX = px;
+                        if (py < minY) minY = py;
+                        if (py > maxY) maxY = py;
+                      });
+
+                      const pad = 16;
+                      const tx = Math.max(0, (minX - pad) * scale + offsetX);
+                      const ty = Math.max(0, (minY - pad) * scale + offsetY);
+                      const tw = Math.max((maxX - minX + pad * 2) * scale, 55);
+                      const th = Math.max((maxY - minY + pad * 2) * scale, 55);
+
+                      setDetectedTarget({
+                        x: tx,
+                        y: ty,
+                        width: tw,
+                        height: th,
+                        format: result.getBarcodeFormat() ? String(result.getBarcodeFormat()) : 'QR',
+                        code: result.getText(),
+                      });
+
+                      if (detectedTimeoutRef.current) clearTimeout(detectedTimeoutRef.current);
+                      detectedTimeoutRef.current = setTimeout(() => {
+                        setDetectedTarget(null);
+                      }, 1200);
+                    }
+                  }
+
                   const text = result.getText();
                   if (text) {
-                    handleBarcodeDetected(text);
+                    handleBarcodeDetected(text, result.getBarcodeFormat()?.toString());
                   }
                 }
               });
@@ -209,7 +386,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
             console.warn('ZXing initialization warning:', zxingErr);
           }
 
-          // 2. Also run native BarcodeDetector if available in browser for dual-engine acceleration
+          // 2. Hardware-accelerated BarcodeDetector with Real-Time Bounding Box Tracking (Google Lens style)
           const windowAny = window as any;
           if ('BarcodeDetector' in windowAny) {
             try {
@@ -231,8 +408,47 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                 if (videoRef.current.readyState >= 2) {
                   try {
                     const barcodes = await barcodeDetector.detect(videoRef.current);
-                    if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
-                      handleBarcodeDetected(barcodes[0].rawValue);
+                    if (barcodes && barcodes.length > 0) {
+                      const b = barcodes[0];
+                      if (videoRef.current) {
+                        const video = videoRef.current;
+                        const vw = video.videoWidth || 1920;
+                        const vh = video.videoHeight || 1080;
+                        const cw = video.clientWidth;
+                        const ch = video.clientHeight;
+
+                        if (cw > 0 && ch > 0 && b.boundingBox) {
+                          const scale = Math.max(cw / vw, ch / vh);
+                          const offsetX = (cw - vw * scale) / 2;
+                          const offsetY = (ch - vh * scale) / 2;
+
+                          const tx = Math.max(0, b.boundingBox.x * scale + offsetX);
+                          const ty = Math.max(0, b.boundingBox.y * scale + offsetY);
+                          const tw = Math.max(b.boundingBox.width * scale, 55);
+                          const th = Math.max(b.boundingBox.height * scale, 55);
+
+                          setDetectedTarget({
+                            x: tx,
+                            y: ty,
+                            width: tw,
+                            height: th,
+                            format: b.format,
+                            code: b.rawValue,
+                          });
+
+                          if (detectedTimeoutRef.current) clearTimeout(detectedTimeoutRef.current);
+                          detectedTimeoutRef.current = setTimeout(() => {
+                            setDetectedTarget(null);
+                          }, 1200);
+
+                          // Trigger sub-region deep analyze on the exact bounding box
+                          runDeepAnalyzeCrop({ x: tx, y: ty, width: tw, height: th });
+                        }
+                      }
+
+                      if (b.rawValue) {
+                        handleBarcodeDetected(b.rawValue, b.format);
+                      }
                     }
                   } catch (detectErr) {
                     // Frame detection skip
@@ -249,6 +465,13 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
               console.warn('BarcodeDetector initialization warning:', err);
             }
           }
+
+          // 3. Periodic High-Res Center Sub-Crop Analyzer every 350ms for tough dot-matrix bottles
+          analyzeIntervalRef.current = setInterval(() => {
+            if (scanningRef.current) {
+              runDeepAnalyzeCrop();
+            }
+          }, 350);
         })
         .catch((err) => {
           console.warn('getUserMedia error:', err);
@@ -263,7 +486,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     return () => {
       stopStream();
     };
-  }, [visible, stopStream, handleBarcodeDetected]);
+  }, [visible, stopStream, handleBarcodeDetected, runDeepAnalyzeCrop]);
 
   // Toggle Torch / Flashlight
   const toggleTorch = async () => {
@@ -310,6 +533,10 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     outputRange: [10, 190],
   });
 
+  const isQRCode =
+    detectedTarget?.format?.toLowerCase().includes('qr') ||
+    detectedTarget?.format?.toLowerCase().includes('matrix');
+
   return (
     <Modal
       visible={visible}
@@ -336,7 +563,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           <View style={styles.titleContainer}>
             <Text style={styles.titleText}>{title}</Text>
             <Text style={styles.subtitleText}>
-              {continuousMode ? 'मल्टी-स्कैन (लगातार जारी)' : 'सिंगल स्कैन'}
+              {continuousMode ? 'मल्टी-स्कैन (लगातार जारी)' : 'ऑटो-डिटेक्ट Bounding Box सक्षम'}
             </Text>
           </View>
 
@@ -404,7 +631,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           <View style={styles.overlayTop} />
           <View style={styles.overlayMiddleRow}>
             <View style={styles.overlaySide} />
-            
+
             {/* Center Targeting Reticle Box */}
             <View style={styles.targetingBox}>
               {/* Corner brackets */}
@@ -432,11 +659,45 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           </View>
           <View style={styles.overlayBottom} />
 
+          {/* Live Dynamic Bounding Box Square (Google Lens / Native Camera Finder Tracking Box) */}
+          {detectedTarget && (
+            <Animated.View
+              style={[
+                styles.detectedTargetBox,
+                {
+                  left: detectedTarget.x,
+                  top: detectedTarget.y,
+                  width: detectedTarget.width,
+                  height: detectedTarget.height,
+                  transform: [{ scale: targetPulseAnim }],
+                },
+              ]}
+            >
+              {/* Corner Brackets on the detected code itself */}
+              <View style={[styles.lensBracket, styles.lensBracketTL]} />
+              <View style={[styles.lensBracket, styles.lensBracketTR]} />
+              <View style={[styles.lensBracket, styles.lensBracketBL]} />
+              <View style={[styles.lensBracket, styles.lensBracketBR]} />
+
+              {/* Status pill badge on top of detected square */}
+              <View style={styles.detectedPill}>
+                <Ionicons
+                  name={isQRCode ? 'qr-code' : 'barcode-outline'}
+                  size={12}
+                  color="#FFFFFF"
+                />
+                <Text style={styles.detectedPillText}>
+                  {isQRCode ? 'QR Code मिला • स्कैन हो रहा है...' : 'बारकोड मिला • स्कैन हो रहा है...'}
+                </Text>
+              </View>
+            </Animated.View>
+          )}
+
           {/* Guide Instructions Text */}
           <View style={styles.instructionBanner}>
             <Ionicons name="scan-outline" size={18} color="#A7F3D0" />
             <Text style={styles.instructionText}>
-              दवा की बोतल या बीज के पैकेट का बारकोड / QR कोड बॉक्स के बीच लाएं
+              बारकोड या QR कोड को बॉक्स के सामने रखें (ऑटो-डिटेक्शन बॉक्स लॉक करेगा)
             </Text>
           </View>
         </View>
@@ -629,6 +890,69 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.9,
     shadowRadius: 6,
   },
+  // Dynamic Bounding Box Square Overlay (Google Lens style)
+  detectedTargetBox: {
+    position: 'absolute',
+    borderWidth: 2,
+    borderColor: '#FACC15', // Vibrant yellow highlight box
+    borderRadius: 8,
+    backgroundColor: 'rgba(250, 204, 21, 0.12)',
+    zIndex: 20,
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+  },
+  lensBracket: {
+    position: 'absolute',
+    width: 14,
+    height: 14,
+    borderColor: '#10B981',
+  },
+  lensBracketTL: {
+    top: -2,
+    left: -2,
+    borderTopWidth: 3,
+    borderLeftWidth: 3,
+    borderTopLeftRadius: 6,
+  },
+  lensBracketTR: {
+    top: -2,
+    right: -2,
+    borderTopWidth: 3,
+    borderRightWidth: 3,
+    borderTopRightRadius: 6,
+  },
+  lensBracketBL: {
+    bottom: -2,
+    left: -2,
+    borderBottomWidth: 3,
+    borderLeftWidth: 3,
+    borderBottomLeftRadius: 6,
+  },
+  lensBracketBR: {
+    bottom: -2,
+    right: -2,
+    borderBottomWidth: 3,
+    borderRightWidth: 3,
+    borderBottomRightRadius: 6,
+  },
+  detectedPill: {
+    position: 'absolute',
+    top: -28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+    borderWidth: 1,
+    borderColor: '#FACC15',
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+  },
+  detectedPillText: {
+    color: '#FACC15',
+    fontSize: 10,
+    fontWeight: '700',
+  },
   overlayBottom: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.65)',
@@ -738,3 +1062,4 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+
