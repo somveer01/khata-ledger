@@ -59,6 +59,23 @@ export function cleanForFirestore<T extends Record<string, any>>(obj: T): Record
   return result;
 }
 
+/**
+ * Ensures strict tenant isolation by stripping out auto-seeded demo/preloaded products.
+ * Any product with an ID starting with 'prod_seed_' is a demo item and must never
+ * pollute a real business catalog or show up across tenant screens.
+ */
+export function sanitizeProductList(raw: Product[]): { cleaned: Product[]; hadSeed: boolean } {
+  if (!Array.isArray(raw)) return { cleaned: [], hadSeed: false };
+  const cleaned = raw.filter((p) => {
+    if (!p || typeof p !== 'object') return false;
+    if (typeof p.id === 'string' && p.id.startsWith('prod_seed_')) {
+      return false;
+    }
+    return true;
+  });
+  return { cleaned, hadSeed: cleaned.length !== raw.length };
+}
+
 export const DataRepository = {
   // -------------------------------------------------------------
   // BUSINESS PROFILE & MULTI-TENANCY
@@ -730,7 +747,12 @@ export const DataRepository = {
       }
 
       // 2. Sync Products (Dual sync: businesses doc + products collection)
-      const localProducts = await StorageService.getProducts(businessId);
+      let localProducts = await StorageService.getProducts(businessId);
+      const { cleaned: sanitizedLocal, hadSeed } = sanitizeProductList(localProducts);
+      if (hadSeed) {
+        localProducts = sanitizedLocal;
+        await StorageService.saveProducts(businessId, sanitizedLocal);
+      }
       if (localProducts.length > 0) {
         // A. Update businesses/{businessId} doc (ALWAYS PERMITTED by cloud security rules)
         await setDoc(
@@ -754,7 +776,17 @@ export const DataRepository = {
               { merge: true }
             ).catch(() => {})
           )
-        ).catch(() => {});
+        ).catch((err) => console.warn('Sync products collection error:', err));
+      } else if (hadSeed) {
+        // Purged seed items from business doc
+        await setDoc(
+          doc(db, 'businesses', businessId),
+          cleanForFirestore({
+            productsCatalog: [],
+            productsUpdatedAt: new Date().toISOString(),
+          }),
+          { merge: true }
+        ).catch((err) => console.warn('Sync empty products to business doc error:', err));
       }
     } catch (err) {
       console.warn('syncLocalDataToFirestore error:', err);
@@ -1355,6 +1387,13 @@ export const DataRepository = {
   async getProducts(businessId: string, forceRefresh = false): Promise<Product[]> {
     let localProducts = await StorageService.getProducts(businessId);
 
+    // Sanitize any existing local cache immediately (purges auto-seeded demo items)
+    const { cleaned: sanitizedLocal, hadSeed: hadLocalSeed } = sanitizeProductList(localProducts);
+    if (hadLocalSeed) {
+      localProducts = sanitizedLocal;
+      await StorageService.saveProducts(businessId, sanitizedLocal);
+    }
+
     // If Firebase is configured, try loading from Firestore
     if (isFirebaseConfigured() && db) {
       // Fast path: if not forceRefresh and we already have local, return immediately and sync background
@@ -1364,8 +1403,20 @@ export const DataRepository = {
           .then(async (bizDoc) => {
             if (bizDoc.exists()) {
               const bizData = bizDoc.data();
-              if (bizData && Array.isArray(bizData.productsCatalog) && bizData.productsCatalog.length > 0) {
-                await StorageService.saveProducts(businessId, bizData.productsCatalog as Product[]);
+              if (bizData && Array.isArray(bizData.productsCatalog)) {
+                const { cleaned: sanitizedRemote, hadSeed } = sanitizeProductList(bizData.productsCatalog as Product[]);
+                await StorageService.saveProducts(businessId, sanitizedRemote);
+                if (hadSeed) {
+                  // Purge demo items from remote business doc too
+                  setDoc(
+                    doc(db, 'businesses', businessId),
+                    cleanForFirestore({
+                      productsCatalog: sanitizedRemote,
+                      productsUpdatedAt: new Date().toISOString(),
+                    }),
+                    { merge: true }
+                  ).catch(() => {});
+                }
               }
             }
           })
@@ -1378,9 +1429,19 @@ export const DataRepository = {
         const bizDoc = await getDoc(doc(db, 'businesses', businessId));
         if (bizDoc.exists()) {
           const bizData = bizDoc.data();
-          if (bizData && Array.isArray(bizData.productsCatalog) && bizData.productsCatalog.length > 0) {
-            const remoteProducts = bizData.productsCatalog as Product[];
+          if (bizData && Array.isArray(bizData.productsCatalog)) {
+            const { cleaned: remoteProducts, hadSeed } = sanitizeProductList(bizData.productsCatalog as Product[]);
             await StorageService.saveProducts(businessId, remoteProducts);
+            if (hadSeed) {
+              setDoc(
+                doc(db, 'businesses', businessId),
+                cleanForFirestore({
+                  productsCatalog: remoteProducts,
+                  productsUpdatedAt: new Date().toISOString(),
+                }),
+                { merge: true }
+              ).catch(() => {});
+            }
             return [...remoteProducts];
           }
         }
@@ -1392,13 +1453,27 @@ export const DataRepository = {
       try {
         const snap = await getDocs(query(collection(db, 'products'), where('businessId', '==', businessId)));
         if (!snap.empty) {
-          const list = snap.docs.map((d) => d.data() as Product);
+          const rawList = snap.docs.map((d) => d.data() as Product);
+          const { cleaned: list, hadSeed } = sanitizeProductList(rawList);
           await StorageService.saveProducts(businessId, list);
           // Backport to business doc so it is accessible
-          setDoc(doc(db, 'businesses', businessId), cleanForFirestore({
-            productsCatalog: list,
-            productsUpdatedAt: new Date().toISOString(),
-          }), { merge: true }).catch(() => {});
+          setDoc(
+            doc(db, 'businesses', businessId),
+            cleanForFirestore({
+              productsCatalog: list,
+              productsUpdatedAt: new Date().toISOString(),
+            }),
+            { merge: true }
+          ).catch(() => {});
+
+          // If hadSeed, clean standalone docs
+          if (hadSeed) {
+            snap.docs.forEach((d) => {
+              if (d.id.startsWith('prod_seed_')) {
+                deleteDoc(d.ref).catch(() => {});
+              }
+            });
+          }
           return [...list];
         }
       } catch (err) {
@@ -1406,13 +1481,7 @@ export const DataRepository = {
       }
     }
 
-    // If local cache has products, return them
-    if (localProducts.length > 0) {
-      return [...localProducts];
-    }
-
-    // Auto-seed preloaded Tycoon products if completely empty
-    localProducts = await this.seedPreloadedProducts(businessId);
+    // Return strictly what the business has (or empty array [] if none) - NEVER auto-seed!
     return [...localProducts];
   },
 

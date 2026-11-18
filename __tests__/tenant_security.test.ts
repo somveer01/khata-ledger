@@ -132,4 +132,107 @@ describe('Multi-Tenant Data Protection Tests', () => {
       expect(otherCustomers[0].name).toBe('Protected Customer');
     });
   });
+
+  describe('Product Catalog Tenant Isolation & Seed Purging', () => {
+    it('returns empty array and does NOT auto-seed default products for a clean business', async () => {
+      const tenantBizId = 'biz_sukhveer_store';
+      const products = await DataRepository.getProducts(tenantBizId);
+      expect(products).toEqual([]);
+      expect(products.length).toBe(0);
+    });
+
+    it('purges existing prod_seed_ items automatically from local cache', async () => {
+      const tenantBizId = 'biz_sukhveer_store';
+      // Simulate previously polluted catalog containing both custom and seed items
+      await StorageService.saveProducts(tenantBizId, [
+        {
+          id: 'prod_seed_1_12345',
+          businessId: tenantBizId,
+          brandName: 'DYCOON',
+          productName: 'DYCOON 400ML',
+          category: 'HERBICIDE',
+          packSize: '400 ML',
+          unit: 'Bottle',
+          billingRatePaise: 28000,
+          withGstRatePaise: 33040,
+          sellingRatePaise: 36500,
+          isActive: true,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        {
+          id: 'prod_owner_custom_1',
+          businessId: tenantBizId,
+          brandName: 'IFFCO',
+          productName: 'Urea 45kg',
+          category: 'FERTILIZER',
+          packSize: '45 KG',
+          unit: 'Bag',
+          billingRatePaise: 26600,
+          withGstRatePaise: 26600,
+          sellingRatePaise: 30000,
+          isActive: true,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ]);
+
+      const products = await DataRepository.getProducts(tenantBizId);
+      // Seed item must be purged; only owner custom product remains
+      expect(products.length).toBe(1);
+      expect(products[0].id).toBe('prod_owner_custom_1');
+      expect(products[0].productName).toBe('Urea 45kg');
+
+      // Subsequent call to storage must also reflect the cleaned catalog
+      const cached = await StorageService.getProducts(tenantBizId);
+      expect(cached.length).toBe(1);
+      expect(cached[0].id).toBe('prod_owner_custom_1');
+    });
+
+    it('strictly isolates products across multiple business tenants', async () => {
+      const biz1 = 'biz_sukhveer';
+      const biz2 = 'biz_somveer';
+
+      await DataRepository.saveProduct({
+        id: 'prod_1_biz1',
+        businessId: biz1,
+        brandName: 'Brand 1',
+        productName: 'Product 1',
+        category: 'PESTICIDE',
+        packSize: '1 L',
+        unit: 'Bottle',
+        billingRatePaise: 10000,
+        withGstRatePaise: 11800,
+        sellingRatePaise: 14000,
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      await DataRepository.saveProduct({
+        id: 'prod_2_biz2',
+        businessId: biz2,
+        brandName: 'Brand 2',
+        productName: 'Product 2',
+        category: 'SEED',
+        packSize: '10 KG',
+        unit: 'Bag',
+        billingRatePaise: 50000,
+        withGstRatePaise: 50000,
+        sellingRatePaise: 60000,
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      const prods1 = await DataRepository.getProducts(biz1);
+      const prods2 = await DataRepository.getProducts(biz2);
+
+      expect(prods1.length).toBe(1);
+      expect(prods1[0].productName).toBe('Product 1');
+
+      expect(prods2.length).toBe(1);
+      expect(prods2[0].productName).toBe('Product 2');
+    });
+  });
 });

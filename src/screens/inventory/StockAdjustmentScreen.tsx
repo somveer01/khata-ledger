@@ -87,8 +87,8 @@ export const StockAdjustmentScreen: React.FC = () => {
 
   const handleOpenAddModal = () => {
     setEditingAdjustment(null);
-    setSelectedProductId(products[0]?.id || '');
-    setSelectedProduct(products[0] || null);
+    setSelectedProductId('');
+    setSelectedProduct(null);
     setAdjustmentType('DAMAGE');
     setQuantity('');
     setReason('');
@@ -419,21 +419,33 @@ export const StockAdjustmentScreen: React.FC = () => {
                     onChangeText={setProductSearch}
                   />
                   <ScrollView style={{ maxHeight: 150 }} nestedScrollEnabled>
-                    {filteredModalProducts.map((p) => (
-                      <TouchableOpacity
-                        key={p.id}
-                        style={styles.prodSelectItem}
-                        onPress={() => {
-                          setSelectedProduct(p);
-                          setSelectedProductId(p.id);
-                        }}
-                      >
-                        <Text style={styles.prodSelectName}>{p.productName}</Text>
-                        <Text style={styles.prodSelectSpec}>
-                          {p.brandName} • {p.packSize}
+                    {filteredModalProducts.length === 0 ? (
+                      <View style={{ padding: 16, alignItems: 'center' }}>
+                        <Text style={{ fontSize: 13, color: Colors.textSecondary, textAlign: 'center' }}>
+                          {products.length === 0
+                            ? (language === 'hi'
+                                ? 'आपके रेट मास्टर में अभी कोई उत्पाद नहीं है। कृपया पहले रेट मास्टर (Rate Master) में उत्पाद जोड़ें।'
+                                : 'No products found in your catalog. Please add products in Rate Master first.')
+                            : (language === 'hi' ? 'कोई उत्पाद नहीं मिला' : 'No matching product found')}
                         </Text>
-                      </TouchableOpacity>
-                    ))}
+                      </View>
+                    ) : (
+                      filteredModalProducts.map((p) => (
+                        <TouchableOpacity
+                          key={p.id}
+                          style={styles.prodSelectItem}
+                          onPress={() => {
+                            setSelectedProduct(p);
+                            setSelectedProductId(p.id);
+                          }}
+                        >
+                          <Text style={styles.prodSelectName}>{p.productName}</Text>
+                          <Text style={styles.prodSelectSpec}>
+                            {p.brandName} • {p.packSize}
+                          </Text>
+                        </TouchableOpacity>
+                      ))
+                    )}
                   </ScrollView>
                 </View>
               ) : (
