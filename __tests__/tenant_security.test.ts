@@ -43,6 +43,12 @@ describe('Multi-Tenant Data Protection Tests', () => {
       expect(getBusinessIdFromEmail(somveerEmail)).toBe('biz_somveerkushwaha_gmail_com');
       // Admin is NOT legacy owner
       expect(isLegacyOwner(somveerEmail)).toBe(false);
+
+      // Also supports somveer.kushwaha@gmail.com (with dot)
+      const somveerEmailWithDot = 'somveer.kushwaha@gmail.com';
+      expect(isSuperAdmin(somveerEmailWithDot)).toBe(true);
+      expect(getBusinessIdFromEmail(somveerEmailWithDot)).toBe('biz_somveer_kushwaha_gmail_com');
+      expect(isLegacyOwner(somveerEmailWithDot)).toBe(false);
     });
 
     it('isolates different user emails into completely separate business IDs', () => {
@@ -130,6 +136,30 @@ describe('Multi-Tenant Data Protection Tests', () => {
       const otherCustomers = await StorageService.getCustomers(otherBizId);
       expect(otherCustomers.length).toBe(1);
       expect(otherCustomers[0].name).toBe('Protected Customer');
+    });
+
+    it('seeds rich presentation demo data exclusively for Somveer store without touching others', async () => {
+      const somveerBizId = 'biz_somveer_kushwaha_gmail_com';
+      const otherBizId = 'biz_other_store_demo_isolated';
+
+      // Seed Somveer demo data
+      await DataRepository.seedSomveerDemoData(somveerBizId);
+
+      const custs = await StorageService.getCustomers(somveerBizId);
+      expect(custs.length).toBe(6);
+      const vils = await StorageService.getVillages(somveerBizId);
+      expect(vils.length).toBe(4);
+      const prods = await StorageService.getProducts(somveerBizId);
+      expect(prods.length).toBe(12);
+      const txs = await StorageService.getTransactions(somveerBizId);
+      expect(txs.length).toBe(18);
+
+      // Verify other store has 0 records
+      const otherCusts = await StorageService.getCustomers(otherBizId);
+      expect(otherCusts.length).toBe(0);
+
+      // Verify legacy store is protected from seeding demo data
+      await expect(DataRepository.seedSomveerDemoData(LEGACY_BUSINESS_ID)).rejects.toThrow();
     });
   });
 

@@ -38,6 +38,7 @@ interface AppContextType {
   updateBusiness: (business: Business) => Promise<void>;
   refreshAllData: () => Promise<void>;
   seedDemoData: () => Promise<void>;
+  seedSomveerDemoData: () => Promise<void>;
   clearData: () => Promise<void>;
 
   // Left Navigation Drawer
@@ -169,6 +170,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (business) {
       setIsSyncing(true);
       await DataRepository.seedDemoData(business.id);
+      await refreshAllData();
+      setIsSyncing(false);
+    }
+  };
+
+  const seedSomveerDemoData = async () => {
+    if (business) {
+      setIsSyncing(true);
+      await DataRepository.seedSomveerDemoData(business.id);
       await refreshAllData();
       setIsSyncing(false);
     }
@@ -339,6 +349,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         updateBusiness,
         refreshAllData,
         seedDemoData,
+        seedSomveerDemoData,
         clearData,
         isDrawerOpen,
         openDrawer,
