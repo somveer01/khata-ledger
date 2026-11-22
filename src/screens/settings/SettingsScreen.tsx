@@ -269,7 +269,7 @@ export const SettingsScreen: React.FC = () => {
               <Text style={styles.sectionTitle}>{t('account', language)}</Text>
               <Text style={styles.accountSubText}>
                 {isAuthenticated
-                  ? `${user?.email?.toLowerCase().includes('somveerkushwaha') ? 'Somveer Kushwaha • ' : (user?.displayName && !user.displayName.toLowerCase().includes('shiv') ? `${user.displayName} • ` : '')}${t('loggedInAs', language)}: ${user?.email}`
+                  ? `${isSuperAdmin ? 'Somveer Kushwaha • ' : (user?.displayName && !user.displayName.toLowerCase().includes('shiv') ? `${user.displayName} • ` : '')}${t('loggedInAs', language)}: ${user?.email}`
                   : t('guestModeNotice', language)}
               </Text>
             </View>
@@ -317,7 +317,7 @@ export const SettingsScreen: React.FC = () => {
                 variant="outline"
                 size="sm"
                 onPress={() => {
-                  const isSomveer = user?.email?.toLowerCase().includes('somveerkushwaha');
+                  const isSomveer = isSuperAdmin;
                   const accountName = isSomveer
                     ? 'Somveer Kushwaha'
                     : (user?.displayName && !user.displayName.toLowerCase().includes('shiv')

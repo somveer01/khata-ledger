@@ -441,13 +441,13 @@ export const DataRepository = {
         return localVillages;
       };
 
-      if (!forceRefresh) {
+      if (!forceRefresh && localVillages.length > 0) {
         // FAST 0ms PATH: Return local cache immediately, sync in background
         syncVillagesTask().catch(() => {});
         return [...localVillages];
       }
 
-      // Explicit pull-to-refresh: await Firestore
+      // Explicit pull-to-refresh or empty local cache: await Firestore
       return await syncVillagesTask();
     }
     return [...localVillages];
@@ -603,13 +603,13 @@ export const DataRepository = {
         return localCustomers;
       };
 
-      if (!forceRefresh) {
+      if (!forceRefresh && localCustomers.length > 0) {
         // FAST 0ms PATH: Return local cache immediately, sync in background
         syncCustomersTask().catch(() => {});
         return [...localCustomers];
       }
 
-      // Explicit pull-to-refresh: await Firestore
+      // Explicit pull-to-refresh or empty local cache: await Firestore
       return await syncCustomersTask();
     }
     return [...localCustomers];
@@ -839,7 +839,7 @@ export const DataRepository = {
         return customerId ? localTx.filter((t) => t.customerId === customerId) : localTx;
       };
 
-      if (!forceRefresh) {
+      if (!forceRefresh && localTx.length > 0) {
         // FAST 0ms PATH: Return local cache immediately, sync in background
         syncTransactionsTask().catch(() => {});
         if (customerId) {
@@ -848,7 +848,7 @@ export const DataRepository = {
         return [...localTx];
       }
 
-      // Explicit pull-to-refresh: await Firestore
+      // Explicit pull-to-refresh or empty local cache: await Firestore
       return await syncTransactionsTask();
     }
 

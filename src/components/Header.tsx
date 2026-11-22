@@ -42,7 +42,7 @@ export const Header: React.FC<HeaderProps> = ({
   } = useApp();
 
   const handleUserPress = () => {
-    const isSomveer = user?.email?.toLowerCase().includes('somveerkushwaha') || false;
+    const isSomveer = isSuperAdmin;
     const accountName = isSomveer
       ? 'Somveer Kushwaha'
       : (user?.displayName && !user.displayName.toLowerCase().includes('shiv')
@@ -62,7 +62,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   const getHeaderAccountText = () => {
     if (!user) return t('account', language);
-    if (user.email?.toLowerCase().includes('somveerkushwaha')) return 'Somveer';
+    if (isSuperAdmin) return 'Somveer';
     if (user.displayName && !user.displayName.toLowerCase().includes('shiv')) {
       return user.displayName;
     }

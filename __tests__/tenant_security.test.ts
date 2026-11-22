@@ -37,12 +37,16 @@ describe('Multi-Tenant Data Protection Tests', () => {
       expect(isLegacyOwner('sukhveersinghkush@gmail.com')).toBe(true);
     });
 
-    it('identifies Somveer as Super Admin with unique store ID', () => {
+    it('identifies Somveer as Super Admin with unique store ID (with or without dot)', () => {
       const somveerEmail = 'somveerkushwaha@gmail.com';
       expect(isSuperAdmin(somveerEmail)).toBe(true);
       expect(getBusinessIdFromEmail(somveerEmail)).toBe('biz_somveerkushwaha_gmail_com');
-      // Admin is NOT legacy owner
       expect(isLegacyOwner(somveerEmail)).toBe(false);
+
+      const somveerEmailWithDot = 'somveer.kushwaha@gmail.com';
+      expect(isSuperAdmin(somveerEmailWithDot)).toBe(true);
+      expect(getBusinessIdFromEmail(somveerEmailWithDot)).toBe('biz_somveerkushwaha_gmail_com');
+      expect(isLegacyOwner(somveerEmailWithDot)).toBe(false);
     });
 
     it('isolates different user emails into completely separate business IDs', () => {

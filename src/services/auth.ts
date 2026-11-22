@@ -12,7 +12,8 @@ import { AppUser } from '../types';
 
 const normalizeDisplayName = (email: string | null | undefined, currentName: string | null | undefined): string | null | undefined => {
   if (!email) return currentName;
-  if (email.toLowerCase().includes('somveerkushwaha')) {
+  const clean = email.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (clean.includes('somveerkushwaha') || clean.includes('somveer')) {
     return 'Somveer Kushwaha';
   }
   if (currentName && currentName.toLowerCase() === 'shiv') {
