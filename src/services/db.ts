@@ -19,13 +19,6 @@ import { toPaise } from '../utils/money';
 import { getBusinessIdFromEmail, isLegacyOwner, LEGACY_BUSINESS_ID, LEGACY_BUSINESS_TENANT_ID, LEGACY_OWNER_EMAIL } from '../utils/tenant';
 import { PRELOADED_TYCOON_PRODUCTS } from '../data/preloadedProducts';
 import { SYSTEM_DEFAULT_UOMS, SYSTEM_DEFAULT_CONVERSIONS } from '../data/defaultUOMs';
-import {
-  SOMVEER_DEMO_BUSINESS,
-  SOMVEER_DEMO_VILLAGES,
-  SOMVEER_DEMO_CUSTOMERS,
-  SOMVEER_DEMO_PRODUCTS,
-  SOMVEER_DEMO_TRANSACTIONS,
-} from '../data/somveerDemoData';
 
 /**
  * Strips all `undefined` fields from an object recursively.
@@ -1386,86 +1379,6 @@ export const DataRepository = {
 
     await StorageService.saveTransactions(businessId, txRecords);
     await StorageService.saveCustomers(businessId, [c1, c2, c3]);
-  },
-
-  // -------------------------------------------------------------
-  // SEED RICH DEMO DATA FOR SOMVEER (Client Presentation Mode)
-  // -------------------------------------------------------------
-  async seedSomveerDemoData(businessId: string): Promise<void> {
-    if (!businessId) {
-      throw new Error('businessId is required to seed demo data.');
-    }
-
-    // LAYER 1: Hard Protection for Sukhveer / Legacy Master Store (NEVER allow seeding here)
-    if (businessId === LEGACY_BUSINESS_ID || businessId === LEGACY_BUSINESS_TENANT_ID) {
-      throw new Error('सुरक्षा प्रतिबंध: मुख्य स्टोर (Kushi kersi seva kendar) में डेमो डेटा लोड नहीं किया जा सकता!');
-    }
-
-    // 1. Set Business profile
-    const demoBiz: Business = {
-      ...SOMVEER_DEMO_BUSINESS,
-      id: businessId,
-      updatedAt: new Date().toISOString(),
-    };
-    await StorageService.setCurrentBusiness(demoBiz);
-
-    // 2. Set Villages
-    const villages = SOMVEER_DEMO_VILLAGES.map((v) => ({ ...v, businessId }));
-    await StorageService.saveVillages(businessId, villages);
-
-    // 3. Set Products (Top MGS Tycoon + Fertilizers + Seeds)
-    const products = SOMVEER_DEMO_PRODUCTS.map((p) => ({ ...p, businessId }));
-    await StorageService.saveProducts(businessId, products);
-
-    // 4. Set Transactions
-    const txRecords = SOMVEER_DEMO_TRANSACTIONS.map((tx) => ({ ...tx, businessId }));
-    await StorageService.saveTransactions(businessId, txRecords);
-
-    // 5. Set Customers with computed balances
-    const customers = SOMVEER_DEMO_CUSTOMERS.map((c) => {
-      const custTxs = txRecords.filter((tx) => tx.customerId === c.id);
-      const { totalCreditPaise, totalPaymentPaise, netOutstandingPaise, transactionCount } =
-        calculateCustomerBalance(c.openingBalancePaise, custTxs);
-      return {
-        ...c,
-        businessId,
-        totalCreditPaise,
-        totalPaymentPaise,
-        currentBalancePaise: netOutstandingPaise,
-        transactionCount,
-      };
-    });
-    await StorageService.saveCustomers(businessId, customers);
-
-    // 6. Sync to Firestore if Firebase is active
-    if (isFirebaseConfigured() && db) {
-      try {
-        await setDoc(
-          doc(db, 'businesses', businessId),
-          cleanForFirestore({
-            ...demoBiz,
-            productsCatalog: products,
-            productsUpdatedAt: new Date().toISOString(),
-          }),
-          { merge: true }
-        );
-
-        for (const v of villages) {
-          await setDoc(doc(db, 'villages', v.id), cleanForFirestore(v), { merge: true }).catch(() => {});
-        }
-        for (const c of customers) {
-          await setDoc(doc(db, 'customers', c.id), cleanForFirestore(c), { merge: true }).catch(() => {});
-        }
-        for (const tx of txRecords) {
-          await setDoc(doc(db, 'transactions', tx.id), cleanForFirestore(tx), { merge: true }).catch(() => {});
-        }
-        for (const p of products) {
-          await setDoc(doc(db, 'products', p.id), cleanForFirestore(p), { merge: true }).catch(() => {});
-        }
-      } catch (err) {
-        console.warn('Firestore seedSomveerDemoData error:', err);
-      }
-    }
   },
 
   // -------------------------------------------------------------

@@ -44,7 +44,6 @@ export const SettingsScreen: React.FC = () => {
     updateBusiness,
     isFirebaseActive,
     seedDemoData,
-    seedSomveerDemoData,
     clearData,
     user,
     isGuest,
@@ -121,48 +120,6 @@ export const SettingsScreen: React.FC = () => {
   };
 
   const isViewingOtherStore = !!user?.email && !!business?.id && business.id !== getBusinessIdFromEmail(user.email);
-
-  const isSomveerAdmin =
-    isSuperAdmin ||
-    (user?.email?.toLowerCase().replace(/[^a-z0-9]/g, '').includes('somveer'));
-
-  const handleSeedSomveerDemoData = () => {
-    if (isViewingOtherStore) {
-      showAlert(
-        t('error', language),
-        language === 'hi'
-          ? 'सुरक्षा प्रतिबंध: आप केवल अपने ही स्टोर में डेमो डेटा लोड कर सकते हैं।'
-          : 'Security restriction: You can only seed demo data in your own store.',
-        undefined,
-        'danger'
-      );
-      return;
-    }
-    confirmAction(
-      language === 'hi' ? '🎯 क्लाइंट डेमो डेटा लोड करें' : 'Load Client Demo Data',
-      language === 'hi'
-        ? 'क्या आप सोमवीर जी के खाते में क्लाइंट प्रेजेंटेशन डेमो डेटा (कुशवाहा कृषि सेवा केन्द्र, 4 गाँव, 6 किसान, MGS Tycoon दवाइयाँ, खाद-बीज और लेजर बिलिंग) लोड करना चाहते हैं?\n\nयह केवल आपके स्टोर में लोड होगा।'
-        : 'Do you want to load the Client Presentation Demo Data (Kushwaha Agro, 4 villages, 6 farmers, MGS Tycoon chemicals, fertilizers, seeds, and ledger)?',
-      async () => {
-        try {
-          await seedSomveerDemoData();
-          showAlert(
-            language === 'hi' ? 'डेमो डेटा लोड सफल' : 'Demo Data Loaded',
-            language === 'hi'
-              ? 'क्लाइंट प्रेजेंटेशन डेमो डेटा सफलतापूर्वक लोड कर दिया गया है! अब आप ग्राहक, गाँव, रेट मास्टर और बिलिंग चेक कर सकते हैं।'
-              : 'Client demo data loaded successfully! You can now demonstrate customers, villages, rate master, and billing.',
-            undefined,
-            'success'
-          );
-        } catch (err: any) {
-          showAlert(t('error', language), err.message || 'Error loading demo data', undefined, 'danger');
-        }
-      },
-      language === 'hi' ? 'हाँ, लोड करें' : 'Load Demo Data',
-      t('cancel', language),
-      'warning'
-    );
-  };
 
   const handleSeedReferenceData = () => {
     if (isViewingOtherStore) {
@@ -312,7 +269,7 @@ export const SettingsScreen: React.FC = () => {
               <Text style={styles.sectionTitle}>{t('account', language)}</Text>
               <Text style={styles.accountSubText}>
                 {isAuthenticated
-                  ? `${(user?.email?.toLowerCase().replace(/[^a-z0-9]/g, '').includes('somveer')) ? 'Somveer Kushwaha • ' : (user?.displayName && !user.displayName.toLowerCase().includes('shiv') ? `${user.displayName} • ` : '')}${t('loggedInAs', language)}: ${user?.email}`
+                  ? `${user?.email?.toLowerCase().includes('somveerkushwaha') ? 'Somveer Kushwaha • ' : (user?.displayName && !user.displayName.toLowerCase().includes('shiv') ? `${user.displayName} • ` : '')}${t('loggedInAs', language)}: ${user?.email}`
                   : t('guestModeNotice', language)}
               </Text>
             </View>
@@ -360,7 +317,7 @@ export const SettingsScreen: React.FC = () => {
                 variant="outline"
                 size="sm"
                 onPress={() => {
-                  const isSomveer = user?.email?.toLowerCase().replace(/[^a-z0-9]/g, '').includes('somveer');
+                  const isSomveer = user?.email?.toLowerCase().includes('somveerkushwaha');
                   const accountName = isSomveer
                     ? 'Somveer Kushwaha'
                     : (user?.displayName && !user.displayName.toLowerCase().includes('shiv')
@@ -707,29 +664,6 @@ export const SettingsScreen: React.FC = () => {
             </View>
           ) : (
             <>
-          {isSomveerAdmin && (
-            <View style={styles.demoPresentationBox}>
-              <View style={styles.demoBadgeRow}>
-                <Ionicons name="sparkles" size={16} color="#047857" />
-                <Text style={styles.demoBadgeText}>
-                  {language === 'hi' ? 'क्लाइंट प्रेजेंटेशन मोड (Somveer)' : 'Client Presentation Mode (Somveer)'}
-                </Text>
-              </View>
-              <Text style={styles.demoBoxDesc}>
-                {language === 'hi'
-                  ? 'क्लाइंट को लाइव डेमो दिखाने हेतु 4 गाँव, 6 किसान, MGS Tycoon दवाइयाँ, खाद-बीज और लेजर लेन-देन लोड करें।'
-                  : 'Seed realistic client presentation data with 4 villages, 6 farmers, MGS Tycoon products, and ledger.'}
-              </Text>
-              <Button
-                title={language === 'hi' ? '🎯 लोड क्लाइंट डेमो डेटा (MGS + खाद/बीज)' : '🎯 Load Client Demo Data'}
-                onPress={handleSeedSomveerDemoData}
-                variant="primary"
-                size="md"
-                icon={<Ionicons name="briefcase-outline" size={18} color="#FFFFFF" />}
-                style={{ marginTop: Spacing.xs, marginBottom: Spacing.md }}
-              />
-            </View>
-          )}
 
           <Button
             title={t('seedSampleData', language)}
@@ -1146,31 +1080,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#3B82F6',
     lineHeight: 18,
-  },
-  demoPresentationBox: {
-    backgroundColor: '#ECFDF5',
-    borderWidth: 1.5,
-    borderColor: '#A7F3D0',
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
-    marginBottom: Spacing.md,
-  },
-  demoBadgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 4,
-  },
-  demoBadgeText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#065F46',
-  },
-  demoBoxDesc: {
-    fontSize: 11,
-    color: '#047857',
-    lineHeight: 16,
-    marginBottom: Spacing.xs,
   },
   timeoutChipTextSelected: {
     color: Colors.primary,

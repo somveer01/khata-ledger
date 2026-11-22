@@ -42,8 +42,7 @@ export const Header: React.FC<HeaderProps> = ({
   } = useApp();
 
   const handleUserPress = () => {
-    const cleanEmail = user?.email?.toLowerCase().replace(/[^a-z0-9]/g, '') || '';
-    const isSomveer = cleanEmail.includes('somveerkushwaha') || cleanEmail.includes('somveer');
+    const isSomveer = user?.email?.toLowerCase().includes('somveerkushwaha') || false;
     const accountName = isSomveer
       ? 'Somveer Kushwaha'
       : (user?.displayName && !user.displayName.toLowerCase().includes('shiv')
@@ -63,8 +62,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   const getHeaderAccountText = () => {
     if (!user) return t('account', language);
-    const cleanEmail = user.email?.toLowerCase().replace(/[^a-z0-9]/g, '') || '';
-    if (cleanEmail.includes('somveerkushwaha') || cleanEmail.includes('somveer')) return 'Somveer';
+    if (user.email?.toLowerCase().includes('somveerkushwaha')) return 'Somveer';
     if (user.displayName && !user.displayName.toLowerCase().includes('shiv')) {
       return user.displayName;
     }
