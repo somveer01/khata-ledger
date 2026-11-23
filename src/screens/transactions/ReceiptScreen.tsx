@@ -81,7 +81,11 @@ export const ReceiptScreen: React.FC = () => {
           {/* Customer & Village */}
           <View style={styles.row}>
             <Text style={styles.label}>{t('customerAccountLabel', language)}:</Text>
-            <Text style={styles.valueBold}>{customer.name}</Text>
+            <Text style={styles.valueBold}>
+              {transaction.isCounterSale
+                ? (transaction.counterCustomerName?.trim() ? `फुटकर - ${transaction.counterCustomerName.trim()}` : (language === 'hi' ? 'फुटकर' : 'Counter Sale'))
+                : customer.name}
+            </Text>
           </View>
           <View style={styles.row}>
             <Text style={styles.label}>{t('village', language)}:</Text>

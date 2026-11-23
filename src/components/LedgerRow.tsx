@@ -14,6 +14,10 @@ interface LedgerRowProps {
 export const LedgerRow: React.FC<LedgerRowProps> = ({ transaction, onPress }) => {
   const isSale = transaction.type === 'CREDIT_SALE';
   const isPayment = transaction.type === 'PAYMENT';
+  const isCounter = transaction.isCounterSale || transaction.customerId?.includes('_counter_cash');
+  const counterDisplayName = transaction.counterCustomerName?.trim()
+    ? `फुटकर - ${transaction.counterCustomerName.trim()}`
+    : 'फुटकर';
 
   return (
     <TouchableOpacity
@@ -40,6 +44,12 @@ export const LedgerRow: React.FC<LedgerRowProps> = ({ transaction, onPress }) =>
 
       {/* Middle: Particulars / Item description */}
       <View style={styles.midCol}>
+        {isCounter ? (
+          <View style={styles.counterRowBadge}>
+            <Ionicons name="flash" size={10} color="#059669" />
+            <Text style={styles.counterRowBadgeText}>{counterDisplayName}</Text>
+          </View>
+        ) : null}
         <Text numberOfLines={2} style={[styles.descText, transaction.isReversed && styles.strikethrough]}>
           {transaction.description || (isSale ? 'उधार सामान' : 'भुगतान (जमा)')}
         </Text>
@@ -143,6 +153,24 @@ const styles = StyleSheet.create({
   midCol: {
     flex: 1,
     paddingHorizontal: Spacing.sm,
+  },
+  counterRowBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+    borderWidth: 1,
+    borderRadius: BorderRadius.sm,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    marginBottom: 3,
+  },
+  counterRowBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#065F46',
   },
   descText: {
     fontSize: 14,

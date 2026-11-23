@@ -992,8 +992,8 @@ export const DataRepository = {
     const finalizedTx: Transaction = {
       ...transaction,
       runningBalancePaise: newBalance,
-      customerName: transaction.isCounterSale && transaction.counterCustomerName
-        ? `फुटकर (${transaction.counterCustomerName})`
+      customerName: transaction.isCounterSale
+        ? (transaction.counterCustomerName?.trim() ? `फुटकर - ${transaction.counterCustomerName.trim()}` : 'फुटकर')
         : customer.name,
       villageName: customer.villageName,
     };
@@ -1065,7 +1065,9 @@ export const DataRepository = {
     const customer = customers[custIndex];
     const updatedTx: Transaction = {
       ...transaction,
-      customerName: customer.name,
+      customerName: transaction.isCounterSale
+        ? (transaction.counterCustomerName?.trim() ? `फुटकर - ${transaction.counterCustomerName.trim()}` : 'फुटकर')
+        : customer.name,
       villageName: customer.villageName,
     };
 
@@ -1135,7 +1137,25 @@ export const DataRepository = {
       return { success: false, error: 'Transaction not found', newBalancePaise: 0 };
     }
 
-    const remainingTxs = transactions.filter((t) => t.id !== transactionId);
+    // Identify linked paired transactions (e.g. counter sale paired with payment)
+    const txIdsToDelete = new Set<string>([transactionId]);
+    if (targetTx.type === 'CREDIT_SALE') {
+      const linkedPayment = transactions.find(
+        (t) => t.type === 'PAYMENT' && t.referenceNumber === targetTx.id
+      );
+      if (linkedPayment) {
+        txIdsToDelete.add(linkedPayment.id);
+      }
+    } else if (targetTx.type === 'PAYMENT' && targetTx.referenceNumber?.startsWith('tx_')) {
+      const linkedSale = transactions.find(
+        (t) => t.type === 'CREDIT_SALE' && t.id === targetTx.referenceNumber && t.isCounterSale
+      );
+      if (linkedSale) {
+        txIdsToDelete.add(linkedSale.id);
+      }
+    }
+
+    const remainingTxs = transactions.filter((t) => !txIdsToDelete.has(t.id));
 
     const custIndex = customers.findIndex((c) => c.id === targetTx.customerId);
     let newBalance = 0;
@@ -1161,9 +1181,11 @@ export const DataRepository = {
 
     if (isFirebaseConfigured() && db) {
       try {
-        deleteDoc(doc(db, 'transactions', transactionId)).catch((err) => {
-          console.warn('Firestore deleteTransaction error:', err);
-        });
+        for (const id of txIdsToDelete) {
+          deleteDoc(doc(db, 'transactions', id)).catch((err) => {
+            console.warn('Firestore deleteTransaction error:', err);
+          });
+        }
         if (custIndex >= 0) {
           const customer = customers[custIndex];
           setDoc(doc(db, 'customers', customer.id), cleanForFirestore({

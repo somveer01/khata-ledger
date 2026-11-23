@@ -1157,7 +1157,7 @@ export const ReportsScreen: React.FC = () => {
                   const custItem = customerPeriodBreakdown.find((b) => b.customer.id === tx.customerId);
                   const isCounter = tx.isCounterSale || (tx.customerId && tx.customerId.includes('_counter_cash'));
                   const displayName = isCounter
-                    ? (tx.counterCustomerName ? `फुटकर (${tx.counterCustomerName})` : (language === 'hi' ? 'फुटकर / काउंटर ग्राहक' : 'Walk-in Counter'))
+                    ? (tx.counterCustomerName?.trim() ? `फुटकर - ${tx.counterCustomerName.trim()}` : (language === 'hi' ? 'फुटकर' : 'Counter'))
                     : (cust?.name || 'Customer');
 
                   return (
@@ -1631,9 +1631,20 @@ export const ReportsScreen: React.FC = () => {
 
               {selectedCustBill?.txs.map((tx, idx) => {
                 const isSale = tx.type === 'CREDIT_SALE';
+                const isCounter = tx.isCounterSale || (tx.customerId && tx.customerId.includes('_counter_cash'));
                 return (
                   <View key={tx.id} style={styles.billEntryRow}>
                     <View style={{ flex: 1, paddingRight: 8 }}>
+                      {isCounter && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 2 }}>
+                          <Ionicons name="flash" size={10} color="#059669" />
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: '#065F46' }}>
+                            {tx.counterCustomerName?.trim()
+                              ? `फुटकर - ${tx.counterCustomerName.trim()}`
+                              : (language === 'hi' ? 'फुटकर' : 'Counter')}
+                          </Text>
+                        </View>
+                      )}
                       <Text style={styles.billEntryDesc}>
                         {idx + 1}. {tx.description || (isSale ? (language === 'hi' ? 'उधार बिक्री' : 'Credit Sale') : (language === 'hi' ? 'जमा भुगतान' : 'Payment'))}
                       </Text>

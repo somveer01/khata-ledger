@@ -493,6 +493,21 @@ export const CustomerLedgerScreen: React.FC = () => {
 
                 {/* Details Breakdown */}
                 <View style={styles.txDetailList}>
+                  {(selectedTx.isCounterSale || selectedTx.customerId?.includes('_counter_cash')) && (
+                    <View style={styles.txDetailRow}>
+                      <Text style={styles.txDetailLabel}>
+                        {language === 'hi' ? 'ग्राहक' : 'Customer'}
+                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Ionicons name="flash" size={13} color="#059669" />
+                        <Text style={[styles.txDetailValue, { color: '#065F46', fontWeight: '800' }]}>
+                          {selectedTx.counterCustomerName?.trim()
+                            ? `फुटकर - ${selectedTx.counterCustomerName.trim()}`
+                            : (language === 'hi' ? 'फुटकर' : 'Counter')}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
                   <View style={styles.txDetailRow}>
                     <Text style={styles.txDetailLabel}>{t('particulars', language)}</Text>
                     <Text style={styles.txDetailValue}>{selectedTx.description}</Text>
