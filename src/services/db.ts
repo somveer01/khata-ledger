@@ -2641,8 +2641,11 @@ export const DataRepository = {
       const pMethod = t.paymentMethod || 'CASH';
 
       if (t.type === 'CREDIT_SALE') {
-        creditSalesPaise += t.amountPaise || 0;
+        const totalBill = t.amountPaise || 0;
         const recv = t.receivedAmountPaise || 0;
+        const unpaidUdhaar = Math.max(0, totalBill - recv);
+        creditSalesPaise += unpaidUdhaar;
+
         if (recv > 0) {
           if (pMethod === 'UPI') {
             upiSalesPaise += recv;

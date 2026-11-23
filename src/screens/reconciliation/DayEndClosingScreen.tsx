@@ -730,7 +730,7 @@ _दैनिक क्लोज़िंग Khata-Book ऐप द्वार�
                 {formatCurrency(summary.totalDaySalesPaise)}
               </Text>
               <Text style={styles.metricCellSub}>
-                नकद: {formatCurrency(summary.cashSalesPaise)} • UPI: {formatCurrency(summary.upiSalesPaise)}
+                नकद: {formatCurrency(summary.cashSalesPaise)} • UPI: {formatCurrency(summary.upiSalesPaise)} • उधारी: {formatCurrency(summary.creditSalesPaise)}
               </Text>
             </View>
 
@@ -739,7 +739,7 @@ _दैनिक क्लोज़िंग Khata-Book ऐप द्वार�
               <Text style={[styles.metricCellVal, { color: '#B45309' }]}>
                 {formatCurrency(summary.creditSalesPaise)}
               </Text>
-              <Text style={styles.metricCellSub}>{language === 'hi' ? 'किसानों के खाते में' : 'Added to Khata'}</Text>
+              <Text style={styles.metricCellSub}>{language === 'hi' ? 'किसानों के खाते में बाकी' : 'Added to Khata'}</Text>
             </View>
 
             <View style={styles.metricCell}>
@@ -747,7 +747,11 @@ _दैनिक क्लोज़िंग Khata-Book ऐप द्वार�
               <Text style={[styles.metricCellVal, { color: '#7C3AED' }]}>
                 {formatCurrency(summary.upiSalesPaise + summary.upiRecoveriesPaise)}
               </Text>
-              <Text style={styles.metricCellSub}>{language === 'hi' ? 'सीधे बैंक में' : 'Direct in Bank'}</Text>
+              <Text style={styles.metricCellSub}>
+                {language === 'hi'
+                  ? `बिक्री: ${formatCurrency(summary.upiSalesPaise)} • वसूली: ${formatCurrency(summary.upiRecoveriesPaise)}`
+                  : `Sale: ${formatCurrency(summary.upiSalesPaise)} • Recovery: ${formatCurrency(summary.upiRecoveriesPaise)}`}
+              </Text>
             </View>
 
             <View style={styles.metricCell}>
@@ -755,7 +759,11 @@ _दैनिक क्लोज़िंग Khata-Book ऐप द्वार�
               <Text style={[styles.metricCellVal, { color: '#166534' }]}>
                 {formatCurrency(summary.totalDayCollectionsPaise)}
               </Text>
-              <Text style={styles.metricCellSub}>{language === 'hi' ? 'नकद + ऑनलाइन' : 'Cash + Online'}</Text>
+              <Text style={styles.metricCellSub}>
+                {language === 'hi'
+                  ? `नकद: ${formatCurrency(summary.cashSalesPaise + summary.cashRecoveriesPaise)} • UPI: ${formatCurrency(summary.upiSalesPaise + summary.upiRecoveriesPaise)}`
+                  : `Cash: ${formatCurrency(summary.cashSalesPaise + summary.cashRecoveriesPaise)} • UPI: ${formatCurrency(summary.upiSalesPaise + summary.upiRecoveriesPaise)}`}
+              </Text>
             </View>
           </View>
         </Card>
