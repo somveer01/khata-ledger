@@ -428,4 +428,42 @@ describe('Khata Book Accounting Engine Tests', () => {
     // Village without transactions SHOULD be deletable
     expect(canDeleteVillage('Shyampur', ['cust_without_tx'])).toBe(true);
   });
+
+  // Test: Walk-in / Counter Cash Sale Net Balance
+  test('Counter Cash Sale: Sale ₹850 with 100% upfront payment leaves net balance at ₹0', () => {
+    const openingBalancePaise = 0;
+    const transactions: Transaction[] = [
+      {
+        id: 'tx_counter_1',
+        businessId: 'biz_somveerkushwaha_gmail_com',
+        customerId: 'cust_biz_somveerkushwaha_gmail_com_counter_cash',
+        type: 'CREDIT_SALE',
+        amountPaise: toPaise(850),
+        receivedAmountPaise: toPaise(850),
+        description: 'DYCOON 400ML',
+        isCounterSale: true,
+        counterCustomerName: 'रमेश ट्रैक्टर वाला',
+        date: '2026-11-23',
+        createdAt: '2026-11-23T10:00:00Z',
+      },
+      {
+        id: 'tx_pay_counter_1',
+        businessId: 'biz_somveerkushwaha_gmail_com',
+        customerId: 'cust_biz_somveerkushwaha_gmail_com_counter_cash',
+        type: 'PAYMENT',
+        amountPaise: toPaise(850),
+        paymentMethod: 'CASH',
+        description: 'काउंटर नकद बिक्री (DYCOON 400ML - रमेश ट्रैक्टर वाला)',
+        isCounterSale: true,
+        referenceNumber: 'tx_counter_1',
+        date: '2026-11-23',
+        createdAt: '2026-11-23T10:00:01Z',
+      },
+    ];
+
+    const result = calculateCustomerBalance(openingBalancePaise, transactions);
+    expect(toRupees(result.netOutstandingPaise)).toBe(0);
+    expect(result.totalCreditPaise).toBe(toPaise(850));
+    expect(result.totalPaymentPaise).toBe(toPaise(850));
+  });
 });

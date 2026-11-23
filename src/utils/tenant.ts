@@ -38,3 +38,18 @@ export const isSuperAdmin = (email: string | null | undefined): boolean => {
   const clean = email.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
   return clean.includes('somveerkushwaha') || clean.includes('somveer');
 };
+
+/**
+ * Deterministically derives the unique Walk-in / Counter Cash Customer ID for a business.
+ */
+export const getCounterCustomerId = (businessId: string): string => {
+  return `cust_${businessId}_counter_cash`;
+};
+
+/**
+ * Checks if a given customer ID represents a Walk-in / Counter customer.
+ */
+export const isCounterCustomerId = (customerId: string | null | undefined): boolean => {
+  if (!customerId) return false;
+  return customerId.includes('_counter_cash') || customerId.startsWith('cust_counter_');
+};

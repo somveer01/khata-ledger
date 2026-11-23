@@ -47,6 +47,12 @@ export const AddEntryScreen: React.FC = () => {
         (route.name === 'ReceivePayment' ? 'PAYMENT' : 'CREDIT');
 
   const [mode, setMode] = useState<EntryMode>(initialMode);
+  const [isCounterSale, setIsCounterSale] = useState<boolean>(
+    route.params?.isCounterSale || editingTransaction?.isCounterSale || false
+  );
+  const [counterCustomerName, setCounterCustomerName] = useState<string>(
+    editingTransaction?.counterCustomerName || ''
+  );
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
     preselectedCustomer || null
   );
@@ -470,6 +476,11 @@ export const AddEntryScreen: React.FC = () => {
 
   const loadCustomers = useCallback(async () => {
     if (!business) return;
+    if (isCounterSale) {
+      const counterCust = await DataRepository.getOrCreateCounterCustomer(business.id);
+      setSelectedCustomer(counterCust);
+      return;
+    }
     const list = await DataRepository.getCustomers(business.id);
     const active = list.filter((c) => c.status !== 'INACTIVE');
     setCustomers(active);
@@ -478,7 +489,7 @@ export const AddEntryScreen: React.FC = () => {
       if (editingTransaction) {
         return active.find((c) => c.id === editingTransaction.customerId) || prev || (active.length > 0 ? active[0] : null);
       }
-      if (prev) {
+      if (prev && !prev.id.includes('_counter_cash')) {
         const updated = active.find((c) => c.id === prev.id);
         return updated || (active.length > 0 ? active[0] : null);
       }
@@ -492,7 +503,7 @@ export const AddEntryScreen: React.FC = () => {
       }
       return active.length > 0 ? active[0] : null;
     });
-  }, [business, mode, editingTransaction, preselectedCustomer]);
+  }, [business, mode, editingTransaction, preselectedCustomer, isCounterSale]);
 
   useEffect(() => {
     loadCustomers();
@@ -542,7 +553,13 @@ export const AddEntryScreen: React.FC = () => {
       return;
     }
 
-    if (!selectedCustomer) {
+    let targetCust = selectedCustomer;
+    if (isCounterSale && (!targetCust || !targetCust.id.includes('_counter_cash'))) {
+      targetCust = await DataRepository.getOrCreateCounterCustomer(business.id);
+      setSelectedCustomer(targetCust);
+    }
+
+    if (!targetCust) {
       showAlert(
         t('error', language), 
         language === 'hi' ? 'कृपया ग्राहक चुनें!' : 'Please select a customer!', 
@@ -573,8 +590,8 @@ export const AddEntryScreen: React.FC = () => {
         return;
       }
 
-      const receivedNum = parseFloat(receivedAmount);
-      const hasReceived = !isNaN(receivedNum) && receivedNum > 0;
+      const receivedNum = isCounterSale ? amountNum : parseFloat(receivedAmount);
+      const hasReceived = isCounterSale ? true : (!isNaN(receivedNum) && receivedNum > 0);
       const receivedPaise = hasReceived ? toPaise(receivedNum) : 0;
 
       setLoading(true);
@@ -586,16 +603,18 @@ export const AddEntryScreen: React.FC = () => {
         if (isEditing && editingTransaction) {
           const updatedTx: Transaction = {
             ...editingTransaction,
-            customerId: selectedCustomer.id,
+            customerId: targetCust.id,
             amountPaise,
             receivedAmountPaise: hasReceived ? receivedPaise : undefined,
-            dueDate: dueDate || undefined,
+            dueDate: isCounterSale ? undefined : (dueDate || undefined),
             description: description.trim(),
             quantity: qtyNum,
             unit: qtyNum ? unit : undefined,
             ratePaise,
             notes: notes.trim() || undefined,
             date,
+            isCounterSale,
+            counterCustomerName: isCounterSale ? (counterCustomerName.trim() || undefined) : undefined,
           };
           const result = await DataRepository.updateTransaction(updatedTx);
           await refreshAllData();
@@ -603,7 +622,7 @@ export const AddEntryScreen: React.FC = () => {
           if (result.success) {
             showAlert(
               t('entryUpdatedSuccess', language),
-              `${selectedCustomer.name}: ${formatCurrency(amountPaise)}\n${t('currentOutstanding', language)}: ${formatCurrency(result.newBalancePaise)}`,
+              `${targetCust.name}: ${formatCurrency(amountPaise)}\n${t('currentOutstanding', language)}: ${formatCurrency(result.newBalancePaise)}`,
               () => navigation.goBack(),
               'success'
             );
@@ -616,18 +635,21 @@ export const AddEntryScreen: React.FC = () => {
         const tx: Transaction = {
           id: `tx_${Date.now()}`,
           businessId: business!.id,
-          customerId: selectedCustomer.id,
+          customerId: targetCust.id,
           type: 'CREDIT_SALE',
           amountPaise,
           receivedAmountPaise: hasReceived ? receivedPaise : undefined,
-          dueDate: dueDate || undefined,
+          dueDate: isCounterSale ? undefined : (dueDate || undefined),
           description: description.trim(),
           quantity: qtyNum,
           unit: qtyNum ? unit : undefined,
           ratePaise,
+          paymentMethod: isCounterSale ? salePaymentMethod : (hasReceived ? salePaymentMethod : undefined),
           notes: notes.trim() || undefined,
           date,
           createdAt: new Date().toISOString(),
+          isCounterSale,
+          counterCustomerName: isCounterSale ? (counterCustomerName.trim() || undefined) : undefined,
           idempotencyKey: `idemp_udhaar_${Date.now()}_${Math.random().toString(36).substring(7)}`,
         };
 
@@ -639,18 +661,24 @@ export const AddEntryScreen: React.FC = () => {
           const payTx: Transaction = {
             id: `tx_pay_${Date.now() + 1}`,
             businessId: business!.id,
-            customerId: selectedCustomer.id,
+            customerId: targetCust.id,
             type: 'PAYMENT',
             amountPaise: receivedPaise,
             paymentMethod: salePaymentMethod,
             description:
-              language === 'hi'
-                ? `बिक्री के समय भुगतान प्राप्त (${description.trim()})`
-                : `Payment at sale (${description.trim()})`,
+              isCounterSale
+                ? (language === 'hi'
+                    ? `काउंटर नकद बिक्री (${description.trim()}${counterCustomerName.trim() ? ` - ${counterCustomerName.trim()}` : ''})`
+                    : `Counter Cash Sale (${description.trim()})`)
+                : (language === 'hi'
+                    ? `बिक्री के समय भुगतान प्राप्त (${description.trim()})`
+                    : `Payment at sale (${description.trim()})`),
             referenceNumber: tx.id,
             notes: notes.trim() || undefined,
             date,
             createdAt: new Date(Date.now() + 500).toISOString(),
+            isCounterSale,
+            counterCustomerName: isCounterSale ? (counterCustomerName.trim() || undefined) : undefined,
             idempotencyKey: `idemp_pay_sale_${tx.id}`,
           };
           const payResult = await DataRepository.recordTransaction(payTx);
@@ -663,7 +691,32 @@ export const AddEntryScreen: React.FC = () => {
         setLoading(false);
 
         if (result.success) {
-          let summaryDetails = `${selectedCustomer.name}\n${t('totalAmount', language)}: ${formatCurrency(amountPaise)}`;
+          if (isCounterSale) {
+            confirmAction(
+              language === 'hi' ? '⚡ काउंटर बिक्री सफल! ✅' : '⚡ Counter Sale Recorded! ✅',
+              `${language === 'hi' ? 'ग्राहक' : 'Customer'}: ${counterCustomerName.trim() || (language === 'hi' ? 'फुटकर ग्राहक' : 'Walk-in')}\n${t('totalAmount', language)}: ${formatCurrency(amountPaise)} (${salePaymentMethod === 'UPI' ? 'UPI' : (language === 'hi' ? 'नकद' : 'Cash')})\n\n${language === 'hi' ? '✓ गल्ले में जोड़ दिया गया है।' : '✓ Successfully added to daily cash drawer.'}`,
+              () => {
+                navigation.goBack();
+              },
+              language === 'hi' ? 'ठीक है (वापस जाएं)' : 'Done',
+              language === 'hi' ? 'अगली काउंटर बिक्री' : 'Next Sale',
+              'success',
+              () => {
+                // Reset form for next counter sale
+                setCounterCustomerName('');
+                setDescription('');
+                setQuantity('1');
+                setRate('');
+                setManualAmount('');
+                setReceivedAmount('');
+                setNotes('');
+                setSelectedProduct(null);
+              }
+            );
+            return;
+          }
+
+          let summaryDetails = `${targetCust.name}\n${t('totalAmount', language)}: ${formatCurrency(amountPaise)}`;
           if (hasReceived) {
             summaryDetails += `\n${t('receivedPaymentAtSale', language)}: ${formatCurrency(receivedPaise)}`;
             summaryDetails += `\n${t('netBalanceAddedToLedger', language)}: ${formatCurrency(amountPaise - receivedPaise)}`;
@@ -676,7 +729,7 @@ export const AddEntryScreen: React.FC = () => {
             () => {
               navigation.replace('CustomerLedger', {
                 customer: {
-                  ...selectedCustomer,
+                  ...targetCust,
                   currentBalancePaise: finalBalancePaise,
                 },
               });
@@ -714,7 +767,7 @@ export const AddEntryScreen: React.FC = () => {
         if (isEditing && editingTransaction) {
           const updatedTx: Transaction = {
             ...editingTransaction,
-            customerId: selectedCustomer.id,
+            customerId: targetCust.id,
             amountPaise: paymentAmountPaise,
             discountPaise: discountAmountPaise > 0 ? discountAmountPaise : undefined,
             description: discountAmountPaise > 0
@@ -731,7 +784,7 @@ export const AddEntryScreen: React.FC = () => {
           if (result.success) {
             showAlert(
               t('entryUpdatedSuccess', language),
-              `${selectedCustomer.name}: ${formatCurrency(paymentAmountPaise)}\n${t('currentOutstanding', language)}: ${formatCurrency(result.newBalancePaise)}`,
+              `${targetCust.name}: ${formatCurrency(paymentAmountPaise)}\n${t('currentOutstanding', language)}: ${formatCurrency(result.newBalancePaise)}`,
               () => navigation.goBack(),
               'success'
             );
@@ -744,7 +797,7 @@ export const AddEntryScreen: React.FC = () => {
         const tx: Transaction = {
           id: `tx_pay_${Date.now()}`,
           businessId: business!.id,
-          customerId: selectedCustomer.id,
+          customerId: targetCust.id,
           type: 'PAYMENT',
           amountPaise: paymentAmountPaise,
           discountPaise: discountAmountPaise > 0 ? discountAmountPaise : undefined,
@@ -766,7 +819,7 @@ export const AddEntryScreen: React.FC = () => {
         if (result.success) {
           navigation.replace('Receipt', {
             customer: {
-              ...selectedCustomer,
+              ...targetCust,
               currentBalancePaise: result.newBalancePaise,
             },
             transaction: result.transaction,
@@ -836,86 +889,222 @@ export const AddEntryScreen: React.FC = () => {
     <View style={styles.screen}>
       <Header
         title={
-          isEditing
+          isCounterSale
+            ? (language === 'hi' ? '⚡ त्वरित काउंटर बिक्री' : '⚡ Quick Counter Sale')
+            : isEditing
             ? (mode === 'CREDIT' ? t('editSaleEntry', language) : t('editPayment', language))
             : (mode === 'CREDIT' ? t('addSaleEntry', language) : t('receivePayment', language))
         }
-        subtitle={mode === 'CREDIT' ? t('giveCreditDesc', language) : t('receivePaymentDesc', language)}
+        subtitle={
+          isCounterSale
+            ? (language === 'hi' ? 'फुटकर नकद/UPI बिक्री • गल्ला मिलान' : 'Walk-in Cash Sale • Cash Drawer')
+            : mode === 'CREDIT' ? t('giveCreditDesc', language) : t('receivePaymentDesc', language)
+        }
         showBack
         onBack={() => navigation.goBack()}
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        {/* Top Segmented Mode Selector: Sale / Udhaar (+) vs Payment (-) */}
-        <View style={styles.segmentedContainer}>
-          <TouchableOpacity
-            activeOpacity={0.8}
-            style={[styles.segmentBtn, mode === 'CREDIT' && styles.activeCreditSegment]}
-            onPress={() => setMode('CREDIT')}
-          >
-            <Ionicons
-              name="add-circle"
-              size={18}
-              color={mode === 'CREDIT' ? '#DC2626' : Colors.textSecondary}
-            />
-            <Text
-              style={[
-                styles.segmentText,
-                mode === 'CREDIT' && styles.activeCreditText,
-              ]}
+        {/* Sale Type Switcher: Farmer Account vs Quick Counter Sale */}
+        {!isEditing && (
+          <View style={styles.saleTypeSwitcher}>
+            <TouchableOpacity
+              style={[styles.saleTypeTab, !isCounterSale && styles.saleTypeTabActive]}
+              onPress={async () => {
+                setIsCounterSale(false);
+                if (business) {
+                  const list = await DataRepository.getCustomers(business.id);
+                  const active = list.filter((c) => c.status !== 'INACTIVE' && !c.id.includes('_counter_cash'));
+                  if (active.length > 0) setSelectedCustomer(active[0]);
+                }
+              }}
+              activeOpacity={0.8}
             >
-              {t('addSaleEntryTab', language)}
-            </Text>
-          </TouchableOpacity>
+              <Ionicons name="person-outline" size={15} color={!isCounterSale ? Colors.primary : Colors.textSecondary} />
+              <Text style={[styles.saleTypeText, !isCounterSale && styles.saleTypeTextActive]}>
+                {language === 'hi' ? '👤 किसान खाता (उधार/जमा)' : '👤 Farmer Account'}
+              </Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            activeOpacity={0.8}
-            style={[styles.segmentBtn, mode === 'PAYMENT' && styles.activePaymentSegment]}
-            onPress={() => setMode('PAYMENT')}
-          >
-            <Ionicons
-              name="add-circle"
-              size={18}
-              color={mode === 'PAYMENT' ? '#16A34A' : Colors.textSecondary}
-            />
-            <Text
-              style={[
-                styles.segmentText,
-                mode === 'PAYMENT' && styles.activePaymentText,
-              ]}
+            <TouchableOpacity
+              style={[styles.saleTypeTab, isCounterSale && styles.saleTypeTabCounterActive]}
+              onPress={async () => {
+                setIsCounterSale(true);
+                setMode('CREDIT');
+                if (business) {
+                  const c = await DataRepository.getOrCreateCounterCustomer(business.id);
+                  setSelectedCustomer(c);
+                }
+              }}
+              activeOpacity={0.8}
             >
-              {t('paymentEntryTab', language)}
-            </Text>
-          </TouchableOpacity>
-        </View>
+              <Ionicons name="flash" size={15} color={isCounterSale ? '#059669' : '#D97706'} />
+              <Text style={[styles.saleTypeText, isCounterSale && styles.saleTypeTextCounterActive]}>
+                {language === 'hi' ? '⚡ काउंटर बिक्री (नकद/UPI)' : '⚡ Quick Counter Sale'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Top Segmented Mode Selector: Sale / Udhaar (+) vs Payment (-) - hidden in Counter mode */}
+        {!isCounterSale && (
+          <View style={styles.segmentedContainer}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={[styles.segmentBtn, mode === 'CREDIT' && styles.activeCreditSegment]}
+              onPress={() => setMode('CREDIT')}
+            >
+              <Ionicons
+                name="add-circle"
+                size={18}
+                color={mode === 'CREDIT' ? '#DC2626' : Colors.textSecondary}
+              />
+              <Text
+                style={[
+                  styles.segmentText,
+                  mode === 'CREDIT' && styles.activeCreditText,
+                ]}
+              >
+                {t('addSaleEntryTab', language)}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={[styles.segmentBtn, mode === 'PAYMENT' && styles.activePaymentSegment]}
+              onPress={() => setMode('PAYMENT')}
+            >
+              <Ionicons
+                name="add-circle"
+                size={18}
+                color={mode === 'PAYMENT' ? '#16A34A' : Colors.textSecondary}
+              />
+              <Text
+                style={[
+                  styles.segmentText,
+                  mode === 'PAYMENT' && styles.activePaymentText,
+                ]}
+              >
+                {t('paymentEntryTab', language)}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         <Card style={styles.mainCard}>
-          {/* Customer Selection Card */}
-          <Text style={styles.fieldLabel}>{t('customer', language)} *</Text>
-          <TouchableOpacity
-            style={styles.customerCardSelector}
-            activeOpacity={0.8}
-            onPress={() => setCustomerModalVisible(true)}
-          >
-            <View style={[styles.custAvatar, mode === 'CREDIT' ? styles.avatarCredit : styles.avatarPayment]}>
-              <Text style={[styles.avatarText, mode === 'CREDIT' ? { color: Colors.creditSale } : { color: Colors.paymentReceived }]}>
-                {selectedCustomer?.name.charAt(0) || '?'}
+          {isCounterSale ? (
+            /* Counter Sale Customer Card with Optional Name & Payment Method */
+            <View style={styles.counterBannerCard}>
+              <View style={styles.counterBannerHeader}>
+                <View style={styles.counterBadgeRow}>
+                  <Ionicons name="flash" size={16} color="#059669" />
+                  <Text style={styles.counterBadgeTitle}>
+                    {language === 'hi' ? 'फुटकर / काउंटर बिक्री' : 'Walk-in Counter Sale'}
+                  </Text>
+                </View>
+                <View style={styles.cashGallaBadge}>
+                  <Ionicons name="wallet-outline" size={13} color="#065F46" />
+                  <Text style={styles.cashGallaBadgeText}>
+                    {language === 'hi' ? 'गल्ले में नकद जुड़ेगा' : 'Added to Drawer'}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.counterSubtitle}>
+                {language === 'hi'
+                  ? 'नया खाता बनाने की ज़रूरत नहीं। नाम या पहचान लिखना चाहें तो नीचे दर्ज करें:'
+                  : 'No account needed. Enter optional customer name or leave blank for default counter sale:'}
               </Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.custName}>{selectedCustomer?.name || t('selectCustomer', language)}</Text>
-              <Text style={styles.custSubtitle}>
-                {selectedCustomer?.villageName || t('noVillageRecorded', language)} • {selectedCustomer?.mobile}
+              <View style={{ marginTop: 8 }}>
+                <Input
+                  label={language === 'hi' ? 'ग्राहक का नाम / विवरण (वैकल्पिक)' : 'Customer Name / Reference (Optional)'}
+                  placeholder={language === 'hi' ? 'उदा. रमेश ट्रैक्टर वाला, कालू, गाड़ी नं...' : 'e.g. Ramesh Tractor, HR-26-XXXX...'}
+                  value={counterCustomerName}
+                  onChangeText={setCounterCustomerName}
+                />
+              </View>
+
+              {/* Payment Method Selector (Cash vs UPI) */}
+              <Text style={[styles.fieldLabel, { marginTop: 10 }]}>
+                {language === 'hi' ? 'भुगतान का तरीका (Payment Mode)' : 'Payment Mode'}
               </Text>
+              <View style={styles.paymentMethodRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.methodPill,
+                    salePaymentMethod === 'CASH' && styles.methodPillActiveCash,
+                  ]}
+                  onPress={() => setSalePaymentMethod('CASH')}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons
+                    name="cash-outline"
+                    size={16}
+                    color={salePaymentMethod === 'CASH' ? '#FFFFFF' : '#059669'}
+                  />
+                  <Text
+                    style={[
+                      styles.methodPillText,
+                      salePaymentMethod === 'CASH' && styles.methodPillTextActive,
+                    ]}
+                  >
+                    {language === 'hi' ? '💵 नकद (CASH)' : '💵 Cash'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.methodPill,
+                    salePaymentMethod === 'UPI' && styles.methodPillActiveUPI,
+                  ]}
+                  onPress={() => setSalePaymentMethod('UPI')}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons
+                    name="qr-code-outline"
+                    size={16}
+                    color={salePaymentMethod === 'UPI' ? '#FFFFFF' : '#2563EB'}
+                  />
+                  <Text
+                    style={[
+                      styles.methodPillText,
+                      salePaymentMethod === 'UPI' && styles.methodPillTextActive,
+                    ]}
+                  >
+                    {language === 'hi' ? '📱 UPI / PhonePe' : '📱 UPI / QR'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
-            <View style={styles.dueBadgeCol}>
-              <Text style={styles.dueBadgeLabel}>{t('statusDue', language)}</Text>
-              <Text style={[styles.dueBadgeAmount, { color: Colors.creditSale }]}>
-                {formatCurrency(currentDuePaise)}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={Colors.textSecondary} />
-          </TouchableOpacity>
+          ) : (
+            /* Regular Customer Selection Card */
+            <>
+              <Text style={styles.fieldLabel}>{t('customer', language)} *</Text>
+              <TouchableOpacity
+                style={styles.customerCardSelector}
+                activeOpacity={0.8}
+                onPress={() => setCustomerModalVisible(true)}
+              >
+                <View style={[styles.custAvatar, mode === 'CREDIT' ? styles.avatarCredit : styles.avatarPayment]}>
+                  <Text style={[styles.avatarText, mode === 'CREDIT' ? { color: Colors.creditSale } : { color: Colors.paymentReceived }]}>
+                    {selectedCustomer?.name.charAt(0) || '?'}
+                  </Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.custName}>{selectedCustomer?.name || t('selectCustomer', language)}</Text>
+                  <Text style={styles.custSubtitle}>
+                    {selectedCustomer?.villageName || t('noVillageRecorded', language)} • {selectedCustomer?.mobile}
+                  </Text>
+                </View>
+                <View style={styles.dueBadgeCol}>
+                  <Text style={styles.dueBadgeLabel}>{t('statusDue', language)}</Text>
+                  <Text style={[styles.dueBadgeAmount, { color: Colors.creditSale }]}>
+                    {formatCurrency(currentDuePaise)}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </>
+          )}
 
           {/* Mode 1: Credit Sale (Udhaar) Fields */}
           {mode === 'CREDIT' ? (
@@ -927,52 +1116,54 @@ export const AddEntryScreen: React.FC = () => {
                 onChange={setDate}
               />
 
-              {/* Payment Due Date with Quick Presets */}
-              <View style={styles.dueDateSection}>
-                <DatePickerField
-                  label={`${t('paymentDueDate', language)} *`}
-                  value={dueDate}
-                  onChange={setDueDate}
-                />
-                {/* Quick Presets for Due Date */}
-                <View style={styles.duePresetsRow}>
-                  <TouchableOpacity
-                    style={[styles.duePresetChip, dueDate === addDaysToDate(date, 7) && styles.activeDuePresetChip]}
-                    onPress={() => setDueDate(addDaysToDate(date, 7))}
-                  >
-                    <Text style={[styles.duePresetText, dueDate === addDaysToDate(date, 7) && styles.activeDuePresetText]}>
-                      {t('presetPlus7Days', language)}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.duePresetChip, dueDate === addDaysToDate(date, 15) && styles.activeDuePresetChip]}
-                    onPress={() => setDueDate(addDaysToDate(date, 15))}
-                  >
-                    <Text style={[styles.duePresetText, dueDate === addDaysToDate(date, 15) && styles.activeDuePresetText]}>
-                      {t('presetPlus15Days', language)}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.duePresetChip, dueDate === addDaysToDate(date, 30) && styles.activeDuePresetChip]}
-                    onPress={() => setDueDate(addDaysToDate(date, 30))}
-                  >
-                    <Text style={[styles.duePresetText, dueDate === addDaysToDate(date, 30) && styles.activeDuePresetText]}>
-                      {t('presetPlus30Days', language)}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.duePresetChip, dueDate === addDaysToDate(date, 60) && styles.activeDuePresetChip]}
-                    onPress={() => setDueDate(addDaysToDate(date, 60))}
-                  >
-                    <Text style={[styles.duePresetText, dueDate === addDaysToDate(date, 60) && styles.activeDuePresetText]}>
-                      {t('presetPlus60Days', language)}
-                    </Text>
-                  </TouchableOpacity>
+              {/* Payment Due Date with Quick Presets - hidden in Counter mode */}
+              {!isCounterSale && (
+                <View style={styles.dueDateSection}>
+                  <DatePickerField
+                    label={`${t('paymentDueDate', language)} *`}
+                    value={dueDate}
+                    onChange={setDueDate}
+                  />
+                  {/* Quick Presets for Due Date */}
+                  <View style={styles.duePresetsRow}>
+                    <TouchableOpacity
+                      style={[styles.duePresetChip, dueDate === addDaysToDate(date, 7) && styles.activeDuePresetChip]}
+                      onPress={() => setDueDate(addDaysToDate(date, 7))}
+                    >
+                      <Text style={[styles.duePresetText, dueDate === addDaysToDate(date, 7) && styles.activeDuePresetText]}>
+                        {t('presetPlus7Days', language)}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.duePresetChip, dueDate === addDaysToDate(date, 15) && styles.activeDuePresetChip]}
+                      onPress={() => setDueDate(addDaysToDate(date, 15))}
+                    >
+                      <Text style={[styles.duePresetText, dueDate === addDaysToDate(date, 15) && styles.activeDuePresetText]}>
+                        {t('presetPlus15Days', language)}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.duePresetChip, dueDate === addDaysToDate(date, 30) && styles.activeDuePresetChip]}
+                      onPress={() => setDueDate(addDaysToDate(date, 30))}
+                    >
+                      <Text style={[styles.duePresetText, dueDate === addDaysToDate(date, 30) && styles.activeDuePresetText]}>
+                        {t('presetPlus30Days', language)}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.duePresetChip, dueDate === addDaysToDate(date, 60) && styles.activeDuePresetChip]}
+                      onPress={() => setDueDate(addDaysToDate(date, 60))}
+                    >
+                      <Text style={[styles.duePresetText, dueDate === addDaysToDate(date, 60) && styles.activeDuePresetText]}>
+                        {t('presetPlus60Days', language)}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.dueDateHelperText}>
+                    ℹ️ {t('paymentDueDateHelper', language)}
+                  </Text>
                 </View>
-                <Text style={styles.dueDateHelperText}>
-                  ℹ️ {t('paymentDueDateHelper', language)}
-                </Text>
-              </View>
+              )}
 
                             {/* Particulars / Goods Section with Dual Option (Type or Pick) */}
               <View style={styles.itemHeaderRow}>
@@ -1274,8 +1465,8 @@ export const AddEntryScreen: React.FC = () => {
             </>
           )}
 
-          {/* In CREDIT mode: Receive payment amount in place of Invoice/Ref No */}
-          {mode === 'CREDIT' ? (
+          {/* In CREDIT mode: Receive payment amount in place of Invoice/Ref No (hidden in Counter Sale mode) */}
+          {!isCounterSale && mode === 'CREDIT' ? (
             <View style={styles.receivedPaymentSection}>
               <Input
                 label={t('receivedPaymentAtSale', language)}
@@ -1360,7 +1551,7 @@ export const AddEntryScreen: React.FC = () => {
                 </View>
               )}
             </View>
-          ) : (
+          ) : !isCounterSale && (
             /* In Payment mode: Reference / Bill No. */
             <Input
               label={t('referenceNumber', language)}
@@ -1378,13 +1569,19 @@ export const AddEntryScreen: React.FC = () => {
             onChangeText={setNotes}
           />
 
-          {/* Submit Action Button - "सेव एंट्री" with checkmark icon */}
+          {/* Submit Action Button */}
           <Button
             title={
               isEditing
                 ? mode === 'CREDIT'
                   ? (language === 'hi' ? `अपडेट एंट्री (₹${finalCreditAmount})` : `Update Entry (₹${finalCreditAmount})`)
                   : (language === 'hi' ? `अपडेट एंट्री (₹${paymentAmount})` : `Update Entry (₹${paymentAmount})`)
+                : isCounterSale
+                ? finalCreditAmount && parseFloat(finalCreditAmount) > 0
+                  ? (language === 'hi'
+                      ? `₹${finalCreditAmount} ${salePaymentMethod === 'UPI' ? 'UPI' : 'नकद'} प्राप्त (गल्ले में जोड़ें)`
+                      : `Collect ₹${finalCreditAmount} (${salePaymentMethod})`)
+                  : (language === 'hi' ? 'काउंटर बिक्री दर्ज करें' : 'Record Counter Sale')
                 : mode === 'CREDIT'
                 ? finalCreditAmount && parseFloat(finalCreditAmount) > 0
                   ? (language === 'hi' ? `सेव एंट्री (₹${finalCreditAmount})` : `Save Entry (₹${finalCreditAmount})`)
@@ -1395,12 +1592,27 @@ export const AddEntryScreen: React.FC = () => {
             }
             onPress={handleSaveEntry}
             loading={loading}
-            variant={mode === 'CREDIT' ? 'success' : 'success'}
+            variant="success"
             size="lg"
-            style={[styles.saveBtn, mode === 'CREDIT' ? styles.submitCreditBtn : styles.submitPaymentBtn]}
+            style={[
+              styles.saveBtn,
+              isCounterSale
+                ? styles.submitCounterBtn
+                : mode === 'CREDIT'
+                ? styles.submitCreditBtn
+                : styles.submitPaymentBtn,
+            ]}
             icon={
               <Ionicons
-                name={isEditing ? 'save-outline' : (mode === 'CREDIT' ? 'checkmark-circle-outline' : 'checkmark-done-circle-outline')}
+                name={
+                  isEditing
+                    ? 'save-outline'
+                    : isCounterSale
+                    ? 'wallet-outline'
+                    : mode === 'CREDIT'
+                    ? 'checkmark-circle-outline'
+                    : 'checkmark-done-circle-outline'
+                }
                 size={22}
                 color={Colors.textInverse}
               />
@@ -1976,6 +2188,134 @@ const styles = StyleSheet.create({
   },
   submitPaymentBtn: {
     backgroundColor: '#16A34A',
+  },
+  submitCounterBtn: {
+    backgroundColor: '#059669',
+  },
+  saleTypeSwitcher: {
+    flexDirection: 'row',
+    backgroundColor: '#E2E8F0',
+    borderRadius: BorderRadius.lg,
+    padding: 3,
+    marginBottom: Spacing.sm,
+    gap: 4,
+  },
+  saleTypeTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 9,
+    borderRadius: BorderRadius.md,
+    gap: 6,
+  },
+  saleTypeTabActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  saleTypeTabCounterActive: {
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1.5,
+    borderColor: '#059669',
+    shadowColor: '#059669',
+    shadowOpacity: 0.15,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  saleTypeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  saleTypeTextActive: {
+    color: Colors.primary,
+    fontWeight: '800',
+  },
+  saleTypeTextCounterActive: {
+    color: '#065F46',
+    fontWeight: '800',
+  },
+  counterBannerCard: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1.5,
+    borderColor: '#86EFAC',
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  counterBannerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  counterBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  counterBadgeTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#065F46',
+  },
+  cashGallaBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.full,
+  },
+  cashGallaBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#065F46',
+  },
+  counterSubtitle: {
+    fontSize: 12,
+    color: '#166534',
+    lineHeight: 16,
+    marginTop: 2,
+  },
+  paymentMethodRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    marginTop: 6,
+  },
+  methodPill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 9,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#FFFFFF',
+  },
+  methodPillActiveCash: {
+    backgroundColor: '#059669',
+    borderColor: '#047857',
+  },
+  methodPillActiveUPI: {
+    backgroundColor: '#2563EB',
+    borderColor: '#1D4ED8',
+  },
+  methodPillText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+  },
+  methodPillTextActive: {
+    color: '#FFFFFF',
   },
 
   unitChipsRow: {

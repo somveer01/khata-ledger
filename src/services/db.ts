@@ -16,7 +16,15 @@ import { StorageService, AttachmentService } from './storage';
 import { Business, Village, Customer, Transaction, VillageSummary, DashboardMetrics, AppUser, StoreActivityStats, Product, UnitOfMeasurement, UnitConversion, Supplier, SupplierPayment, PurchaseInvoice, StockItemSummary, StockAdjustment, DailyExpenseItem, DailyCashClosing } from '../types';
 import { calculateCustomerBalance, calculateVillageSummaries, calculateDashboardMetrics, calculateCustomerDueDate } from './accounting';
 import { toPaise } from '../utils/money';
-import { getBusinessIdFromEmail, isLegacyOwner, LEGACY_BUSINESS_ID, LEGACY_BUSINESS_TENANT_ID, LEGACY_OWNER_EMAIL } from '../utils/tenant';
+import { 
+  getBusinessIdFromEmail, 
+  isLegacyOwner, 
+  LEGACY_BUSINESS_ID, 
+  LEGACY_BUSINESS_TENANT_ID, 
+  LEGACY_OWNER_EMAIL,
+  getCounterCustomerId,
+  isCounterCustomerId 
+} from '../utils/tenant';
 import { PRELOADED_TYCOON_PRODUCTS } from '../data/preloadedProducts';
 import { SYSTEM_DEFAULT_UOMS, SYSTEM_DEFAULT_CONVERSIONS } from '../data/defaultUOMs';
 
@@ -615,6 +623,63 @@ export const DataRepository = {
     return [...localCustomers];
   },
 
+  async getOrCreateCounterCustomer(businessId: string): Promise<Customer> {
+    const counterId = getCounterCustomerId(businessId);
+    const customers = await StorageService.getCustomers(businessId);
+    const existing = customers.find((c) => c.id === counterId || isCounterCustomerId(c.id));
+    if (existing) {
+      return existing;
+    }
+
+    // Check in Firestore if available
+    if (isFirebaseConfigured() && db) {
+      try {
+        const snap = await getDoc(doc(db, 'customers', counterId));
+        if (snap.exists()) {
+          const remoteCust = snap.data() as Customer;
+          await StorageService.saveCustomers(businessId, [...customers, remoteCust]);
+          return remoteCust;
+        }
+      } catch (err) {
+        console.warn('Firestore getOrCreateCounterCustomer error:', err);
+      }
+    }
+
+    // Create virtual counter customer
+    const newCounterCust: Customer = {
+      id: counterId,
+      businessId,
+      name: 'फुटकर / काउंटर ग्राहक',
+      villageId: 'other',
+      villageName: 'काउंटर बिक्री',
+      mobile: '',
+      openingBalancePaise: 0,
+      currentBalancePaise: 0,
+      totalCreditPaise: 0,
+      totalPaymentPaise: 0,
+      transactionCount: 0,
+      status: 'ACTIVE',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const updated = [...customers, newCounterCust];
+    await StorageService.saveCustomers(businessId, updated);
+
+    if (isFirebaseConfigured() && db) {
+      setDoc(
+        doc(db, 'customers', counterId),
+        cleanForFirestore({
+          ...newCounterCust,
+          serverTimestamp: serverTimestamp(),
+        }),
+        { merge: true }
+      ).catch(() => {});
+    }
+
+    return newCounterCust;
+  },
+
   async saveCustomer(customer: Customer): Promise<{ success: boolean; customer: Customer; error?: string }> {
     const customers = await StorageService.getCustomers(customer.businessId);
 
@@ -927,7 +992,9 @@ export const DataRepository = {
     const finalizedTx: Transaction = {
       ...transaction,
       runningBalancePaise: newBalance,
-      customerName: customer.name,
+      customerName: transaction.isCounterSale && transaction.counterCustomerName
+        ? `फुटकर (${transaction.counterCustomerName})`
+        : customer.name,
       villageName: customer.villageName,
     };
 
@@ -2562,6 +2629,13 @@ export const DataRepository = {
           }
         }
       } else if (t.type === 'PAYMENT') {
+        // Skip payments recorded at the exact time of sale (already accounted for via receivedAmountPaise above)
+        if (
+          (t.referenceNumber && t.referenceNumber.startsWith('tx_') && !t.referenceNumber.startsWith('tx_pay_')) ||
+          (t.idempotencyKey && t.idempotencyKey.startsWith('idemp_pay_sale_'))
+        ) {
+          continue;
+        }
         if (pMethod === 'UPI') {
           upiRecoveriesPaise += t.amountPaise || 0;
         } else {

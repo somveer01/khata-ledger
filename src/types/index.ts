@@ -73,6 +73,8 @@ export interface Transaction {
   createdBy?: string;
   isReversed?: boolean;
   reversalReason?: string;
+  isCounterSale?: boolean; // Walk-in / Cash counter sale (bypasses regular farmer credit)
+  counterCustomerName?: string; // Optional typed name/note for walk-in customer (e.g. 'रमेश ट्रैक्टर वाला')
 }
 
 export interface VillageSummary {

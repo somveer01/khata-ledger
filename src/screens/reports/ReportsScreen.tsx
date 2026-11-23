@@ -1155,6 +1155,10 @@ export const ReportsScreen: React.FC = () => {
                   const isSale = tx.type === 'CREDIT_SALE';
                   const cust = customerMap.get(tx.customerId);
                   const custItem = customerPeriodBreakdown.find((b) => b.customer.id === tx.customerId);
+                  const isCounter = tx.isCounterSale || (tx.customerId && tx.customerId.includes('_counter_cash'));
+                  const displayName = isCounter
+                    ? (tx.counterCustomerName ? `फुटकर (${tx.counterCustomerName})` : (language === 'hi' ? 'फुटकर / काउंटर ग्राहक' : 'Walk-in Counter'))
+                    : (cust?.name || 'Customer');
 
                   return (
                     <TouchableOpacity
@@ -1169,13 +1173,20 @@ export const ReportsScreen: React.FC = () => {
                         }
                       }}
                     >
-                      <View style={styles.txDateBadge}>
-                        <Text style={styles.txDateBadgeText}>{formatUpperDate(tx.date)}</Text>
+                      <View style={[styles.txDateBadge, isCounter && { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]}>
+                        <Text style={[styles.txDateBadgeText, isCounter && { color: '#065F46', fontWeight: '800' }]}>
+                          {formatUpperDate(tx.date)}
+                        </Text>
                       </View>
                       <View style={{ flex: 1, paddingHorizontal: Spacing.sm }}>
-                        <Text style={styles.txCustName}>{cust?.name || 'Customer'}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          {isCounter && <Ionicons name="flash" size={12} color="#059669" />}
+                          <Text style={[styles.txCustName, isCounter && { color: '#065F46', fontWeight: '800' }]}>
+                            {displayName}
+                          </Text>
+                        </View>
                         <Text style={styles.txDesc} numberOfLines={1}>
-                          {tx.description} {cust?.villageName ? `• ${cust.villageName}` : ''}
+                          {tx.description} {cust?.villageName && !isCounter ? `• ${cust.villageName}` : ''}
                         </Text>
                         {tx.quantity ? (
                           <Text style={{ fontSize: 10, color: Colors.textSecondary, marginTop: 1 }}>
@@ -1187,14 +1198,20 @@ export const ReportsScreen: React.FC = () => {
                         <Text
                           style={[
                             styles.txAmount,
-                            { color: isSale ? Colors.creditSale : Colors.paymentReceived },
+                            { color: isCounter ? '#059669' : isSale ? Colors.creditSale : Colors.paymentReceived },
                           ]}
                         >
                           {isSale ? '+' : '-'} {formatCurrency(tx.amountPaise)}
                         </Text>
-                        <Text style={styles.txTypeTag}>
-                          {isSale ? (language === 'hi' ? 'उधार' : 'Credit') : (language === 'hi' ? 'जमा' : 'Jama')}
-                        </Text>
+                        {isCounter ? (
+                          <Text style={[styles.txTypeTag, { color: '#059669', fontWeight: '800' }]}>
+                            {tx.paymentMethod === 'UPI' ? '⚡ काउंटर UPI' : '⚡ काउंटर नकद'}
+                          </Text>
+                        ) : (
+                          <Text style={styles.txTypeTag}>
+                            {isSale ? (language === 'hi' ? 'उधार' : 'Credit') : (language === 'hi' ? 'जमा' : 'Jama')}
+                          </Text>
+                        )}
                       </View>
                       {custItem ? (
                         <TouchableOpacity

@@ -132,6 +132,33 @@ export const DashboardScreen: React.FC = () => {
           </View>
         </Card>
 
+        {/* Quick Walk-in Counter Sale Button */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          style={styles.quickCounterBtn}
+          onPress={() => guardAction(() => navigation.navigate('AddEntry', { isCounterSale: true, initialMode: 'CREDIT' }))}
+        >
+          <View style={styles.quickCounterIconCircle}>
+            <Ionicons name="flash" size={22} color="#059669" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={styles.quickCounterTitle}>
+                {language === 'hi' ? '⚡ त्वरित काउंटर बिक्री (नकद/UPI)' : '⚡ Quick Counter Sale'}
+              </Text>
+              <View style={styles.quickCounterBadge}>
+                <Text style={styles.quickCounterBadgeText}>
+                  {language === 'hi' ? 'गल्ला रोकड़' : 'Cash'}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.quickCounterSubtitle}>
+              {language === 'hi' ? 'बिना खाता बनाए 3 सेकंड में फुटकर बिक्री • सीधे गल्ले में जुड़ेगी' : 'Instant walk-in sales without creating accounts • syncs with cash drawer'}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#059669" />
+        </TouchableOpacity>
+
         {/* Primary Quick Action Buttons (Add Entry: Udhaar & Jama) */}
         <View style={styles.actionButtonsRow}>
           <TouchableOpacity
@@ -403,6 +430,56 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.lg,
     borderWidth: 1.5,
     gap: Spacing.sm,
+  },
+  quickCounterBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1.5,
+    borderColor: '#6EE7B7',
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+    shadowColor: '#059669',
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  quickCounterIconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#059669',
+    shadowOpacity: 0.15,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  quickCounterTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#065F46',
+  },
+  quickCounterBadge: {
+    backgroundColor: '#D1FAE5',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: BorderRadius.full,
+  },
+  quickCounterBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#047857',
+  },
+  quickCounterSubtitle: {
+    fontSize: 11,
+    color: '#047857',
+    marginTop: 2,
   },
   giveCreditBtn: {
     backgroundColor: Colors.creditSaleLight,
