@@ -26,6 +26,7 @@ import {
   DailyExpenseItem,
   DailyExpenseCategory,
   CashDenomination,
+  DayTransactionItem,
 } from '../../types';
 import { formatCurrency, toPaise, toRupees } from '../../utils/money';
 import { getTodayIST, formatUpperDate } from '../../utils/date';
@@ -69,6 +70,8 @@ export const DayEndClosingScreen: React.FC = () => {
     totalDaySalesPaise: number;
     totalDayCollectionsPaise: number;
     existingClosing: DailyCashClosing | null;
+    isAutoLocked: boolean;
+    dayTransactions: DayTransactionItem[];
   }>({
     openingCashPaise: 0,
     cashSalesPaise: 0,
@@ -83,11 +86,20 @@ export const DayEndClosingScreen: React.FC = () => {
     totalDaySalesPaise: 0,
     totalDayCollectionsPaise: 0,
     existingClosing: null,
+    isAutoLocked: false,
+    dayTransactions: [],
   });
+
+  // Locked Status: Auto-locked at 9:00 PM or explicitly closed by retailer
+  const isLocked = Boolean(summary.existingClosing?.isLocked || summary.isAutoLocked);
 
   // Manual Overrides / Inputs
   const [customOpeningCash, setCustomOpeningCash] = useState<string>('0');
   const [isEditingOpening, setIsEditingOpening] = useState(false);
+
+  // Day Transactions Filter & Search
+  const [txFilter, setTxFilter] = useState<'ALL' | 'CASH' | 'UPI' | 'CREDIT' | 'EXPENSE' | 'SUPPLIER'>('ALL');
+  const [txSearch, setTxSearch] = useState('');
 
   // Denominations State
   const [n500, setN500] = useState('');
@@ -196,9 +208,108 @@ export const DayEndClosingScreen: React.FC = () => {
   const isShortage = variancePaise < 0 && physicalTotalPaise > 0;
   const isSurplus = variancePaise > 0;
 
+  // Filtered Day Transactions List
+  const filteredTransactions = useMemo(() => {
+    let list = summary.dayTransactions || [];
+    if (txFilter !== 'ALL') {
+      if (txFilter === 'CASH') {
+        list = list.filter((t) => t.paymentMethod === 'CASH');
+      } else if (txFilter === 'UPI') {
+        list = list.filter((t) => t.paymentMethod === 'UPI');
+      } else if (txFilter === 'CREDIT') {
+        list = list.filter((t) => t.type === 'CREDIT_SALE');
+      } else if (txFilter === 'EXPENSE') {
+        list = list.filter((t) => t.type === 'EXPENSE');
+      } else if (txFilter === 'SUPPLIER') {
+        list = list.filter((t) => t.type === 'SUPPLIER_PAYMENT');
+      }
+    }
+    if (txSearch.trim()) {
+      const q = txSearch.toLowerCase().trim();
+      list = list.filter(
+        (t) =>
+          t.partyName.toLowerCase().includes(q) ||
+          t.typeLabelHi.toLowerCase().includes(q) ||
+          (t.description && t.description.toLowerCase().includes(q))
+      );
+    }
+    return list;
+  }, [summary.dayTransactions, txFilter, txSearch]);
+
+  const txCounts = useMemo(() => {
+    const list = summary.dayTransactions || [];
+    return {
+      all: list.length,
+      cash: list.filter((t) => t.paymentMethod === 'CASH').length,
+      upi: list.filter((t) => t.paymentMethod === 'UPI').length,
+      credit: list.filter((t) => t.type === 'CREDIT_SALE').length,
+      expense: list.filter((t) => t.type === 'EXPENSE').length,
+      supplier: list.filter((t) => t.type === 'SUPPLIER_PAYMENT').length,
+    };
+  }, [summary.dayTransactions]);
+
+  const handleShareDayTransactions = async () => {
+    const storeName = business?.name || 'खता बही स्टोर';
+    const dateStr = formatUpperDate(targetDate);
+    const list = summary.dayTransactions || [];
+
+    if (list.length === 0) {
+      showAlert(
+        language === 'hi' ? 'कोई लेन-देन नहीं' : 'No Transactions',
+        language === 'hi' ? 'इस तारीख में कोई लेन-देन दर्ज नहीं है।' : 'No transactions recorded for this date.',
+        undefined,
+        'info'
+      );
+      return;
+    }
+
+    const txLines = list
+      .map((t, idx) => {
+        const sign = t.isDebitOrCredit === 'IN' ? '+' : '-';
+        return `${idx + 1}. ${t.partyName} (${t.typeLabelHi}) [${t.paymentMethod === 'CASH' ? 'नकद' : t.paymentMethod === 'UPI' ? 'UPI' : 'उधारी'}]\n   └ ${sign}${formatCurrency(t.amountPaise)}${t.timeStr ? ` | ⏰ ${t.timeStr}` : ''}${t.description ? ` (${t.description})` : ''}`;
+      })
+      .join('\n');
+
+    const message =
+`*🌾 ${storeName} 🌾*
+*📋 दैनिक लेन-देन सूची (Day Transactions)*
+📅 तारीख: ${dateStr}
+━━━━━━━━━━━━━━━━━━
+${txLines}
+━━━━━━━━━━━━━━━━━━
+*दैनिक सारांश:*
+• कुल बिक्री: ${formatCurrency(summary.totalDaySalesPaise)}
+• कुल वसूली: ${formatCurrency(summary.totalDayCollectionsPaise)}
+• दुकान खर्चे: ${formatCurrency(summary.cashExpensesPaise + summary.upiExpensesPaise)}
+• सप्लायर भुगतान: ${formatCurrency(summary.cashSupplierPaidPaise)}
+• गल्ले में नकद बैलेंस: ${formatCurrency(summary.expectedCashPaise)}
+━━━━━━━━━━━━━━━━━━
+_Khata-Book ऐप द्वारा प्रमाणित_`;
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+      window.open(url, '_blank');
+    } else {
+      try {
+        await Share.share({ message });
+      } catch (e) {
+        console.warn('Share error:', e);
+      }
+    }
+  };
+
   // Add / Save Expense
   const handleSaveExpense = async () => {
     if (!business) return;
+    if (isLocked) {
+      showAlert(
+        language === 'hi' ? 'प्रतिबंधित' : 'Locked',
+        language === 'hi' ? 'यह तारीख रात 9:00 बजे लॉक हो चुकी है। अब इसमें नया खर्च नहीं जोड़ा जा सकता।' : 'Closing is locked for this date.',
+        undefined,
+        'danger'
+      );
+      return;
+    }
     const amountVal = parseFloat(expAmount);
     if (!amountVal || amountVal <= 0) {
       showAlert(language === 'hi' ? 'त्रुटि' : 'Error', language === 'hi' ? 'कृपया मान्य खर्च राशि दर्ज करें।' : 'Please enter valid amount.', undefined, 'danger');
@@ -238,6 +349,15 @@ export const DayEndClosingScreen: React.FC = () => {
 
   const handleDeleteExpense = (id: string) => {
     if (!business) return;
+    if (isLocked) {
+      showAlert(
+        language === 'hi' ? 'प्रतिबंधित' : 'Locked',
+        language === 'hi' ? 'यह तारीख रात 9:00 बजे लॉक हो चुकी है। खर्च हटाया नहीं जा सकता।' : 'Closing is locked.',
+        undefined,
+        'danger'
+      );
+      return;
+    }
     confirmAction(
       language === 'hi' ? 'खर्चा हटाएं?' : 'Delete Expense?',
       language === 'hi' ? 'क्या आप इस खर्चे को हटाना चाहते हैं?' : 'Remove this expense?',
@@ -251,6 +371,15 @@ export const DayEndClosingScreen: React.FC = () => {
   // Lock & Save Closing
   const handleLockClosing = async () => {
     if (!business) return;
+    if (isLocked) {
+      showAlert(
+        language === 'hi' ? 'प्रतिबंधित' : 'Locked',
+        language === 'hi' ? 'यह तारीख रात 9:00 बजे लॉक हो चुकी है। अब इसमें बदलाव नहीं किया जा सकता।' : 'Closing is locked for this date.',
+        undefined,
+        'danger'
+      );
+      return;
+    }
 
     if (physicalTotalPaise === 0) {
       confirmAction(
@@ -268,6 +397,15 @@ export const DayEndClosingScreen: React.FC = () => {
 
   const executeSaveClosing = async () => {
     if (!business) return;
+    if (isLocked) {
+      showAlert(
+        language === 'hi' ? 'प्रतिबंधित' : 'Locked',
+        language === 'hi' ? 'यह तारीख रात 9:00 बजे लॉक हो चुकी है। अब इसमें बदलाव नहीं किया जा सकता।' : 'Closing is locked for this date.',
+        undefined,
+        'danger'
+      );
+      return;
+    }
     setSaving(true);
     try {
       const closingPayload: DailyCashClosing = {
@@ -403,6 +541,25 @@ _दैनिक क्लोज़िंग Khata-Book ऐप द्वार�
       />
 
       <ScrollView style={styles.scrollArea} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        {/* Lock Notice Banner */}
+        {isLocked && (
+          <View style={styles.lockNoticeBanner}>
+            <Ionicons name="lock-closed" size={20} color="#166534" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.lockNoticeTitle}>
+                {language === 'hi' ? '🔒 दिन समाप्त व गल्ला लॉक है' : '🔒 Day Ended & Cash Drawer Locked'}
+              </Text>
+              <Text style={styles.lockNoticeSub}>
+                {language === 'hi'
+                  ? (summary.isAutoLocked
+                      ? 'रात 9:00 बजे नियमानुसार इस दिन का हिसाब अपने आप लॉक हो चुका है। अब इसमें कोई बदलाव नहीं किया जा सकता।'
+                      : 'इस दिन का गल्ला हिसाब लॉक हो चुका है। रिकॉर्ड पूर्णतः सुरक्षित है।')
+                  : 'Cash drawer closing is locked for this date. No edits allowed.'}
+              </Text>
+            </View>
+          </View>
+        )}
+
         {/* Date Selector Row */}
         <Card style={styles.dateSelectorCard}>
           <View style={styles.dateHeaderRow}>
@@ -414,7 +571,7 @@ _दैनिक क्लोज़िंग Khata-Book ऐप द्वार�
                   : (language === 'hi' ? 'पिछली तारीख का हिसाब' : 'Past Date Account')}
               </Text>
             </View>
-            {summary.existingClosing?.isLocked && (
+            {isLocked && (
               <View style={styles.lockedBadge}>
                 <Ionicons name="lock-closed" size={12} color="#166534" />
                 <Text style={styles.lockedBadgeText}>{language === 'hi' ? 'क्लोज़िंग लॉक' : 'Locked'}</Text>
@@ -435,17 +592,19 @@ _दैनिक क्लोज़िंग Khata-Book ऐप द्वार�
             <Text style={styles.cardTitle}>
               💵 {language === 'hi' ? 'गल्ला लाइव हिसाब (Expected Cash)' : 'Cash Drawer Calculation'}
             </Text>
-            <TouchableOpacity
-              onPress={() => setIsEditingOpening(!isEditingOpening)}
-              style={styles.editOpeningBtn}
-            >
-              <Ionicons name={isEditingOpening ? 'checkmark-circle' : 'create-outline'} size={14} color={Colors.primary} />
-              <Text style={styles.editOpeningText}>
-                {isEditingOpening
-                  ? (language === 'hi' ? 'हो गया' : 'Done')
-                  : (language === 'hi' ? 'ओपनिंग बदलें' : 'Edit Opening')}
-              </Text>
-            </TouchableOpacity>
+            {!isLocked && (
+              <TouchableOpacity
+                onPress={() => setIsEditingOpening(!isEditingOpening)}
+                style={styles.editOpeningBtn}
+              >
+                <Ionicons name={isEditingOpening ? 'checkmark-circle' : 'create-outline'} size={14} color={Colors.primary} />
+                <Text style={styles.editOpeningText}>
+                  {isEditingOpening
+                    ? (language === 'hi' ? 'हो गया' : 'Done')
+                    : (language === 'hi' ? 'ओपनिंग बदलें' : 'Edit Opening')}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Opening Cash Input / View */}
@@ -455,7 +614,7 @@ _दैनिक क्लोज़िंग Khata-Book ऐप द्वार�
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.flowLabel}>{language === 'hi' ? 'सुबह का ओपनिंग गल्ला:' : 'Morning Opening Cash:'}</Text>
-              {isEditingOpening ? (
+              {!isLocked && isEditingOpening ? (
                 <View style={styles.openingInputWrap}>
                   <Text style={styles.currencyPrefix}>₹</Text>
                   <TextInput
@@ -526,20 +685,22 @@ _दैनिक क्लोज़िंग Khata-Book ऐप द्वार�
             <Text style={styles.cardTitle}>
               🔢 {language === 'hi' ? 'गल्ला नोट कैलकुलेटर (Physical Count)' : 'Cash Counter'}
             </Text>
-            <TouchableOpacity
-              onPress={() => {
-                setN500('');
-                setN200('');
-                setN100('');
-                setN50('');
-                setN20('');
-                setN10('');
-                setCoinsRupees('');
-              }}
-              style={styles.clearBtn}
-            >
-              <Text style={styles.clearBtnText}>{language === 'hi' ? 'रीसेट' : 'Clear'}</Text>
-            </TouchableOpacity>
+            {!isLocked && (
+              <TouchableOpacity
+                onPress={() => {
+                  setN500('');
+                  setN200('');
+                  setN100('');
+                  setN50('');
+                  setN20('');
+                  setN10('');
+                  setCoinsRupees('');
+                }}
+                style={styles.clearBtn}
+              >
+                <Text style={styles.clearBtnText}>{language === 'hi' ? 'रीसेट' : 'Clear'}</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Denomination Grid */}
@@ -561,13 +722,14 @@ _दैनिक क्लोज़िंग Khata-Book ऐप द्वार�
                   </View>
                   <Text style={styles.multSymbol}>×</Text>
                   <TextInput
-                    style={styles.denomInput}
+                    style={[styles.denomInput, isLocked && { backgroundColor: '#F8FAFC', color: '#64748B' }]}
                     keyboardType="numeric"
                     placeholder="0"
                     placeholderTextColor="#94A3B8"
                     value={d.val}
                     onChangeText={d.setVal}
                     selectTextOnFocus
+                    editable={!isLocked}
                   />
                   <Text style={styles.equalSymbol}>=</Text>
                   <Text style={styles.denomSubtotalText}>₹{subtotal.toLocaleString('en-IN')}</Text>
@@ -582,13 +744,14 @@ _दैनिक क्लोज़िंग Khata-Book ऐप द्वार�
               </View>
               <Text style={styles.multSymbol}>₹</Text>
               <TextInput
-                style={[styles.denomInput, { flex: 2 }]}
+                style={[styles.denomInput, { flex: 2 }, isLocked && { backgroundColor: '#F8FAFC', color: '#64748B' }]}
                 keyboardType="numeric"
                 placeholder="कुल सिक्के राशि (0)"
                 placeholderTextColor="#94A3B8"
                 value={coinsRupees}
                 onChangeText={setCoinsRupees}
                 selectTextOnFocus
+                editable={!isLocked}
               />
               <Text style={styles.equalSymbol}>=</Text>
               <Text style={styles.denomSubtotalText}>
@@ -647,6 +810,7 @@ _दैनिक क्लोज़िंग Khata-Book ऐप द्वार�
                   value={varianceReason}
                   onChangeText={setVarianceReason}
                   containerStyle={{ marginBottom: 0 }}
+                  editable={!isLocked}
                 />
               </View>
             )}
@@ -664,19 +828,21 @@ _दैनिक क्लोज़िंग Khata-Book ऐप द्वार�
                 कुल आज का खर्च: <Text style={{ fontWeight: '800', color: '#DC2626' }}>{formatCurrency(summary.cashExpensesPaise + summary.upiExpensesPaise)}</Text>
               </Text>
             </View>
-            <TouchableOpacity
-              style={styles.addExpenseBtn}
-              onPress={() => {
-                setExpAmount('');
-                setExpTitle('');
-                setExpPaidTo('');
-                setExpMethod('CASH');
-                setExpenseModalVisible(true);
-              }}
-            >
-              <Ionicons name="add" size={16} color="#FFFFFF" />
-              <Text style={styles.addExpenseBtnText}>{language === 'hi' ? '+ खर्चा जोड़ें' : '+ Add Expense'}</Text>
-            </TouchableOpacity>
+            {!isLocked && (
+              <TouchableOpacity
+                style={styles.addExpenseBtn}
+                onPress={() => {
+                  setExpAmount('');
+                  setExpTitle('');
+                  setExpPaidTo('');
+                  setExpMethod('CASH');
+                  setExpenseModalVisible(true);
+                }}
+              >
+                <Ionicons name="add" size={16} color="#FFFFFF" />
+                <Text style={styles.addExpenseBtnText}>{language === 'hi' ? '+ खर्चा जोड़ें' : '+ Add Expense'}</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {expenses.length === 0 ? (
@@ -704,20 +870,163 @@ _दैनिक क्लोज़िंग Khata-Book ऐप द्वार�
                     </Text>
                   </View>
                   <Text style={styles.expItemAmount}>{formatCurrency(e.amountPaise)}</Text>
-                  <TouchableOpacity
-                    onPress={() => handleDeleteExpense(e.id)}
-                    style={styles.delExpBtn}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <Ionicons name="trash-outline" size={16} color="#DC2626" />
-                  </TouchableOpacity>
+                  {!isLocked && (
+                    <TouchableOpacity
+                      onPress={() => handleDeleteExpense(e.id)}
+                      style={styles.delExpBtn}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="trash-outline" size={16} color="#DC2626" />
+                    </TouchableOpacity>
+                  )}
                 </View>
               );
             })
           )}
         </Card>
 
-        {/* 4. Non-Cash & Total Turnover Summary */}
+        {/* 4. Day Transactions Card */}
+        <Card style={styles.card}>
+          <View style={styles.cardHeaderRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardTitle}>
+                📋 {language === 'hi' ? 'उस दिन के सभी लेन-देन' : 'Day Transactions'} ({summary.dayTransactions?.length || 0})
+              </Text>
+              <Text style={styles.cardSub}>
+                {language === 'hi' ? 'बिक्री, उधारी, वसूली, खर्चे व सप्लायर भुगतान' : 'Sales, recoveries, expenses & supplier payments'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.txShareHeaderBtn}
+              onPress={handleShareDayTransactions}
+            >
+              <Ionicons name="logo-whatsapp" size={14} color="#16A34A" />
+              <Text style={styles.txShareHeaderBtnText}>
+                {language === 'hi' ? 'शेयर' : 'Share'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Search Box */}
+          <View style={styles.txSearchWrap}>
+            <Ionicons name="search" size={16} color="#94A3B8" />
+            <TextInput
+              style={styles.txSearchInput}
+              placeholder={language === 'hi' ? 'नाम या विवरण खोजें...' : 'Search transactions...'}
+              placeholderTextColor="#94A3B8"
+              value={txSearch}
+              onChangeText={setTxSearch}
+            />
+            {txSearch.length > 0 && (
+              <TouchableOpacity onPress={() => setTxSearch('')}>
+                <Ionicons name="close-circle" size={16} color="#94A3B8" />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Filter Pills */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.txFilterScroll} contentContainerStyle={styles.txFilterContainer}>
+            <TouchableOpacity
+              style={[styles.txFilterPill, txFilter === 'ALL' && styles.txFilterPillActive]}
+              onPress={() => setTxFilter('ALL')}
+            >
+              <Text style={[styles.txFilterPillText, txFilter === 'ALL' && styles.txFilterPillTextActive]}>
+                {language === 'hi' ? 'सभी' : 'All'} ({txCounts.all})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.txFilterPill, txFilter === 'CASH' && styles.txFilterPillActive]}
+              onPress={() => setTxFilter('CASH')}
+            >
+              <Text style={[styles.txFilterPillText, txFilter === 'CASH' && styles.txFilterPillTextActive]}>
+                💵 {language === 'hi' ? 'नकद' : 'Cash'} ({txCounts.cash})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.txFilterPill, txFilter === 'UPI' && styles.txFilterPillActive]}
+              onPress={() => setTxFilter('UPI')}
+            >
+              <Text style={[styles.txFilterPillText, txFilter === 'UPI' && styles.txFilterPillTextActive]}>
+                💳 UPI ({txCounts.upi})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.txFilterPill, txFilter === 'CREDIT' && styles.txFilterPillActive]}
+              onPress={() => setTxFilter('CREDIT')}
+            >
+              <Text style={[styles.txFilterPillText, txFilter === 'CREDIT' && styles.txFilterPillTextActive]}>
+                📝 {language === 'hi' ? 'नई उधारी' : 'Credit'} ({txCounts.credit})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.txFilterPill, txFilter === 'EXPENSE' && styles.txFilterPillActive]}
+              onPress={() => setTxFilter('EXPENSE')}
+            >
+              <Text style={[styles.txFilterPillText, txFilter === 'EXPENSE' && styles.txFilterPillTextActive]}>
+                ☕ {language === 'hi' ? 'खर्चे' : 'Expenses'} ({txCounts.expense})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.txFilterPill, txFilter === 'SUPPLIER' && styles.txFilterPillActive]}
+              onPress={() => setTxFilter('SUPPLIER')}
+            >
+              <Text style={[styles.txFilterPillText, txFilter === 'SUPPLIER' && styles.txFilterPillTextActive]}>
+                🚚 {language === 'hi' ? 'सप्लायर' : 'Supplier'} ({txCounts.supplier})
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+
+          {/* Transactions List */}
+          {filteredTransactions.length === 0 ? (
+            <View style={styles.emptyExpenseBox}>
+              <Ionicons name="receipt-outline" size={28} color="#94A3B8" />
+              <Text style={styles.emptyExpenseText}>
+                {language === 'hi' ? 'कोई लेन-देन नहीं मिला।' : 'No transactions found.'}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.txListWrap}>
+              {filteredTransactions.map((t) => {
+                const isIn = t.isDebitOrCredit === 'IN';
+                return (
+                  <View key={t.id} style={styles.txRow}>
+                    <View style={[styles.txMethodBadge, { backgroundColor: t.paymentMethod === 'CASH' ? '#DCFCE7' : t.paymentMethod === 'UPI' ? '#F3E8FF' : '#FEF3C7' }]}>
+                      <Text style={[styles.txMethodBadgeText, { color: t.paymentMethod === 'CASH' ? '#15803D' : t.paymentMethod === 'UPI' ? '#7C3AED' : '#B45309' }]}>
+                        {t.paymentMethod === 'CASH' ? 'नकद' : t.paymentMethod === 'UPI' ? 'UPI' : 'उधारी'}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Text style={styles.txPartyName} numberOfLines={1}>
+                          {t.partyName}
+                        </Text>
+                        <Text style={[styles.txAmount, { color: isIn ? '#16A34A' : '#DC2626' }]}>
+                          {isIn ? '+' : '-'}{formatCurrency(t.amountPaise)}
+                        </Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
+                        <Text style={styles.txTypeSub}>
+                          {t.typeLabelHi}
+                          {t.description ? ` • ${t.description}` : ''}
+                        </Text>
+                        {t.timeStr && (
+                          <Text style={styles.txTimeText}>⏰ {t.timeStr}</Text>
+                        )}
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+        </Card>
+
+        {/* 5. Non-Cash & Total Turnover Summary */}
         <Card style={styles.card}>
           <Text style={styles.cardTitle}>
             📊 {language === 'hi' ? 'आज का सम्पूर्ण व्यापार (Day Totals)' : 'Total Day Turnover'}
@@ -768,7 +1077,7 @@ _दैनिक क्लोज़िंग Khata-Book ऐप द्वार�
           </View>
         </Card>
 
-        {/* 5. Closing Actions */}
+        {/* 6. Closing Actions */}
         <View style={styles.actionSection}>
           <TouchableOpacity
             style={styles.whatsappShareBtn}
@@ -781,18 +1090,34 @@ _दैनिक क्लोज़िंग Khata-Book ऐप द्वार�
             </Text>
           </TouchableOpacity>
 
-          <Button
-            title={
-              saving
-                ? (language === 'hi' ? 'क्लोज़िंग लॉक हो रही है...' : 'Locking Closing...')
-                : summary.existingClosing?.isLocked
-                ? (language === 'hi' ? 'दिन का हिसाब अपडेट करें (Update)' : 'Update Day Closing')
-                : (language === 'hi' ? '🔒 दिन समाप्त करें व गल्ला लॉक करें' : 'Lock & Save Day Closing')
-            }
-            onPress={handleLockClosing}
-            loading={saving}
-            style={{ backgroundColor: summary.existingClosing?.isLocked ? '#059669' : Colors.primary }}
-          />
+          {isLocked ? (
+            <View style={styles.lockedBottomBar}>
+              <Ionicons name="shield-checkmark" size={22} color="#15803D" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.lockedBottomBarTitle}>
+                  {language === 'hi' ? '🔒 दिन समाप्त व गल्ला लॉक है' : '🔒 Day Ended & Locked'}
+                </Text>
+                <Text style={styles.lockedBottomBarSub}>
+                  {language === 'hi'
+                    ? (summary.isAutoLocked
+                        ? 'रात 9:00 बजे सिस्टम द्वारा ऑटो-लॉक किया गया। डेटा सुरक्षित है।'
+                        : 'क्लोज़िंग सुरक्षित व लॉक है।')
+                    : 'Day closing is locked and protected.'}
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <Button
+              title={
+                saving
+                  ? (language === 'hi' ? 'क्लोज़िंग लॉक हो रही है...' : 'Locking Closing...')
+                  : (language === 'hi' ? '🔒 दिन समाप्त करें व गल्ला लॉक करें' : 'Lock & Save Day Closing')
+              }
+              onPress={handleLockClosing}
+              loading={saving}
+              style={{ backgroundColor: Colors.primary }}
+            />
+          )}
         </View>
       </ScrollView>
 
@@ -923,9 +1248,19 @@ _दैनिक क्लोज़िंग Khata-Book ऐप द्वार�
                       }}
                     >
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.historyDateTitle}>📅 {formatUpperDate(c.date)}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <Text style={styles.historyDateTitle}>📅 {formatUpperDate(c.date)}</Text>
+                          {c.isLocked && (
+                            <View style={styles.lockedBadge}>
+                              <Ionicons name="lock-closed" size={10} color="#166534" />
+                              <Text style={[styles.lockedBadgeText, { fontSize: 10 }]}>
+                                {language === 'hi' ? 'लॉक' : 'Locked'}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
                         <Text style={styles.historyDateSub}>
-                          अपेक्षित: {formatCurrency(c.expectedCashPaise)} • गिने गए: {formatCurrency(c.physicalCashPaise)}
+                          गल्ला नकद: {formatCurrency(c.physicalCashPaise || c.expectedCashPaise)} • कुल बिक्री: {formatCurrency(c.totalDaySalesPaise || 0)}
                         </Text>
                         {isDiff ? (
                           <Text style={[styles.historyVarianceText, { color: c.variancePaise < 0 ? '#DC2626' : '#D97706' }]}>
@@ -936,6 +1271,12 @@ _दैनिक क्लोज़िंग Khata-Book ऐप द्वार�
                         ) : (
                           <Text style={styles.historyMatchText}>✓ शत-प्रतिशत मिलान</Text>
                         )}
+                        <View style={styles.viewDayTxBtn}>
+                          <Ionicons name="receipt-outline" size={12} color={Colors.primary} />
+                          <Text style={styles.viewDayTxBtnText}>
+                            {language === 'hi' ? 'उस दिन की सभी ट्रांजैक्शन देखें →' : 'View Day Transactions →'}
+                          </Text>
+                        </View>
                       </View>
                       <Ionicons name="chevron-forward" size={18} color={Colors.textSecondary} />
                     </TouchableOpacity>
@@ -1451,6 +1792,166 @@ const styles = StyleSheet.create({
   historyMatchText: {
     fontSize: 11,
     fontWeight: '700',
+    color: '#15803D',
+    marginTop: 2,
+  },
+  viewDayTxBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 6,
+    alignSelf: 'flex-start',
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.sm,
+  },
+  viewDayTxBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  lockNoticeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#DCFCE7',
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  lockNoticeTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#166534',
+  },
+  lockNoticeSub: {
+    fontSize: 11,
+    color: '#15803D',
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  txShareHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.full,
+  },
+  txShareHeaderBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#166534',
+  },
+  txSearchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginVertical: Spacing.xs,
+    gap: 6,
+  },
+  txSearchInput: {
+    flex: 1,
+    fontSize: 13,
+    color: Colors.textPrimary,
+    padding: 0,
+  },
+  txFilterScroll: {
+    marginVertical: 4,
+  },
+  txFilterContainer: {
+    gap: 6,
+    paddingVertical: 2,
+  },
+  txFilterPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: BorderRadius.full,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  txFilterPillActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  txFilterPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+  },
+  txFilterPillTextActive: {
+    color: '#FFFFFF',
+  },
+  txListWrap: {
+    marginTop: Spacing.xs,
+    gap: 4,
+  },
+  txRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F8FAFC',
+  },
+  txMethodBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+    minWidth: 42,
+    alignItems: 'center',
+  },
+  txMethodBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  txPartyName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    flex: 1,
+    marginRight: 8,
+  },
+  txAmount: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  txTypeSub: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    flex: 1,
+  },
+  txTimeText: {
+    fontSize: 10,
+    color: Colors.textMuted,
+  },
+  lockedBottomBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#DCFCE7',
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+  },
+  lockedBottomBarTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#166534',
+  },
+  lockedBottomBarSub: {
+    fontSize: 11,
     color: '#15803D',
     marginTop: 2,
   },

@@ -13,9 +13,10 @@ import {
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './firebase';
 import { StorageService, AttachmentService } from './storage';
-import { Business, Village, Customer, Transaction, VillageSummary, DashboardMetrics, AppUser, StoreActivityStats, Product, UnitOfMeasurement, UnitConversion, Supplier, SupplierPayment, PurchaseInvoice, StockItemSummary, StockAdjustment, DailyExpenseItem, DailyCashClosing } from '../types';
+import { Business, Village, Customer, Transaction, VillageSummary, DashboardMetrics, AppUser, StoreActivityStats, Product, UnitOfMeasurement, UnitConversion, Supplier, SupplierPayment, PurchaseInvoice, StockItemSummary, StockAdjustment, DailyExpenseItem, DailyCashClosing, DayTransactionItem } from '../types';
 import { calculateCustomerBalance, calculateVillageSummaries, calculateDashboardMetrics, calculateCustomerDueDate } from './accounting';
 import { toPaise } from '../utils/money';
+import { isDayPast9PM } from '../utils/date';
 import { 
   getBusinessIdFromEmail, 
   isLegacyOwner, 
@@ -2565,6 +2566,10 @@ export const DataRepository = {
       const list = await StorageService.getDailyCashClosings(closing.businessId);
       const idx = list.findIndex((c) => c.id === closing.id || c.date === closing.date);
       const savedItem = { ...closing, updatedAt: new Date().toISOString() };
+      // Once locked, it permanently remains locked
+      if (idx >= 0 && list[idx].isLocked) {
+        savedItem.isLocked = true;
+      }
       if (idx >= 0) {
         list[idx] = savedItem;
       } else {
@@ -2589,7 +2594,9 @@ export const DataRepository = {
   },
 
   /**
-   * Dynamically calculates full daily cash flow summary for a given business and date
+   * Dynamically calculates full daily cash flow summary for a given business and date,
+   * enforces ₹0 opening cash by default (customer feedback: retailer takes cash home),
+   * auto-locks closing at 9:00 PM IST, and aggregates all transactions for that date.
    */
   async calculateDailyCashSummary(businessId: string, targetDate: string): Promise<{
     openingCashPaise: number;
@@ -2605,27 +2612,32 @@ export const DataRepository = {
     totalDaySalesPaise: number;
     totalDayCollectionsPaise: number;
     existingClosing: DailyCashClosing | null;
+    isAutoLocked: boolean;
+    dayTransactions: DayTransactionItem[];
   }> {
-    const [txs, purchases, supPayments, expenses, closings] = await Promise.all([
+    const [txs, purchases, supPayments, expenses, closings, customers] = await Promise.all([
       this.getTransactions(businessId),
       this.getPurchases(businessId),
       this.getSupplierPayments(businessId),
       this.getDailyExpenses(businessId, targetDate),
       this.getDailyCashClosings(businessId),
+      this.getCustomers(businessId),
     ]);
 
-    const existingClosing = closings.find((c) => c.date === targetDate) || null;
+    const custMap = new Map<string, string>();
+    customers.forEach((c) => {
+      if (c.id && c.name) custMap.set(c.id, c.name);
+    });
 
+    let existingClosing = closings.find((c) => c.date === targetDate) || null;
+
+    // 1. OPENING CASH:
+    // Default to ₹0 every day.
+    // Retailers take their balance home at night and bring fresh cash (or 0) in the morning.
+    // If a closing was already saved with a custom opening for this date, use that opening cash.
     let openingCashPaise = 0;
     if (existingClosing) {
       openingCashPaise = existingClosing.openingCashPaise || 0;
-    } else {
-      const sortedPrior = closings
-        .filter((c) => c.date < targetDate)
-        .sort((a, b) => b.date.localeCompare(a.date));
-      if (sortedPrior.length > 0) {
-        openingCashPaise = sortedPrior[0].physicalCashPaise || sortedPrior[0].expectedCashPaise || 0;
-      }
     }
 
     let cashSalesPaise = 0;
@@ -2634,11 +2646,15 @@ export const DataRepository = {
     let upiRecoveriesPaise = 0;
     let creditSalesPaise = 0;
 
+    const dayTransactions: DayTransactionItem[] = [];
+
     for (const t of txs) {
       const tDate = t.date ? t.date.split('T')[0] : '';
       if (tDate !== targetDate) continue;
 
       const pMethod = t.paymentMethod || 'CASH';
+      const custName = custMap.get(t.customerId) || t.customerName || (t.isCounterSale ? 'काउंटर नकद ग्राहक' : 'ग्राहक');
+      const timeStr = t.createdAt ? new Date(t.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
 
       if (t.type === 'CREDIT_SALE') {
         const totalBill = t.amountPaise || 0;
@@ -2646,12 +2662,38 @@ export const DataRepository = {
         const unpaidUdhaar = Math.max(0, totalBill - recv);
         creditSalesPaise += unpaidUdhaar;
 
+        if (unpaidUdhaar > 0) {
+          dayTransactions.push({
+            id: `${t.id}_credit`,
+            timeStr,
+            partyName: custName,
+            type: 'CREDIT_SALE',
+            typeLabelHi: 'उधार बिक्री (खाता)',
+            amountPaise: unpaidUdhaar,
+            paymentMethod: 'CREDIT',
+            description: t.description || 'उधार सामान',
+            isDebitOrCredit: 'IN',
+          });
+        }
+
         if (recv > 0) {
           if (pMethod === 'UPI') {
             upiSalesPaise += recv;
           } else {
             cashSalesPaise += recv;
           }
+
+          dayTransactions.push({
+            id: `${t.id}_cash`,
+            timeStr,
+            partyName: custName,
+            type: 'CASH_SALE',
+            typeLabelHi: pMethod === 'UPI' ? 'ऑनलाइन बिक्री (UPI)' : 'नकद बिक्री (गल्ला)',
+            amountPaise: recv,
+            paymentMethod: pMethod === 'UPI' ? 'UPI' : 'CASH',
+            description: t.description || 'नकद बिलिंग',
+            isDebitOrCredit: 'IN',
+          });
         }
       } else if (t.type === 'PAYMENT') {
         // Skip payments recorded at the exact time of sale (already accounted for via receivedAmountPaise above)
@@ -2666,6 +2708,18 @@ export const DataRepository = {
         } else {
           cashRecoveriesPaise += t.amountPaise || 0;
         }
+
+        dayTransactions.push({
+          id: t.id,
+          timeStr,
+          partyName: custName,
+          type: 'RECOVERY',
+          typeLabelHi: pMethod === 'UPI' ? 'उधारी वसूली (UPI)' : 'उधारी वसूली (नकद)',
+          amountPaise: t.amountPaise || 0,
+          paymentMethod: pMethod === 'UPI' ? 'UPI' : 'CASH',
+          description: t.description || 'उधारी जमा',
+          isDebitOrCredit: 'IN',
+        });
       }
     }
 
@@ -2677,6 +2731,18 @@ export const DataRepository = {
         if (pMethod === 'CASH') {
           cashSupplierPaidPaise += p.paidAmountPaise;
         }
+        const timeStr = p.createdAt ? new Date(p.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+        dayTransactions.push({
+          id: p.id,
+          timeStr,
+          partyName: p.supplierName || 'सप्लायर',
+          type: 'SUPPLIER_PAYMENT',
+          typeLabelHi: pMethod === 'CASH' ? 'सप्लायर खरीद (नकद दिया)' : 'सप्लायर खरीद (UPI)',
+          amountPaise: p.paidAmountPaise,
+          paymentMethod: pMethod === 'CASH' ? 'CASH' : 'UPI',
+          description: `बिल #${p.invoiceNo || p.id.substring(0, 8)}`,
+          isDebitOrCredit: 'OUT',
+        });
       }
     }
 
@@ -2687,6 +2753,18 @@ export const DataRepository = {
         if (spMethod === 'CASH') {
           cashSupplierPaidPaise += sp.amountPaise;
         }
+        const timeStr = sp.createdAt ? new Date(sp.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+        dayTransactions.push({
+          id: sp.id,
+          timeStr,
+          partyName: sp.supplierName || 'सप्लायर',
+          type: 'SUPPLIER_PAYMENT',
+          typeLabelHi: spMethod === 'CASH' ? 'सप्लायर भुगतान (नकद)' : 'सप्लायर भुगतान (UPI)',
+          amountPaise: sp.amountPaise,
+          paymentMethod: spMethod === 'CASH' ? 'CASH' : 'UPI',
+          description: sp.notes || 'सप्लायर खाता भुगतान',
+          isDebitOrCredit: 'OUT',
+        });
       }
     }
 
@@ -2698,6 +2776,18 @@ export const DataRepository = {
       } else {
         cashExpensesPaise += exp.amountPaise || 0;
       }
+      const timeStr = exp.createdAt ? new Date(exp.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+      dayTransactions.push({
+        id: exp.id,
+        timeStr,
+        partyName: exp.paidTo || exp.title || 'दुकान खर्च',
+        type: 'EXPENSE',
+        typeLabelHi: exp.paymentMethod === 'UPI' ? 'दुकान खर्च (UPI)' : 'दुकान खर्च (गल्ला नकद)',
+        amountPaise: exp.amountPaise || 0,
+        paymentMethod: exp.paymentMethod === 'UPI' ? 'UPI' : 'CASH',
+        description: exp.title || 'विविध खर्च',
+        isDebitOrCredit: 'OUT',
+      });
     }
 
     const expectedCashPaise = Math.max(
@@ -2706,6 +2796,60 @@ export const DataRepository = {
     );
     const totalDaySalesPaise = cashSalesPaise + upiSalesPaise + creditSalesPaise;
     const totalDayCollectionsPaise = cashSalesPaise + upiSalesPaise + cashRecoveriesPaise + upiRecoveriesPaise;
+
+    // 2. AUTO-LOCK AT 9:00 PM (21:00 IST):
+    // Automatically close day and lock cash drawer at 9:00 PM or for any past date
+    const past9PM = isDayPast9PM(targetDate);
+    if (past9PM) {
+      if (!existingClosing) {
+        // Auto-generate locked day closing
+        const autoClosing: DailyCashClosing = {
+          id: `close_${targetDate}`,
+          businessId,
+          date: targetDate,
+          closedAt: new Date().toISOString(),
+          closedBy: 'सिस्टम (ऑटो 9:00 PM)',
+          openingCashPaise,
+          cashSalesPaise,
+          cashRecoveriesPaise,
+          cashSupplierPaidPaise,
+          cashExpensesPaise,
+          expectedCashPaise,
+          denominations: {
+            note500: 0,
+            note200: 0,
+            note100: 0,
+            note50: 0,
+            note20: 0,
+            note10: 0,
+            coins: 0,
+          },
+          physicalCashPaise: expectedCashPaise,
+          variancePaise: 0,
+          varianceReason: 'रात 9:00 बजे ऑटोमैटिक दिन समाप्त व गल्ला लॉक',
+          upiSalesPaise,
+          upiRecoveriesPaise,
+          upiExpensesPaise,
+          creditSalesPaise,
+          totalDaySalesPaise,
+          totalDayCollectionsPaise,
+          isLocked: true,
+          notes: 'रात 9:00 बजे ऑटोमैटिक सिस्टम द्वारा गल्ला लॉक किया गया',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        await this.saveDailyCashClosing(autoClosing);
+        existingClosing = autoClosing;
+      } else if (!existingClosing.isLocked) {
+        // Automatically lock existing draft closing
+        existingClosing.isLocked = true;
+        existingClosing.updatedAt = new Date().toISOString();
+        if (!existingClosing.notes) {
+          existingClosing.notes = 'रात 9:00 बजे ऑटोमैटिक सिस्टम द्वारा गल्ला लॉक किया गया';
+        }
+        await this.saveDailyCashClosing(existingClosing);
+      }
+    }
 
     return {
       openingCashPaise,
@@ -2721,6 +2865,8 @@ export const DataRepository = {
       totalDaySalesPaise,
       totalDayCollectionsPaise,
       existingClosing,
+      isAutoLocked: past9PM || Boolean(existingClosing?.isLocked),
+      dayTransactions,
     };
   },
 

@@ -164,4 +164,108 @@ describe('Daily Cash Closing Reconciliation Tests', () => {
     // 7. Cash Drawer Inflow (दुकान में नकद आया) = Cash Sales (700) + Cash Rec (200) = ₹900
     expect(toRupees(summary.cashSalesPaise + summary.cashRecoveriesPaise)).toBe(900);
   });
+
+  test('Fresh Day Opening Cash defaults to ₹0 even if prior day had physical cash closing', async () => {
+    // Save prior day closing with ₹15,000 physical cash
+    await DataRepository.saveDailyCashClosing({
+      id: 'close_2026-11-22',
+      businessId: testBizId,
+      date: '2026-11-22',
+      closedAt: '2026-11-22T21:00:00Z',
+      closedBy: 'Owner',
+      openingCashPaise: 0,
+      cashSalesPaise: toPaise(15000),
+      cashRecoveriesPaise: 0,
+      cashSupplierPaidPaise: 0,
+      cashExpensesPaise: 0,
+      expectedCashPaise: toPaise(15000),
+      denominations: { note500: 30, note200: 0, note100: 0, note50: 0, note20: 0, note10: 0, coins: 0 },
+      physicalCashPaise: toPaise(15000),
+      variancePaise: 0,
+      upiSalesPaise: 0,
+      upiRecoveriesPaise: 0,
+      upiExpensesPaise: 0,
+      creditSalesPaise: 0,
+      totalDaySalesPaise: toPaise(15000),
+      totalDayCollectionsPaise: toPaise(15000),
+      isLocked: true,
+      createdAt: '2026-11-22T21:00:00Z',
+      updatedAt: '2026-11-22T21:00:00Z',
+    });
+
+    // Check summary for a new day without prior closing
+    const newDaySummary = await DataRepository.calculateDailyCashSummary(testBizId, '2026-11-25');
+    // Must default to 0, NOT 15000!
+    expect(newDaySummary.openingCashPaise).toBe(0);
+    expect(newDaySummary.expectedCashPaise).toBe(0);
+  });
+
+  test('Auto-lock at 9:00 PM / past date automatically locks closing and aggregates dayTransactions', async () => {
+    // 2026-11-20 is a past date, so isDayPast9PM('2026-11-20') is true
+    const pastDate = '2026-11-20';
+
+    // Add a cash sale transaction
+    await StorageService.saveTransactions(testBizId, [
+      {
+        id: 'tx_past_sale',
+        businessId: testBizId,
+        customerId: 'cust_farmer_1',
+        type: 'CREDIT_SALE',
+        amountPaise: toPaise(2500),
+        receivedAmountPaise: toPaise(2500),
+        paymentMethod: 'CASH',
+        description: 'Pesticide & Spray',
+        date: pastDate,
+        createdAt: '2026-11-20T11:30:00Z',
+      },
+      {
+        id: 'tx_pay_past_sale',
+        businessId: testBizId,
+        customerId: 'cust_farmer_1',
+        type: 'PAYMENT',
+        amountPaise: toPaise(2500),
+        paymentMethod: 'CASH',
+        referenceNumber: 'tx_past_sale',
+        description: 'Payment',
+        date: pastDate,
+        createdAt: '2026-11-20T11:30:01Z',
+      },
+    ]);
+
+    // Add a daily expense
+    await DataRepository.saveDailyExpense({
+      id: 'exp_tea_1',
+      businessId: testBizId,
+      date: pastDate,
+      category: 'TEA_SNACKS',
+      title: 'चाय नाश्ता',
+      amountPaise: toPaise(80),
+      paymentMethod: 'CASH',
+      createdAt: '2026-11-20T16:00:00Z',
+    });
+
+    const summary = await DataRepository.calculateDailyCashSummary(testBizId, pastDate);
+
+    // Should be auto locked
+    expect(summary.isAutoLocked).toBe(true);
+    expect(summary.existingClosing).toBeDefined();
+    expect(summary.existingClosing?.isLocked).toBe(true);
+
+    // Verify expected cash: 0 + 2500 - 80 = ₹2,420
+    expect(toRupees(summary.expectedCashPaise)).toBe(2420);
+
+    // Verify day transactions list
+    expect(summary.dayTransactions).toBeDefined();
+    expect(summary.dayTransactions.length).toBeGreaterThanOrEqual(2);
+
+    const saleTx = summary.dayTransactions.find((t) => t.type === 'CASH_SALE');
+    expect(saleTx).toBeDefined();
+    expect(toRupees(saleTx!.amountPaise)).toBe(2500);
+    expect(saleTx!.paymentMethod).toBe('CASH');
+
+    const expTx = summary.dayTransactions.find((t) => t.type === 'EXPENSE');
+    expect(expTx).toBeDefined();
+    expect(toRupees(expTx!.amountPaise)).toBe(80);
+    expect(expTx!.partyName).toBe('चाय नाश्ता');
+  });
 });

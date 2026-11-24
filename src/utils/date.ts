@@ -13,6 +13,29 @@ export function getTodayIST(): string {
 }
 
 /**
+ * Checks if a given target date (YYYY-MM-DD) is past 9:00 PM (21:00 IST).
+ * - If targetDate < todayIST: true (past days are already concluded).
+ * - If targetDate === todayIST: true if current IST hour >= 21 (9:00 PM onwards).
+ * - If targetDate > todayIST: false (future date).
+ */
+export function isDayPast9PM(targetDate: string): boolean {
+  if (!targetDate) return false;
+  const now = new Date();
+  const utcOffset = now.getTime() + now.getTimezoneOffset() * 60000;
+  const istOffset = 5.5 * 3600000;
+  const istDate = new Date(utcOffset + istOffset);
+  const todayIST = format(istDate, 'yyyy-MM-dd');
+
+  if (targetDate < todayIST) {
+    return true;
+  }
+  if (targetDate === todayIST) {
+    return istDate.getHours() >= 21;
+  }
+  return false;
+}
+
+/**
  * Formats a date string (ISO or YYYY-MM-DD) into DD/MMM/YYYY (e.g., 14/Jun/2026)
  */
 export function formatDisplayDate(dateInput: string | Date | undefined): string {

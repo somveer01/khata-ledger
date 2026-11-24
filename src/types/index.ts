@@ -384,3 +384,15 @@ export interface DailyCashClosing {
   updatedAt: string;
 }
 
+export interface DayTransactionItem {
+  id: string;
+  timeStr?: string;
+  partyName: string;
+  type: 'CASH_SALE' | 'CREDIT_SALE' | 'RECOVERY' | 'SUPPLIER_PAYMENT' | 'EXPENSE';
+  typeLabelHi: string;
+  amountPaise: CurrencyPaise;
+  paymentMethod: 'CASH' | 'UPI' | 'CREDIT';
+  description?: string;
+  isDebitOrCredit: 'IN' | 'OUT';
+}
+
