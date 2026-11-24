@@ -121,9 +121,10 @@ export const DayEndClosingScreen: React.FC = () => {
   const [expPaidTo, setExpPaidTo] = useState('');
   const [savingExpense, setSavingExpense] = useState(false);
 
-  // History Modal
+  // History & Day Transactions Modals
   const [historyModalVisible, setHistoryModalVisible] = useState(false);
   const [closingHistory, setClosingHistory] = useState<DailyCashClosing[]>([]);
+  const [dayTxModalVisible, setDayTxModalVisible] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!business) return;
@@ -533,10 +534,18 @@ _दैनिक क्लोज़िंग Khata-Book ऐप द्वार�
         showBack={true}
         onBack={() => navigation.goBack()}
         rightAction={
-          <TouchableOpacity style={styles.historyBtn} onPress={handleOpenHistory}>
-            <Ionicons name="time" size={16} color="#FFFFFF" />
-            <Text style={styles.historyBtnText}>{language === 'hi' ? 'इतिहास' : 'History'}</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <TouchableOpacity style={styles.historyBtn} onPress={() => setDayTxModalVisible(true)}>
+              <Ionicons name="receipt-outline" size={15} color="#FFFFFF" />
+              <Text style={styles.historyBtnText}>
+                {language === 'hi' ? 'लेन-देन' : 'Transactions'} ({summary.dayTransactions?.length || 0})
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.historyBtn} onPress={handleOpenHistory}>
+              <Ionicons name="time" size={15} color="#FFFFFF" />
+              <Text style={styles.historyBtnText}>{language === 'hi' ? 'इतिहास' : 'History'}</Text>
+            </TouchableOpacity>
+          </View>
         }
       />
 
@@ -582,8 +591,28 @@ _दैनिक क्लोज़िंग Khata-Book ऐप द्वार�
           <DatePickerField
             value={targetDate}
             onChange={(d) => setTargetDate(d)}
-            containerStyle={{ marginBottom: 0 }}
+            containerStyle={{ marginBottom: Spacing.xs }}
           />
+
+          {/* Dedicated View Transactions Button */}
+          <TouchableOpacity
+            style={styles.openDayTxBtn}
+            onPress={() => setDayTxModalVisible(true)}
+            activeOpacity={0.8}
+          >
+            <View style={styles.openDayTxBtnLeft}>
+              <Ionicons name="receipt" size={16} color={Colors.primary} />
+              <Text style={styles.openDayTxBtnTitle}>
+                {language === 'hi' ? 'उस दिन के सभी लेन-देन देखें' : 'View All Day Transactions'}
+              </Text>
+            </View>
+            <View style={styles.openDayTxBadge}>
+              <Text style={styles.openDayTxBadgeText}>
+                {summary.dayTransactions?.length || 0} {language === 'hi' ? 'एंट्री' : 'Entries'}
+              </Text>
+              <Ionicons name="chevron-forward" size={14} color={Colors.primary} />
+            </View>
+          </TouchableOpacity>
         </Card>
 
         {/* 1. Cash Reconciliation Overview Card */}
@@ -885,148 +914,7 @@ _दैनिक क्लोज़िंग Khata-Book ऐप द्वार�
           )}
         </Card>
 
-        {/* 4. Day Transactions Card */}
-        <Card style={styles.card}>
-          <View style={styles.cardHeaderRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.cardTitle}>
-                📋 {language === 'hi' ? 'उस दिन के सभी लेन-देन' : 'Day Transactions'} ({summary.dayTransactions?.length || 0})
-              </Text>
-              <Text style={styles.cardSub}>
-                {language === 'hi' ? 'बिक्री, उधारी, वसूली, खर्चे व सप्लायर भुगतान' : 'Sales, recoveries, expenses & supplier payments'}
-              </Text>
-            </View>
-            <TouchableOpacity
-              style={styles.txShareHeaderBtn}
-              onPress={handleShareDayTransactions}
-            >
-              <Ionicons name="logo-whatsapp" size={14} color="#16A34A" />
-              <Text style={styles.txShareHeaderBtnText}>
-                {language === 'hi' ? 'शेयर' : 'Share'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Search Box */}
-          <View style={styles.txSearchWrap}>
-            <Ionicons name="search" size={16} color="#94A3B8" />
-            <TextInput
-              style={styles.txSearchInput}
-              placeholder={language === 'hi' ? 'नाम या विवरण खोजें...' : 'Search transactions...'}
-              placeholderTextColor="#94A3B8"
-              value={txSearch}
-              onChangeText={setTxSearch}
-            />
-            {txSearch.length > 0 && (
-              <TouchableOpacity onPress={() => setTxSearch('')}>
-                <Ionicons name="close-circle" size={16} color="#94A3B8" />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* Filter Pills */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.txFilterScroll} contentContainerStyle={styles.txFilterContainer}>
-            <TouchableOpacity
-              style={[styles.txFilterPill, txFilter === 'ALL' && styles.txFilterPillActive]}
-              onPress={() => setTxFilter('ALL')}
-            >
-              <Text style={[styles.txFilterPillText, txFilter === 'ALL' && styles.txFilterPillTextActive]}>
-                {language === 'hi' ? 'सभी' : 'All'} ({txCounts.all})
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.txFilterPill, txFilter === 'CASH' && styles.txFilterPillActive]}
-              onPress={() => setTxFilter('CASH')}
-            >
-              <Text style={[styles.txFilterPillText, txFilter === 'CASH' && styles.txFilterPillTextActive]}>
-                💵 {language === 'hi' ? 'नकद' : 'Cash'} ({txCounts.cash})
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.txFilterPill, txFilter === 'UPI' && styles.txFilterPillActive]}
-              onPress={() => setTxFilter('UPI')}
-            >
-              <Text style={[styles.txFilterPillText, txFilter === 'UPI' && styles.txFilterPillTextActive]}>
-                💳 UPI ({txCounts.upi})
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.txFilterPill, txFilter === 'CREDIT' && styles.txFilterPillActive]}
-              onPress={() => setTxFilter('CREDIT')}
-            >
-              <Text style={[styles.txFilterPillText, txFilter === 'CREDIT' && styles.txFilterPillTextActive]}>
-                📝 {language === 'hi' ? 'नई उधारी' : 'Credit'} ({txCounts.credit})
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.txFilterPill, txFilter === 'EXPENSE' && styles.txFilterPillActive]}
-              onPress={() => setTxFilter('EXPENSE')}
-            >
-              <Text style={[styles.txFilterPillText, txFilter === 'EXPENSE' && styles.txFilterPillTextActive]}>
-                ☕ {language === 'hi' ? 'खर्चे' : 'Expenses'} ({txCounts.expense})
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.txFilterPill, txFilter === 'SUPPLIER' && styles.txFilterPillActive]}
-              onPress={() => setTxFilter('SUPPLIER')}
-            >
-              <Text style={[styles.txFilterPillText, txFilter === 'SUPPLIER' && styles.txFilterPillTextActive]}>
-                🚚 {language === 'hi' ? 'सप्लायर' : 'Supplier'} ({txCounts.supplier})
-              </Text>
-            </TouchableOpacity>
-          </ScrollView>
-
-          {/* Transactions List */}
-          {filteredTransactions.length === 0 ? (
-            <View style={styles.emptyExpenseBox}>
-              <Ionicons name="receipt-outline" size={28} color="#94A3B8" />
-              <Text style={styles.emptyExpenseText}>
-                {language === 'hi' ? 'कोई लेन-देन नहीं मिला।' : 'No transactions found.'}
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.txListWrap}>
-              {filteredTransactions.map((t) => {
-                const isIn = t.isDebitOrCredit === 'IN';
-                return (
-                  <View key={t.id} style={styles.txRow}>
-                    <View style={[styles.txMethodBadge, { backgroundColor: t.paymentMethod === 'CASH' ? '#DCFCE7' : t.paymentMethod === 'UPI' ? '#F3E8FF' : '#FEF3C7' }]}>
-                      <Text style={[styles.txMethodBadgeText, { color: t.paymentMethod === 'CASH' ? '#15803D' : t.paymentMethod === 'UPI' ? '#7C3AED' : '#B45309' }]}>
-                        {t.paymentMethod === 'CASH' ? 'नकद' : t.paymentMethod === 'UPI' ? 'UPI' : 'उधारी'}
-                      </Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <Text style={styles.txPartyName} numberOfLines={1}>
-                          {t.partyName}
-                        </Text>
-                        <Text style={[styles.txAmount, { color: isIn ? '#16A34A' : '#DC2626' }]}>
-                          {isIn ? '+' : '-'}{formatCurrency(t.amountPaise)}
-                        </Text>
-                      </View>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
-                        <Text style={styles.txTypeSub}>
-                          {t.typeLabelHi}
-                          {t.description ? ` • ${t.description}` : ''}
-                        </Text>
-                        {t.timeStr && (
-                          <Text style={styles.txTimeText}>⏰ {t.timeStr}</Text>
-                        )}
-                      </View>
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
-          )}
-        </Card>
-
-        {/* 5. Non-Cash & Total Turnover Summary */}
+        {/* 4. Non-Cash & Total Turnover Summary */}
         <Card style={styles.card}>
           <Text style={styles.cardTitle}>
             📊 {language === 'hi' ? 'आज का सम्पूर्ण व्यापार (Day Totals)' : 'Total Day Turnover'}
@@ -1271,17 +1159,174 @@ _दैनिक क्लोज़िंग Khata-Book ऐप द्वार�
                         ) : (
                           <Text style={styles.historyMatchText}>✓ शत-प्रतिशत मिलान</Text>
                         )}
-                        <View style={styles.viewDayTxBtn}>
+                        <TouchableOpacity
+                          style={styles.viewDayTxBtn}
+                          onPress={() => {
+                            setTargetDate(c.date);
+                            setHistoryModalVisible(false);
+                            setDayTxModalVisible(true);
+                          }}
+                        >
                           <Ionicons name="receipt-outline" size={12} color={Colors.primary} />
                           <Text style={styles.viewDayTxBtnText}>
                             {language === 'hi' ? 'उस दिन की सभी ट्रांजैक्शन देखें →' : 'View Day Transactions →'}
                           </Text>
-                        </View>
+                        </TouchableOpacity>
                       </View>
                       <Ionicons name="chevron-forward" size={18} color={Colors.textSecondary} />
                     </TouchableOpacity>
                   );
                 })
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Day Transactions Modal */}
+      <Modal visible={dayTxModalVisible} transparent animationType="slide" onRequestClose={() => setDayTxModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { maxHeight: '90%', paddingBottom: Spacing.sm }]}>
+            <View style={styles.modalHeader}>
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Text style={styles.modalTitle}>
+                  📋 {language === 'hi' ? 'दैनिक लेन-देन विवरण' : 'Day Transactions'}
+                </Text>
+                <Text style={styles.modalSubtitle}>
+                  📅 {formatUpperDate(targetDate)} • कुल {summary.dayTransactions?.length || 0} लेन-देन
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.txShareHeaderBtn}
+                onPress={handleShareDayTransactions}
+              >
+                <Ionicons name="logo-whatsapp" size={14} color="#16A34A" />
+                <Text style={styles.txShareHeaderBtnText}>
+                  {language === 'hi' ? 'शेयर' : 'Share'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setDayTxModalVisible(false)} style={{ marginLeft: 10, padding: 4 }}>
+                <Ionicons name="close" size={24} color={Colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Search Box */}
+            <View style={styles.txSearchWrap}>
+              <Ionicons name="search" size={16} color="#94A3B8" />
+              <TextInput
+                style={styles.txSearchInput}
+                placeholder={language === 'hi' ? 'नाम या विवरण खोजें...' : 'Search transactions...'}
+                placeholderTextColor="#94A3B8"
+                value={txSearch}
+                onChangeText={setTxSearch}
+              />
+              {txSearch.length > 0 && (
+                <TouchableOpacity onPress={() => setTxSearch('')}>
+                  <Ionicons name="close-circle" size={16} color="#94A3B8" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Filter Pills */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.txFilterScroll} contentContainerStyle={styles.txFilterContainer}>
+              <TouchableOpacity
+                style={[styles.txFilterPill, txFilter === 'ALL' && styles.txFilterPillActive]}
+                onPress={() => setTxFilter('ALL')}
+              >
+                <Text style={[styles.txFilterPillText, txFilter === 'ALL' && styles.txFilterPillTextActive]}>
+                  {language === 'hi' ? 'सभी' : 'All'} ({txCounts.all})
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.txFilterPill, txFilter === 'CASH' && styles.txFilterPillActive]}
+                onPress={() => setTxFilter('CASH')}
+              >
+                <Text style={[styles.txFilterPillText, txFilter === 'CASH' && styles.txFilterPillTextActive]}>
+                  💵 {language === 'hi' ? 'नकद' : 'Cash'} ({txCounts.cash})
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.txFilterPill, txFilter === 'UPI' && styles.txFilterPillActive]}
+                onPress={() => setTxFilter('UPI')}
+              >
+                <Text style={[styles.txFilterPillText, txFilter === 'UPI' && styles.txFilterPillTextActive]}>
+                  💳 UPI ({txCounts.upi})
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.txFilterPill, txFilter === 'CREDIT' && styles.txFilterPillActive]}
+                onPress={() => setTxFilter('CREDIT')}
+              >
+                <Text style={[styles.txFilterPillText, txFilter === 'CREDIT' && styles.txFilterPillTextActive]}>
+                  📝 {language === 'hi' ? 'नई उधारी' : 'Credit'} ({txCounts.credit})
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.txFilterPill, txFilter === 'EXPENSE' && styles.txFilterPillActive]}
+                onPress={() => setTxFilter('EXPENSE')}
+              >
+                <Text style={[styles.txFilterPillText, txFilter === 'EXPENSE' && styles.txFilterPillTextActive]}>
+                  ☕ {language === 'hi' ? 'खर्चे' : 'Expenses'} ({txCounts.expense})
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.txFilterPill, txFilter === 'SUPPLIER' && styles.txFilterPillActive]}
+                onPress={() => setTxFilter('SUPPLIER')}
+              >
+                <Text style={[styles.txFilterPillText, txFilter === 'SUPPLIER' && styles.txFilterPillTextActive]}>
+                  🚚 {language === 'hi' ? 'सप्लायर' : 'Supplier'} ({txCounts.supplier})
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+
+            {/* Transactions List */}
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
+              {filteredTransactions.length === 0 ? (
+                <View style={styles.emptyExpenseBox}>
+                  <Ionicons name="receipt-outline" size={28} color="#94A3B8" />
+                  <Text style={styles.emptyExpenseText}>
+                    {language === 'hi' ? 'कोई लेन-देन नहीं मिला।' : 'No transactions found.'}
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.txListWrap}>
+                  {filteredTransactions.map((t) => {
+                    const isIn = t.isDebitOrCredit === 'IN';
+                    return (
+                      <View key={t.id} style={styles.txRow}>
+                        <View style={[styles.txMethodBadge, { backgroundColor: t.paymentMethod === 'CASH' ? '#DCFCE7' : t.paymentMethod === 'UPI' ? '#F3E8FF' : '#FEF3C7' }]}>
+                          <Text style={[styles.txMethodBadgeText, { color: t.paymentMethod === 'CASH' ? '#15803D' : t.paymentMethod === 'UPI' ? '#7C3AED' : '#B45309' }]}>
+                            {t.paymentMethod === 'CASH' ? 'नकद' : t.paymentMethod === 'UPI' ? 'UPI' : 'उधारी'}
+                          </Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <Text style={styles.txPartyName} numberOfLines={1}>
+                              {t.partyName}
+                            </Text>
+                            <Text style={[styles.txAmount, { color: isIn ? '#16A34A' : '#DC2626' }]}>
+                              {isIn ? '+' : '-'}{formatCurrency(t.amountPaise)}
+                            </Text>
+                          </View>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
+                            <Text style={styles.txTypeSub}>
+                              {t.typeLabelHi}
+                              {t.description ? ` • ${t.description}` : ''}
+                            </Text>
+                            {t.timeStr && (
+                              <Text style={styles.txTimeText}>⏰ {t.timeStr}</Text>
+                            )}
+                          </View>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
               )}
             </ScrollView>
           </View>
@@ -1350,6 +1395,49 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#166534',
+  },
+  openDayTxBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#EEF2FF',
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+    borderRadius: BorderRadius.md,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: Spacing.sm,
+  },
+  openDayTxBtnLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  openDayTxBtnTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: Colors.primary,
+  },
+  openDayTxBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  openDayTxBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  modalSubtitle: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginTop: 2,
   },
   card: {
     marginBottom: Spacing.md,
